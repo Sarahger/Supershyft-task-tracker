@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: theme('colors.dark.bg');
+    color: theme('colors.text.primary');
+    @apply antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  ::selection {
+    background-color: rgb(255 255 255 / 0.1);
+    color: theme('colors.text.primary');
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-hover
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-white/10 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn;
+    background-color: theme('colors.text.primary');
+    color: theme('colors.dark.bg');
+  }
+  .btn-primary:hover {
+    background-color: rgb(255 255 255 / 0.9);
+  }
+  .btn-secondary {
+    @apply btn text-text-primary;
+    background-color: theme('colors.dark.card');
+    border: 1px solid theme('colors.dark.border');
+  }
+  .btn-secondary:hover {
+    background-color: theme('colors.dark.hover');
+  }
+  .btn-ghost {
+    @apply btn text-text-secondary;
+  }
+  .btn-ghost:hover {
+    background-color: theme('colors.dark.hover');
+    color: theme('colors.text.primary');
+  }
+  .input {
+    @apply w-full rounded-md px-3 py-1.5 text-sm text-text-primary transition-all duration-hover;
+    background-color: theme('colors.dark.card');
+    border: 1px solid theme('colors.dark.border');
+  }
+  .input::placeholder {
+    color: theme('colors.text.muted');
+  }
+  .input:focus {
+    border-color: rgb(255 255 255 / 0.2);
+    outline: none;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs font-medium leading-none whitespace-nowrap;
+  }
+  .db-row {
+    @apply flex items-center cursor-pointer transition-colors duration-hover min-h-[48px];
+    border-bottom: 1px solid theme('colors.dark.border');
+  }
+  .db-row:hover {
+    background-color: theme('colors.dark.hover');
+  }
+  .db-row-focused {
+    background-color: theme('colors.dark.hover');
+    outline: 1px solid rgb(255 255 255 / 0.1);
+  }
+  .db-row-selected {
+    background-color: rgb(255 255 255 / 0.04);
+  }
+  .db-header-cell {
+    @apply text-2xs font-medium uppercase tracking-wider text-text-muted px-3 py-2.5 select-none shrink-0;
+  }
+  .db-cell {
+    @apply px-3 py-2 shrink-0 flex items-center;
+  }
+  .toolbar-btn {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-text-secondary rounded-md transition-all duration-hover;
+  }
+  .toolbar-btn:hover {
+    background-color: theme('colors.dark.hover');
+    color: theme('colors.text.primary');
+  }
+  .sidebar-link {
+    @apply flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-all duration-hover;
+  }
+  .drawer-section {
+    @apply py-5 first:border-t-0;
+    border-top: 1px solid theme('colors.dark.border');
+  }
+  .card {
+    @apply rounded-lg;
+    background-color: theme('colors.dark.card');
+    border: 1px solid theme('colors.dark.border');
+  }
+  .workspace-section {
+    @apply mb-10;
+  }
+  .workspace-section-title {
+    @apply text-xs font-medium uppercase tracking-wider text-text-muted mb-3 px-1;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: theme('colors.dark.border');
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: theme('colors.text.muted');
+}

@@ -1,0 +1,426 @@
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { tasksApi, miscApi, usersApi } from '../../services/endpoints';
+import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
+import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField } from './TaskDatabase';
+import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
+import { KanbanBoard } from './KanbanBoard';
+import { TaskCalendar, TaskCalendarSkeleton } from './TaskCalendar';
+import { TaskWeekView, TaskWeekViewSkeleton } from './TaskWeekView';
+import { EmptyState } from '../ui/Skeleton';
+import { toast } from '../ui/Toast';
+import type { Task } from '../../types';
+import clsx from 'clsx';
+import api from '../../services/api';
+
+export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review';
+
+interface TasksWorkspaceProps {
+  title: string;
+  subtitle?: string;
+  queryKey: string[];
+  fetchTasks: () => Promise<Task[]>;
+  showProject?: boolean;
+  showViewSelector?: boolean;
+  defaultView?: ViewMode;
+  fullWidth?: boolean;
+  showQuickFilters?: boolean;
+}
+
+function groupTasks(tasks: Task[], groupBy: GroupBy): { label: string; tasks: Task[] }[] {
+  if (groupBy === 'none') return [{ label: '', tasks }];
+  const map = new Map<string, Task[]>();
+  for (const t of tasks) {
+    let key = 'Other';
+    if (groupBy === 'status') key = t.status;
+    else if (groupBy === 'priority') key = t.priority;
+    else if (groupBy === 'project') key = t.project_name || 'No project';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(t);
+  }
+  return Array.from(map.entries()).map(([label, tasks]) => ({ label, tasks }));
+}
+
+export function TasksWorkspace({
+  title,
+  subtitle,
+  queryKey,
+  fetchTasks,
+  showProject = false,
+  showViewSelector = true,
+  defaultView = 'table',
+  fullWidth = false,
+  showQuickFilters = false,
+}: TasksWorkspaceProps) {
+  const { openTask, openCreate } = useTaskDrawer();
+  const qc = useQueryClient();
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [sortField, setSortField] = useState<SortField>('updated_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
+  const [calendarWeek, setCalendarWeek] = useState(() => new Date());
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const { columns, toggleColumn } = useColumnVisibility();
+
+  const calendarWindow = useMemo(() => {
+    const monthStart = startOfMonth(calendarMonth);
+    const monthEnd = endOfMonth(calendarMonth);
+    return {
+      due_after: startOfWeek(monthStart, { weekStartsOn: 1 }).toISOString(),
+      due_before: endOfWeek(monthEnd, { weekStartsOn: 1 }).toISOString(),
+    };
+  }, [calendarMonth]);
+
+  const weekWindow = useMemo(() => {
+    const weekStart = startOfWeek(calendarWeek, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(calendarWeek, { weekStartsOn: 1 });
+    return {
+      due_after: weekStart.toISOString(),
+      due_before: weekEnd.toISOString(),
+    };
+  }, [calendarWeek]);
+
+  const sharedListFilters = useMemo(() => ({
+    search: search || undefined,
+    status: statusFilter || undefined,
+    priority: priorityFilter || undefined,
+    assignee_id: assigneeFilter ? Number(assigneeFilter) : undefined,
+    overdue: quickFilter === 'overdue' ? true : undefined,
+    blocked: quickFilter === 'blocked' ? true : undefined,
+    awaiting_review: quickFilter === 'review' ? true : undefined,
+  }), [search, statusFilter, priorityFilter, assigneeFilter, quickFilter]);
+
+  const filters = useMemo(() => {
+    if (viewMode === 'calendar') {
+      return {
+        ...sharedListFilters,
+        page: 1,
+        page_size: 500,
+        has_due_date: true,
+        due_after: calendarWindow.due_after,
+        due_before: calendarWindow.due_before,
+        sort_by: 'due_date',
+        sort_order: 'asc',
+      };
+    }
+    if (viewMode === 'weekly') {
+      return {
+        ...sharedListFilters,
+        page: 1,
+        page_size: 500,
+        has_due_date: true,
+        due_after: weekWindow.due_after,
+        due_before: weekWindow.due_before,
+        sort_by: 'due_date',
+        sort_order: 'asc',
+      };
+    }
+    return {
+      ...sharedListFilters,
+      page,
+      page_size: 50,
+      sort_by: sortField,
+      sort_order: sortDir,
+    };
+  }, [sharedListFilters, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
+
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: [...queryKey, filters],
+    queryFn: async () => {
+      if (queryKey[0] === 'my-tasks') {
+        const tasks = await fetchTasks();
+        let filtered = tasks;
+        if (search) filtered = filtered.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
+        if (statusFilter) filtered = filtered.filter((t) => t.status === statusFilter);
+        if (priorityFilter) filtered = filtered.filter((t) => t.priority === priorityFilter);
+        if (assigneeFilter) {
+          const uid = Number(assigneeFilter);
+          filtered = filtered.filter((t) => t.assignees?.some((a) => a.user_id === uid));
+        }
+        return { items: filtered, total: filtered.length, total_pages: 1, page: 1 };
+      }
+      const res = await tasksApi.list(filters);
+      return res.data.data;
+    },
+  });
+
+  const { data: undatedCalendarTasks } = useQuery({
+    queryKey: [...queryKey, 'calendar-undated', sharedListFilters],
+    queryFn: () =>
+      tasksApi.list({
+        ...sharedListFilters,
+        page: 1,
+        page_size: 100,
+        has_due_date: false,
+        sort_by: 'updated_at',
+        sort_order: 'desc',
+      }).then((r) => r.data.data.items),
+    enabled: (viewMode === 'calendar' || viewMode === 'weekly') && queryKey[0] !== 'my-tasks',
+  });
+
+  const { data: usersList } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
+  });
+
+  const { data: savedFilters } = useQuery({
+    queryKey: ['saved-filters'],
+    queryFn: () => api.get('/saved-filters').then((r) => r.data.data),
+    retry: false,
+  });
+
+  const { data: taskTypes } = useQuery({
+    queryKey: ['task-types'],
+    queryFn: () => miscApi.taskTypes().then((r) => r.data.data as { id: number; name: string }[]),
+  });
+
+  const bulkMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
+      await Promise.all(ids.map((id) => tasksApi.updateStatus(id, status)));
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      setSelectedIds(new Set());
+      toast.success('Tasks updated');
+    },
+  });
+
+  const tasks = data?.items || [];
+  const displayTasks = useMemo(() => {
+    if (quickFilter !== 'today') return tasks;
+    return tasks.filter((t) => t.due_date && isToday(new Date(t.due_date)));
+  }, [tasks, quickFilter]);
+  const groups = groupTasks(displayTasks, groupBy);
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) => tasksApi.updateStatus(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      toast.success('Status updated');
+    },
+    onError: () => toast.error('Failed to update status'),
+  });
+
+  const priorityMutation = useMutation({
+    mutationFn: ({ id, priority }: { id: number; priority: string }) =>
+      tasksApi.update(id, { priority }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      toast.success('Priority updated');
+    },
+    onError: () => toast.error('Failed to update priority'),
+  });
+
+  const taskTypeMutation = useMutation({
+    mutationFn: ({ id, taskTypeId }: { id: number; taskTypeId: number | null }) =>
+      tasksApi.update(id, { task_type_id: taskTypeId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      toast.success('Task type updated');
+    },
+    onError: () => toast.error('Failed to update task type'),
+  });
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedIndex((i) => Math.min(i + 1, tasks.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === 'Enter' && focusedIndex >= 0 && tasks[focusedIndex]) {
+        openTask(tasks[focusedIndex].id);
+      } else if (e.key === ' ' && focusedIndex >= 0 && tasks[focusedIndex]) {
+        e.preventDefault();
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          const id = tasks[focusedIndex].id;
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+        });
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [tasks, focusedIndex, openTask]);
+
+  const applySavedFilter = (json: string) => {
+    try {
+      const f = JSON.parse(json);
+      if (f.status) setStatusFilter(f.status);
+      if (f.priority) setPriorityFilter(f.priority);
+      if (f.assignee_id) setAssigneeFilter(String(f.assignee_id));
+      if (f.search) setSearch(f.search);
+      setPage(1);
+    } catch { /* ignore */ }
+  };
+
+  const quickFilterOptions: { id: QuickFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'overdue', label: 'Overdue' },
+    { id: 'today', label: 'Due today' },
+    { id: 'blocked', label: 'Blocked' },
+    { id: 'review', label: 'In review' },
+  ];
+
+  return (
+    <div className={clsx('flex flex-col min-h-0 pb-8', fullWidth ? 'w-full max-w-none' : 'max-w-workspace mx-auto')}>
+      <div className="mb-5">
+        {title && (
+          <>
+            <h1 className="text-xl font-semibold text-text-primary tracking-tight">{title}</h1>
+            {subtitle && <p className="text-sm text-text-muted mt-0.5">{subtitle}</p>}
+          </>
+        )}
+      </div>
+
+      {showQuickFilters && (
+        <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+          {quickFilterOptions.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => { setQuickFilter(opt.id); setPage(1); }}
+              className={clsx(
+                'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover',
+                quickFilter === opt.id
+                  ? 'bg-white/[0.08] text-text-primary'
+                  : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <TaskToolbar
+        search={search}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
+        statusFilter={statusFilter}
+        onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
+        priorityFilter={priorityFilter}
+        onPriorityFilterChange={(v) => { setPriorityFilter(v); setPage(1); }}
+        assigneeFilter={assigneeFilter}
+        onAssigneeFilterChange={(v) => { setAssigneeFilter(v); setPage(1); }}
+        assigneeOptions={usersList ?? []}
+        sortField={sortField}
+        sortDir={sortDir}
+        onSortFieldChange={(v) => setSortField(v as SortField)}
+        onSortDirToggle={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
+        groupBy={groupBy}
+        onGroupByChange={setGroupBy}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onNewTask={openCreate}
+        totalCount={data?.total}
+        visibleColumns={columns}
+        onToggleColumn={toggleColumn}
+        selectedCount={selectedIds.size}
+        onBulkStatusChange={(status) => bulkMutation.mutate({ ids: Array.from(selectedIds), status })}
+        onClearSelection={() => setSelectedIds(new Set())}
+        showViewSelector={showViewSelector}
+      />
+
+      {savedFilters?.length > 0 && (
+        <SavedFiltersBar filters={savedFilters} onApply={applySavedFilter} />
+      )}
+
+      {isLoading ? (
+        <div className="space-y-3">
+          <p className="text-sm text-text-muted">Loading tasks…</p>
+          {viewMode === 'calendar' ? <TaskCalendarSkeleton /> : viewMode === 'weekly' ? <TaskWeekViewSkeleton /> : <TaskDatabaseSkeleton />}
+        </div>
+      ) : isError ? (
+        <EmptyState
+          title="Could not load tasks"
+          description={
+            !(error as { response?: unknown })?.response
+              ? 'The backend is not reachable. Start it with: cd backend && .\\venv\\Scripts\\uvicorn app.main:app --reload --port 8000'
+              : 'Something went wrong loading tasks. Check that you are signed in and the API is running.'
+          }
+          action={
+            <button onClick={() => refetch()} className="toolbar-btn mt-2 border border-dark-border">
+              Retry
+            </button>
+          }
+        />
+      ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' ? (
+        <EmptyState title="No tasks" description="Create a task or adjust your filters." />
+      ) : viewMode === 'kanban' ? (
+        <KanbanBoard tasks={displayTasks} queryKey={queryKey} />
+      ) : viewMode === 'calendar' ? (
+        <TaskCalendar
+          tasks={displayTasks}
+          undatedTasks={undatedCalendarTasks ?? []}
+          currentMonth={calendarMonth}
+          onMonthChange={setCalendarMonth}
+          onTaskClick={openTask}
+          showProject={showProject}
+        />
+      ) : viewMode === 'weekly' ? (
+        <TaskWeekView
+          tasks={displayTasks}
+          undatedTasks={undatedCalendarTasks ?? []}
+          currentWeek={calendarWeek}
+          onWeekChange={setCalendarWeek}
+          onTaskClick={openTask}
+          showProject={showProject}
+        />
+      ) : (
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <div key={group.label || 'all'}>
+              {group.label && (
+                <h3 className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2 px-1 capitalize">
+                  {group.label.replace(/_/g, ' ')}
+                </h3>
+              )}
+              <TaskDatabase
+                tasks={group.tasks}
+                onTaskClick={openTask}
+                showProject={showProject}
+                sortField={sortField}
+                sortDir={sortDir}
+                onSort={(field) => {
+                  if (sortField === field) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+                  else { setSortField(field); setSortDir('asc'); }
+                }}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                focusedIndex={focusedIndex}
+                onFocusIndexChange={setFocusedIndex}
+                editable
+                taskTypes={taskTypes ?? []}
+                onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+                onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
+                onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
+              />
+            </div>
+          ))}
+
+          {data && data.total_pages > 1 && (
+            <div className="flex items-center justify-center gap-3 pt-4 text-sm text-text-muted">
+              <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="toolbar-btn disabled:opacity-30">Previous</button>
+              <span>{page} / {data.total_pages}</span>
+              <button disabled={page >= data.total_pages} onClick={() => setPage(page + 1)} className="toolbar-btn disabled:opacity-30">Next</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
