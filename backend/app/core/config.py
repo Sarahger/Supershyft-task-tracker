@@ -1,9 +1,16 @@
+import os
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env" if os.getenv("VERCEL") != "1" else None,
+        extra="ignore",
+    )
+
     APP_NAME: str = "Internal Work Management System"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
@@ -13,11 +20,9 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
-        # Neon and others may return postgres:// — SQLAlchemy expects postgresql://
         if isinstance(value, str):
             if value.startswith("postgres://"):
                 value = value.replace("postgres://", "postgresql://", 1)
-            # channel_binding can break psycopg2 on some serverless runtimes
             value = value.replace("channel_binding=require&", "").replace("&channel_binding=require", "")
             value = value.replace("?channel_binding=require", "")
         return value
@@ -41,18 +46,13 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:5173"
     AUTO_SEED: bool = True
 
-    # Vercel Blob (auto-injected when Blob store is linked to the project)
     BLOB_READ_WRITE_TOKEN: str | None = None
 
-    # Stored as comma-separated string — pydantic-settings JSON-parses list fields from .env
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
-
-    class Config:
-        env_file = ".env"
 
 
 @lru_cache

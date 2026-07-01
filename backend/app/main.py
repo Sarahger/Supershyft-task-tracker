@@ -74,5 +74,6 @@ if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
 
 
 @app.get("/api/health")
+@app.get("/health")
 def health():
     return {"success": True, "data": {"status": "healthy"}, "message": "OK"}

@@ -3,10 +3,14 @@
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
   "installCommand": "cd frontend && npm install",
+  "env": {
+    "PYTHONPATH": "backend"
+  },
   "functions": {
     "api/index.py": {
       "memory": 1024,
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "backend/**"
     }
   },
   "rewrites": [
