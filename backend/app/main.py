@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    run_lightweight_migrations(engine)
+    # Neon is pre-initialized; skip heavy sync bootstrap on Vercel cold starts
+    if os.getenv("VERCEL") != "1":
+        Base.metadata.create_all(bind=engine)
+        run_lightweight_migrations(engine)
     if os.getenv("VERCEL") != "1":
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    if settings.AUTO_SEED:
+    if settings.AUTO_SEED and os.getenv("VERCEL") != "1":
         try:
             from app.db.seed import seed
             seed()

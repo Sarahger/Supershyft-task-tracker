@@ -7,8 +7,6 @@ BACKEND = os.path.join(ROOT, "backend")
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 
-from mangum import Mangum  # noqa: E402
-
 from app.main import app  # noqa: E402
 
-handler = Mangum(app, lifespan="auto")
+# Vercel natively runs ASGI apps — export `app` only (do not wrap with Mangum)

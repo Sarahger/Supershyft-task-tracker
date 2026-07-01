@@ -14,8 +14,12 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
         # Neon and others may return postgres:// — SQLAlchemy expects postgresql://
-        if isinstance(value, str) and value.startswith("postgres://"):
-            return value.replace("postgres://", "postgresql://", 1)
+        if isinstance(value, str):
+            if value.startswith("postgres://"):
+                value = value.replace("postgres://", "postgresql://", 1)
+            # channel_binding can break psycopg2 on some serverless runtimes
+            value = value.replace("channel_binding=require&", "").replace("&channel_binding=require", "")
+            value = value.replace("?channel_binding=require", "")
         return value
 
     SECRET_KEY: str = "change-this-secret-key-in-production-use-env-var"
