@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -38,6 +38,7 @@ from app.schemas.task import (
     TagCreate,
 )
 from app.services.task_service import TaskService
+from app.services.storage import store_file
 
 router = APIRouter(tags=["tasks"])
 
@@ -394,21 +395,17 @@ async def upload_attachment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    ext = os.path.splitext(file.filename or "file")[1]
-    filename = f"{uuid.uuid4()}{ext}"
-    filepath = os.path.join(settings.UPLOAD_DIR, filename)
     content = await file.read()
     if len(content) > settings.MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
-    with open(filepath, "wb") as f:
-        f.write(content)
+    file_path, public_url = await store_file(content, file.filename or "file", file.content_type)
     attachment = Attachment(
         task_id=task_id,
         uploaded_by_id=current_user.id,
         attachment_type="file",
         filename=file.filename,
-        file_path=filepath,
+        file_path=file_path,
+        url=public_url,
         file_size=len(content),
         mime_type=file.content_type,
     )
@@ -467,15 +464,17 @@ def download_attachment(
     current_user: User = Depends(get_current_user),
 ):
     attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
-    if not attachment or not attachment.file_path:
+    if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    if not os.path.exists(attachment.file_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
-    return FileResponse(
-        attachment.file_path,
-        filename=attachment.filename or os.path.basename(attachment.file_path),
-        media_type=attachment.mime_type or "application/octet-stream",
-    )
+    if attachment.url:
+        return RedirectResponse(attachment.url)
+    if attachment.file_path and os.path.exists(attachment.file_path):
+        return FileResponse(
+            attachment.file_path,
+            filename=attachment.filename or os.path.basename(attachment.file_path),
+            media_type=attachment.mime_type or "application/octet-stream",
+        )
+    raise HTTPException(status_code=404, detail="File not found")
 
 
 @router.get("/task-types")

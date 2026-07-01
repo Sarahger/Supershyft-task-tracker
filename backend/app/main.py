@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     run_lightweight_migrations(engine)
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    if os.getenv("AUTO_SEED", "true").lower() in ("1", "true", "yes"):
+    if os.getenv("VERCEL") != "1":
+        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    if settings.AUTO_SEED:
         try:
             from app.db.seed import seed
             seed()
@@ -40,7 +41,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,7 +66,8 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(custom_fields.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 
-if os.path.exists(settings.UPLOAD_DIR):
+_is_vercel = os.getenv("VERCEL") == "1"
+if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 

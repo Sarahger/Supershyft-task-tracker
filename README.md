@@ -68,15 +68,20 @@ Open http://localhost:5173
 - Review and testing workflows, bug tracking, block/unblock, reopen
 - JWT auth, RBAC, email notifications, global search
 
-## Deploy to production (Vercel + Render)
+## Deploy to production (Vercel + Neon)
 
-**Full step-by-step checklist:** see **[DEPLOY.md](./DEPLOY.md)**
+**Full checklist:** **[DEPLOY.md](./DEPLOY.md)**
 
-Vercel hosts the React app; the FastAPI API runs on Render (free tier works for demos). You cannot run SQLite + file uploads on Vercel alone without rewriting the backend.
+| Service | Role |
+|---------|------|
+| **Vercel** | React UI + FastAPI API (serverless) |
+| **Neon** | PostgreSQL database |
+| **Vercel Blob** | Task attachment files |
 
-Quick summary:
+1. Create **Neon** project → copy pooled `DATABASE_URL`  
+2. On **Vercel**, import repo with **Root Directory = repo root** (not `frontend`)  
+3. Link **Vercel Blob** storage to the project  
+4. Set env vars: `DATABASE_URL`, `SECRET_KEY`, `AUTO_SEED=true`, `CORS_ORIGINS`  
+5. Deploy → login with `admin@company.com` / `admin123`
 
-1. Push repo to GitHub  
-2. **Render** — New → Blueprint → set `CORS_ORIGINS` and `FRONTEND_URL` to your Vercel URL  
-3. **Vercel** — import repo, **Root Directory = `frontend`**, set `VITE_API_URL` to your Render API URL  
-4. Test login: `admin@company.com` / `admin123` (auto-seeded on first API start)
+Local dev still uses SQLite by default (`backend/.env`).

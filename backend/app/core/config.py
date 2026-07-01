@@ -10,6 +10,14 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./workmanager.db"
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, value: str) -> str:
+        # Neon and others may return postgres:// — SQLAlchemy expects postgresql://
+        if isinstance(value, str) and value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql://", 1)
+        return value
+
     SECRET_KEY: str = "change-this-secret-key-in-production-use-env-var"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
@@ -27,15 +35,17 @@ class Settings(BaseSettings):
     EMAIL_ENABLED: bool = False
 
     FRONTEND_URL: str = "http://localhost:5173"
+    AUTO_SEED: bool = True
 
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Vercel Blob (auto-injected when Blob store is linked to the project)
+    BLOB_READ_WRITE_TOKEN: str | None = None
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, value):
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+    # Stored as comma-separated string — pydantic-settings JSON-parses list fields from .env
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     class Config:
         env_file = ".env"
