@@ -1,0 +1,21 @@
+# Local secrets — use .env.example as a template
+.env
+.env.local
+.env.*.local
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# App data (local only)
+*.db
+workmanager.db
+uploads/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

@@ -26,6 +26,8 @@ The setup below gives you **one public URL on Vercel** for users, with the API h
 - [ ] [Render](https://render.com) account (free)
 - [ ] This repo pushed to GitHub
 
+**Secrets:** Do not commit `.env` files. Set `SECRET_KEY`, `CORS_ORIGINS`, etc. in the **Render** and **Vercel** dashboards. Use `.env.example` files locally as templates only.
+
 ---
 
 ## Part 1 — Deploy the API (Render) ~15 min
