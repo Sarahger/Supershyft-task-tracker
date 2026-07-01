@@ -35,10 +35,12 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutdown")
 
 
+_is_vercel = os.getenv("VERCEL") == "1"
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    lifespan=lifespan,
+    lifespan=lifespan if not _is_vercel else None,
 )
 
 app.add_middleware(
@@ -68,7 +70,6 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(custom_fields.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 
-_is_vercel = os.getenv("VERCEL") == "1"
 if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
