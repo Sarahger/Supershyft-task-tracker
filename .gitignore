@@ -9,6 +9,8 @@ vercel.env
 .vercel
 public/*
 !public/.gitkeep
+dist/
+api/__pycache__/
 
 # --- Neon CLI artifacts (local tooling only) ---
 .neon
