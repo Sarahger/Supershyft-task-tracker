@@ -1,17 +1,28 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm run build && mkdir -p ../public && cp -r dist/. ../public/",
-  "outputDirectory": "frontend/dist",
-  "installCommand": "python -m pip install -r requirements.txt && cd frontend && npm install",
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ],
   "functions": {
     "api/index.py": {
       "memory": 1024,
       "maxDuration": 30,
       "includeFiles": "{backend/**,requirements.txt,api/requirements.txt}"
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  }
 }
