@@ -55,7 +55,7 @@ Without Blob, tasks work but **file uploads fail** in production.
 
 Leave build/output settings — `vercel.json` at the repo root defines them.
 
-3. **Environment variables** (Production + Preview):
+3. **Environment variables** (Production + Preview) — see **`vercel.env.example`** for the full list:
 
 | Variable | Value |
 |----------|--------|

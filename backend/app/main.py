@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Neon is pre-initialized; skip heavy sync bootstrap on Vercel cold starts
+    # On Vercel, bootstrap runs in api/index.py (lifespan is disabled for serverless)
     if os.getenv("VERCEL") != "1":
         Base.metadata.create_all(bind=engine)
         run_lightweight_migrations(engine)
