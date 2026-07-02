@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "python -m pip install -r requirements.txt && cd frontend && npm ci",
-  "buildCommand": "cd frontend && npm run build && rm -rf ../dist && cp -r dist ../dist",
-  "outputDirectory": "dist",
+  "buildCommand": "cd frontend && npm run build && mkdir -p ../public && cp -r dist/. ../public/",
+  "outputDirectory": "frontend/dist",
   "regions": ["sin1"],
   "functions": {
     "api/index.py": {
