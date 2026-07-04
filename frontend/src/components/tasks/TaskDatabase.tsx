@@ -33,6 +33,8 @@ interface TaskDatabaseProps {
   onTaskTypeChange?: (id: number, taskTypeId: number | null) => void;
   taskTypes?: { id: number; name: string }[];
   editable?: boolean;
+  columns?: ColumnDef[];
+  onColumnsChange?: React.Dispatch<React.SetStateAction<ColumnDef[]>>;
 }
 
 export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'task_type' | 'estimated_hours' | 'actual_hours' | 'indicators';
@@ -232,8 +234,12 @@ export function TaskDatabase({
   onTaskTypeChange,
   taskTypes = [],
   editable = false,
+  columns: columnsProp,
+  onColumnsChange,
 }: TaskDatabaseProps) {
-  const [columns, setColumns] = useState<ColumnDef[]>(DEFAULT_COLUMNS);
+  const [internalColumns, setInternalColumns] = useState<ColumnDef[]>(DEFAULT_COLUMNS);
+  const columns = columnsProp ?? internalColumns;
+  const setColumns = onColumnsChange ?? setInternalColumns;
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; taskId: number } | null>(null);
   const [resizing, setResizing] = useState<{ colId: ColumnId; startX: number; startWidth: number } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);

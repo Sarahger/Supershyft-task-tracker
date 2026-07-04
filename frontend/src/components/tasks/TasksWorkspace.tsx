@@ -72,7 +72,7 @@ export function TasksWorkspace({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  const { columns, toggleColumn } = useColumnVisibility();
+  const { columns, toggleColumn, setColumns } = useColumnVisibility();
 
   const calendarWindow = useMemo(() => {
     const monthStart = startOfMonth(calendarMonth);
@@ -396,6 +396,8 @@ export function TasksWorkspace({
                 tasks={group.tasks}
                 onTaskClick={openTask}
                 showProject={showProject}
+                columns={columns}
+                onColumnsChange={setColumns}
                 sortField={sortField}
                 sortDir={sortDir}
                 onSort={(field) => {
