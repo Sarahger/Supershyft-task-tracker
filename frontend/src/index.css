@@ -81,7 +81,7 @@
     @apply px-3 py-2 shrink-0 flex items-center;
   }
   .toolbar-btn {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-text-secondary rounded-md transition-all duration-hover;
+    @apply inline-flex items-center gap-1.5 px-2 py-1.5 sm:px-2.5 text-sm text-text-secondary rounded-md transition-all duration-hover shrink-0;
   }
   .toolbar-btn:hover {
     background-color: theme('colors.dark.hover');
