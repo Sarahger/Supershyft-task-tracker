@@ -10,6 +10,12 @@ BACKEND = os.path.join(ROOT, "backend")
 if BACKEND not in sys.path:
     sys.path.insert(0, BACKEND)
 
+if not os.path.isdir(os.path.join(BACKEND, "app")):
+    raise RuntimeError(
+        f"backend/app not found at {BACKEND}. "
+        "Ensure vercel.json functions.includeFiles includes backend/**"
+    )
+
 from app.main import app  # noqa: E402
 
 
