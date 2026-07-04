@@ -40,7 +40,7 @@ from app.schemas.task import (
 )
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
-from app.services.storage import store_file
+from app.services.storage import StorageError, store_file
 
 router = APIRouter(tags=["tasks"])
 
@@ -414,7 +414,10 @@ async def upload_attachment(
     content = await file.read()
     if len(content) > settings.MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
-    file_path, public_url = await store_file(content, file.filename or "file", file.content_type)
+    try:
+        file_path, public_url = await store_file(content, file.filename or "file", file.content_type)
+    except StorageError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     attachment = Attachment(
         task_id=task_id,
         uploaded_by_id=current_user.id,

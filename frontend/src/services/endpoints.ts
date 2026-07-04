@@ -32,9 +32,7 @@ export const tasksApi = {
   uploadAttachment: (id: number, file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return api.post(`/tasks/${id}/attachments`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post(`/tasks/${id}/attachments`, form);
   },
   getAttachments: (taskId: number) =>
     api.get<APIResponse<TaskAttachment[]>>(`/tasks/${taskId}/attachments`),
