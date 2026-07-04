@@ -28,3 +28,25 @@ def run_lightweight_migrations(engine) -> None:
             with engine.begin() as conn:
                 conn.execute(text(sql))
             logger.info("Added task_dependencies.depends_on_user_id column")
+
+    if "users" in tables:
+        user_cols = {c["name"] for c in inspector.get_columns("users")}
+        user_additions = [
+            ("email_notifications_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("notify_task_assigned", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("notify_task_updates", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("notify_reviews", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("notify_comments", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ]
+        dialect = engine.dialect.name
+        for col_name, col_def in user_additions:
+            if col_name not in user_cols:
+                if dialect == "postgresql":
+                    sql = f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                elif dialect == "sqlite":
+                    sql = f"ALTER TABLE users ADD COLUMN {col_name} INTEGER NOT NULL DEFAULT 1"
+                else:
+                    sql = f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                logger.info("Added users.%s column", col_name)

@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { searchApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
+import { useUserDrawer } from '../../contexts/UserDrawerContext';
 
 export function GlobalSearch() {
   const [isOpen, setIsOpen] = useState(false);
@@ -12,6 +13,7 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { openTask } = useTaskDrawer();
+  const { openUser } = useUserDrawer();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -57,7 +59,7 @@ export function GlobalSearch() {
             {allResults.length > 0 && (
               <div className="max-h-72 overflow-y-auto py-1">
                 {allResults.map((r) => (
-                  <button key={`${r.type}-${r.id}`} onClick={() => { setIsOpen(false); setQuery(''); r.type === 'task' ? openTask(r.id) : r.type === 'project' ? navigate(`/projects/${r.id}`) : navigate(`/users/${r.id}`); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-dark-hover text-left transition-colors duration-hover">
+                  <button key={`${r.type}-${r.id}`} onClick={() => { setIsOpen(false); setQuery(''); r.type === 'task' ? openTask(r.id) : r.type === 'project' ? navigate(`/projects/${r.id}`) : openUser(r.id); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-dark-hover text-left transition-colors duration-hover">
                     <span className="text-2xs uppercase text-text-muted w-14 shrink-0">{r.type}</span>
                     <div className="min-w-0"><p className="text-sm text-text-primary truncate">{r.title}</p>{r.subtitle && <p className="text-2xs text-text-muted truncate">{r.subtitle}</p>}</div>
                   </button>

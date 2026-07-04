@@ -1,7 +1,7 @@
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import get_current_user, require_admin, require_manager
 from app.db.database import get_db
@@ -112,22 +112,60 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
         "departments": [{"id": d.id, "name": d.name} for d in user.departments],
     }
     if include_stats:
-        open_count = (
+        tasks = (
             db.query(Task)
             .join(TaskAssignee)
-            .filter(TaskAssignee.user_id == user.id, Task.status.notin_(["completed", "cancelled"]), Task.is_archived == False)
-            .count()
+            .options(joinedload(Task.project))
+            .filter(TaskAssignee.user_id == user.id, Task.is_archived == False)
+            .order_by(Task.updated_at.desc())
+            .all()
         )
-        completed_count = (
-            db.query(Task)
-            .join(TaskAssignee)
-            .filter(TaskAssignee.user_id == user.id, Task.status == "completed")
-            .count()
-        )
+        completed_tasks = [t for t in tasks if t.status == "completed"]
+        pending_tasks = [t for t in tasks if t.status not in ("completed", "cancelled")]
+        cancelled_tasks = [t for t in tasks if t.status == "cancelled"]
+
+        total_estimated = sum(t.estimated_hours for t in tasks if t.estimated_hours is not None)
+        total_actual = sum(t.actual_hours for t in tasks if t.actual_hours is not None)
+
+        timed_completed = [
+            t for t in completed_tasks
+            if t.estimated_hours is not None and t.actual_hours is not None and t.estimated_hours > 0
+        ]
+        on_track = sum(1 for t in timed_completed if t.actual_hours <= t.estimated_hours)
+        over_budget = len(timed_completed) - on_track
+        utilization = round((total_actual / total_estimated) * 100, 1) if total_estimated > 0 else None
+
         pending_reviews = db.query(Task).filter(Task.reviewer_id == user.id, Task.status == "in_review").count()
+
         result.update({
-            "open_tasks_count": open_count,
-            "completed_tasks_count": completed_count,
+            "open_tasks_count": len(pending_tasks),
+            "completed_tasks_count": len(completed_tasks),
             "pending_reviews_count": pending_reviews,
+            "task_stats": {
+                "assigned_count": len(tasks),
+                "pending_count": len(pending_tasks),
+                "completed_count": len(completed_tasks),
+                "cancelled_count": len(cancelled_tasks),
+                "total_estimated_hours": round(total_estimated, 1),
+                "total_actual_hours": round(total_actual, 1),
+                "time_utilization_percent": utilization,
+                "on_track_count": on_track,
+                "over_budget_count": over_budget,
+                "tasks_with_time_data": len(timed_completed),
+            },
+            "assigned_tasks": [
+                {
+                    "id": t.id,
+                    "title": t.title,
+                    "status": t.status,
+                    "priority": t.priority,
+                    "project_name": t.project.name if t.project else None,
+                    "due_date": t.due_date,
+                    "estimated_hours": t.estimated_hours,
+                    "actual_hours": t.actual_hours,
+                    "updated_at": t.updated_at,
+                }
+                for t in tasks
+            ],
         })
     return result

@@ -82,6 +82,7 @@ class NotificationType(str, Enum):
     TASK_REOPENED = "task_reopened"
     MENTION = "mention"
     COMMENT_REPLY = "comment_reply"
+    TASK_COMMENT = "task_comment"
     PROJECT_UPDATE = "project_update"
     OVERDUE_TASK = "overdue_task"
     DEPENDENCY_UPDATED = "dependency_updated"

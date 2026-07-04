@@ -1,12 +1,142 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { toast } from '../components/ui/Toast';
-import { customFieldsApi, type CustomFieldDefinition } from '../services/endpoints';
+import { customFieldsApi, notificationsApi, type CustomFieldDefinition } from '../services/endpoints';
+import type { NotificationPreferences } from '../types';
+
+function NotificationSettingsSection() {
+  const qc = useQueryClient();
+  const { data: prefs, isLoading } = useQuery({
+    queryKey: ['notification-preferences'],
+    queryFn: () => notificationsApi.getPreferences().then((r) => r.data.data),
+  });
+
+  const [localPrefs, setLocalPrefs] = useState<NotificationPreferences | null>(null);
+
+  useEffect(() => {
+    if (prefs) setLocalPrefs(prefs);
+  }, [prefs]);
+
+  const saveMutation = useMutation({
+    mutationFn: (data: Partial<NotificationPreferences>) => notificationsApi.updatePreferences(data),
+    onSuccess: (res) => {
+      qc.setQueryData(['notification-preferences'], res.data.data);
+      setLocalPrefs(res.data.data);
+      toast.success('Notification preferences saved');
+    },
+    onError: () => toast.error('Could not save preferences'),
+  });
+
+  const testEmailMutation = useMutation({
+    mutationFn: () => notificationsApi.sendTestEmail(),
+    onSuccess: () => toast.success('Test email sent — check your inbox'),
+    onError: () => toast.error('Could not send test email. Is SMTP configured on the server?'),
+  });
+
+  const toggle = (key: keyof NotificationPreferences) => {
+    if (!localPrefs) return;
+    const next = { ...localPrefs, [key]: !localPrefs[key] };
+    setLocalPrefs(next);
+    saveMutation.mutate({ [key]: next[key] });
+  };
+
+  const items: { key: keyof NotificationPreferences; label: string; description: string; disabledBy?: keyof NotificationPreferences }[] = [
+    {
+      key: 'email_notifications_enabled',
+      label: 'Email notifications',
+      description: 'Master switch for all email alerts',
+    },
+    {
+      key: 'notify_task_assigned',
+      label: 'Task assignments',
+      description: 'When you are assigned to a task',
+      disabledBy: 'email_notifications_enabled',
+    },
+    {
+      key: 'notify_task_updates',
+      label: 'Task updates',
+      description: 'Blocked, unblocked, completed, or reopened tasks',
+      disabledBy: 'email_notifications_enabled',
+    },
+    {
+      key: 'notify_reviews',
+      label: 'Reviews',
+      description: 'Review requests, approvals, and change requests',
+      disabledBy: 'email_notifications_enabled',
+    },
+    {
+      key: 'notify_comments',
+      label: 'Comments',
+      description: 'New comments on tasks you are involved in',
+      disabledBy: 'email_notifications_enabled',
+    },
+  ];
+
+  if (isLoading || !localPrefs) {
+    return (
+      <>
+        <h2 className="text-sm font-medium text-text-primary mb-2">Notifications</h2>
+        <div className="h-24 bg-dark-muted/30 rounded animate-pulse" />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h2 className="text-sm font-medium text-text-primary mb-1">Notifications</h2>
+      <p className="text-sm text-text-secondary mb-4">
+        In-app alerts always appear in the bell menu. Choose which events also send email.
+      </p>
+      <div className="space-y-0 divide-y divide-dark-border border border-dark-border rounded-lg overflow-hidden">
+        {items.map((item) => {
+          const disabled = item.disabledBy ? !localPrefs[item.disabledBy] : false;
+          return (
+            <label
+              key={item.key}
+              className={clsx(
+                'flex items-start justify-between gap-4 px-4 py-3 bg-dark-bg/30',
+                disabled && 'opacity-50',
+                !disabled && 'cursor-pointer hover:bg-dark-hover/40',
+              )}
+            >
+              <div>
+                <p className="text-sm text-text-primary">{item.label}</p>
+                <p className="text-xs text-text-muted mt-0.5">{item.description}</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={localPrefs[item.key]}
+                disabled={disabled || saveMutation.isPending}
+                onChange={() => toggle(item.key)}
+                className="mt-1 rounded border-dark-border"
+              />
+            </label>
+          );
+        })}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => testEmailMutation.mutate()}
+          loading={testEmailMutation.isPending}
+          disabled={!localPrefs.email_notifications_enabled}
+        >
+          Send test email
+        </Button>
+        <p className="text-xs text-text-muted">
+          Requires server SMTP settings (`EMAIL_ENABLED=true` and SMTP credentials).
+        </p>
+      </div>
+    </>
+  );
+}
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
@@ -169,9 +299,7 @@ export default function SettingsPage() {
       )}
 
       <div className="card p-6">
-        <h2 className="text-sm font-medium text-text-primary mb-2">Notification Settings</h2>
-        <p className="text-sm text-text-secondary">Email and in-app notification preferences can be configured here.</p>
-        <p className="text-xs text-text-muted mt-2">Coming soon: full notification preferences UI</p>
+        <NotificationSettingsSection />
       </div>
     </div>
   );

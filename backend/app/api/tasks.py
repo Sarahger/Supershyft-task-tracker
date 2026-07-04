@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
+from app.core.constants import NotificationType
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.models import (
@@ -38,6 +39,7 @@ from app.schemas.task import (
     TagCreate,
 )
 from app.services.task_service import TaskService
+from app.services.notification_service import NotificationService
 from app.services.storage import store_file
 
 router = APIRouter(tags=["tasks"])
@@ -283,7 +285,21 @@ def add_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
-    ActivityRepository(db).log(current_user.id, "comment_added", f"Added comment", task_id)
+    ActivityRepository(db).log(current_user.id, "comment_added", "Added comment", task_id)
+
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if task:
+        preview = data.content.strip()
+        if len(preview) > 120:
+            preview = preview[:117] + "..."
+        NotificationService(db).notify_task_watchers(
+            task,
+            NotificationType.TASK_COMMENT.value,
+            f"New comment on: {task.title}",
+            f"{current_user.full_name} commented: {preview}",
+            exclude_user_id=current_user.id,
+        )
+
     return APIResponse(data=_format_comment(comment))
 
 

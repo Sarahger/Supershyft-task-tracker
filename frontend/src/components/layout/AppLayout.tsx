@@ -3,13 +3,14 @@ import {
   LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Bell,
 } from 'lucide-react';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { Avatar } from '../ui/Avatar';
 import { GlobalSearch } from './GlobalSearch';
 import { notificationsApi } from '../../services/endpoints';
-import type { User } from '../../types';
+import type { Notification, User } from '../../types';
 
 const navItems: {
   to: string;
@@ -30,16 +31,44 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showNotifs, setShowNotifs] = useState(false);
   const { user, logout } = useAuth();
+  const { openTask } = useTaskDrawer();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: notifications } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => notificationsApi.list().then((r) => r.data.data),
+    queryFn: () => notificationsApi.list().then((r) => r.data.data as Notification[]),
     refetchInterval: 30000,
     retry: false,
   });
 
-  const unreadCount = notifications?.filter((n: { is_read: boolean }) => !n.is_read).length || 0;
+  const markReadMutation = useMutation({
+    mutationFn: (id: number) => notificationsApi.markRead(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => notificationsApi.markAllRead(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const unreadCount = notifications?.filter((n) => !n.is_read).length || 0;
+  const handleNotificationClick = (notification: Notification) => {
+    if (!notification.is_read) {
+      markReadMutation.mutate(notification.id);
+    }
+    setShowNotifs(false);
+    const link = notification.link || '';
+    const taskMatch = link.match(/\/tasks\/(\d+)/);
+    if (taskMatch) {
+      openTask(Number(taskMatch[1]));
+      return;
+    }
+    if (link.startsWith('/')) {
+      navigate(link);
+    }
+  };
+
   const visibleNav = navItems.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role))
   );
@@ -112,13 +141,37 @@ export function AppLayout() {
             {showNotifs && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
-                <div className="absolute right-0 top-full mt-1 w-72 rounded-md border border-dark-border bg-dark-card z-50 max-h-80 overflow-y-auto shadow-lg">
-                  <div className="px-3 py-2 border-b border-dark-border text-2xs font-medium text-text-muted uppercase tracking-wider">Notifications</div>
-                  {notifications?.length ? notifications.slice(0, 10).map((n: { id: number; title: string; message?: string; is_read: boolean }) => (
-                    <div key={n.id} className={clsx('px-3 py-2.5 border-b border-dark-border last:border-0 text-sm', !n.is_read && 'bg-white/[0.03]')}>
+                <div className="absolute right-0 top-full mt-1 w-80 rounded-md border border-dark-border bg-dark-card z-50 max-h-96 overflow-y-auto shadow-lg">
+                  <div className="px-3 py-2 border-b border-dark-border flex items-center justify-between gap-2">
+                    <span className="text-2xs font-medium text-text-muted uppercase tracking-wider">Notifications</span>
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => markAllReadMutation.mutate()}
+                        disabled={markAllReadMutation.isPending}
+                        className="text-2xs text-text-muted hover:text-text-secondary"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  {notifications?.length ? notifications.slice(0, 15).map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => handleNotificationClick(n)}
+                      className={clsx(
+                        'w-full text-left px-3 py-2.5 border-b border-dark-border last:border-0 text-sm hover:bg-dark-hover transition-colors',
+                        !n.is_read && 'bg-white/[0.03]',
+                      )}
+                    >
                       <p className="font-medium text-text-primary text-xs">{n.title}</p>
                       {n.message && <p className="text-text-muted text-2xs mt-0.5 line-clamp-2">{n.message}</p>}
-                    </div>
+                      <p className="text-2xs text-text-muted mt-1">
+                        {new Date(n.created_at).toLocaleString()}
+                        {n.email_sent ? ' · emailed' : ''}
+                      </p>
+                    </button>
                   )) : (
                     <p className="p-4 text-xs text-text-muted text-center">No notifications</p>
                   )}

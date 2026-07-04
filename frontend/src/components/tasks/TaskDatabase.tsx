@@ -43,12 +43,11 @@ export interface ColumnDef {
   width: number;
   minWidth: number;
   visible: boolean;
-  pinned?: boolean;
   sortable?: boolean;
 }
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
-  { id: 'title', label: 'Task name', width: 320, minWidth: 200, visible: true, pinned: true, sortable: true },
+  { id: 'title', label: 'Task name', width: 320, minWidth: 200, visible: true, sortable: true },
   { id: 'assignees', label: 'Assignee', width: 130, minWidth: 100, visible: true },
   { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
   { id: 'due_date', label: 'Due date', width: 110, minWidth: 90, visible: true, sortable: true },
@@ -316,7 +315,7 @@ export function TaskDatabase({
             {visibleColumns.map((col) => (
               <div
                 key={col.id}
-                className={clsx('db-header-cell relative flex items-center gap-1', col.pinned && 'sticky left-10 z-20 bg-dark-bg/95')}
+                className="db-header-cell relative flex items-center gap-1"
                 style={{ width: col.width }}
               >
                 {col.sortable && onSort ? (
@@ -372,7 +371,7 @@ export function TaskDatabase({
                 {visibleColumns.map((col) => (
                   <div
                     key={col.id}
-                    className={clsx('db-cell overflow-hidden', col.pinned && 'sticky left-10 z-[5] bg-dark-card')}
+                    className="db-cell overflow-hidden"
                     style={{ width: col.width }}
                   >
                     {col.id === 'title' && (

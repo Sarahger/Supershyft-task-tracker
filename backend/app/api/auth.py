@@ -7,6 +7,7 @@ from app.repositories.base import user_to_dict
 from app.schemas.common import APIResponse
 from app.schemas.user import LoginRequest, RefreshRequest, TokenResponse, UserResponse
 from app.services.auth_service import AuthService
+from app.services.notification_service import notification_preferences_dict
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -69,4 +70,5 @@ def _user_response(user) -> dict:
         "last_login": user.last_login,
         "created_at": user.created_at,
         "departments": [{"id": d.id, "name": d.name} for d in user.departments],
+        **notification_preferences_dict(user),
     }

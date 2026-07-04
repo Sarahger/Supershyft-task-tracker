@@ -5,7 +5,6 @@ from app.core.datetime_utils import as_utc, utcnow
 
 from sqlalchemy.orm import Session
 
-from app.core.constants import ActivityType, NotificationType
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -13,8 +12,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models import RefreshToken, User
-from app.repositories.base import ActivityRepository, NotificationRepository, UserRepository
-from app.utils.email import send_notification_email
+from app.repositories.base import UserRepository
 
 
 class AuthService:
@@ -104,36 +102,4 @@ class UserService:
         return self.repo.update(user)
 
 
-class NotificationService:
-    def __init__(self, db: Session):
-        self.db = db
-        self.repo = NotificationRepository(db)
-
-    def notify(
-        self,
-        user_id: int,
-        notification_type: str,
-        title: str,
-        message: str | None = None,
-        link: str | None = None,
-        send_email: bool = True,
-    ) -> None:
-        from app.models import Notification
-
-        notif = Notification(
-            user_id=user_id,
-            notification_type=notification_type,
-            title=title,
-            message=message,
-            link=link,
-        )
-        self.repo.create(notif)
-
-        if send_email:
-            user = UserRepository(self.db).get_by_id(user_id)
-            if user:
-                send_notification_email(user.email, title, message or title, link)
-
-    def notify_assignees(self, task, notification_type: str, title: str, message: str) -> None:
-        for assignee in task.assignees:
-            self.notify(assignee.user_id, notification_type, title, message, f"/tasks/{task.id}")
+# NotificationService lives in notification_service.py

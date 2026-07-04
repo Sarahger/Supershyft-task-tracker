@@ -80,9 +80,26 @@ class NotificationResponse(BaseModel):
     message: str | None = None
     link: str | None = None
     is_read: bool
+    email_sent: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class NotificationPreferences(BaseModel):
+    email_notifications_enabled: bool = True
+    notify_task_assigned: bool = True
+    notify_task_updates: bool = True
+    notify_reviews: bool = True
+    notify_comments: bool = True
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    email_notifications_enabled: bool | None = None
+    notify_task_assigned: bool | None = None
+    notify_task_updates: bool | None = None
+    notify_reviews: bool | None = None
+    notify_comments: bool | None = None
 
 
 class SavedFilterCreate(BaseModel):

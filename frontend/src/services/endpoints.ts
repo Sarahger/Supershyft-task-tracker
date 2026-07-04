@@ -1,5 +1,5 @@
 import api from './api';
-import type { APIResponse, DashboardData, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, User } from '../types';
+import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, User, UserProfile } from '../types';
 
 export const authApi = {
   login: (email: string, password: string) =>
@@ -75,7 +75,7 @@ export const projectsApi = {
 export const usersApi = {
   list: (params?: Record<string, unknown>) =>
     api.get<APIResponse<PaginatedResponse<User>>>('/users', { params }),
-  get: (id: number) => api.get<APIResponse<User>>(`/users/${id}`),
+  get: (id: number) => api.get<APIResponse<UserProfile>>(`/users/${id}`),
   create: (data: {
     first_name: string;
     last_name: string;
@@ -109,6 +109,10 @@ export const notificationsApi = {
     api.get('/notifications', { params: { unread_only } }),
   markRead: (id: number) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch('/notifications/read-all'),
+  getPreferences: () => api.get<APIResponse<NotificationPreferences>>('/notifications/preferences'),
+  updatePreferences: (data: Partial<NotificationPreferences>) =>
+    api.patch<APIResponse<NotificationPreferences>>('/notifications/preferences', data),
+  sendTestEmail: () => api.post<APIResponse<unknown>>('/notifications/test-email'),
 };
 
 export const miscApi = {

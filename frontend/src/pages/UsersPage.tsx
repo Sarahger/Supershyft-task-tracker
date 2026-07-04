@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { Plus, UserMinus, X } from 'lucide-react';
 import { usersApi, departmentsApi } from '../services/endpoints';
+import { useUserDrawer } from '../contexts/UserDrawerContext';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
@@ -76,6 +77,7 @@ const emptyCreateForm = {
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
+  const { openUser } = useUserDrawer();
   const queryClient = useQueryClient();
   const isAdmin = currentUser?.role === 'administrator';
   const canManageStatus =
@@ -236,8 +238,8 @@ export default function UsersPage() {
           title="Users"
           subtitle={
             canManageStatus
-              ? `${data?.length ?? 0} people · click status to change`
-              : `${data?.length ?? 0} people`
+              ? `${data?.length ?? 0} people · click a row for details`
+              : `${data?.length ?? 0} people · click a row for details`
           }
         />
         {isAdmin && (
@@ -266,7 +268,11 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {data.map((u) => (
-                <tr key={u.id} className="border-b border-dark-border hover:bg-dark-hover transition-colors duration-hover">
+                <tr
+                  key={u.id}
+                  onClick={() => openUser(u.id)}
+                  className="border-b border-dark-border hover:bg-dark-hover transition-colors duration-hover cursor-pointer"
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={`${u.first_name} ${u.last_name}`} size="sm" />
@@ -282,7 +288,7 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-sm text-text-secondary">
                     {u.departments?.map((d) => d.name).join(', ') || '—'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <UserStatusControl
                       user={u}
                       canEdit={canManageStatus}
@@ -292,7 +298,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-text-secondary">{u.job_title || '—'}</td>
                   {isAdmin && (
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       {u.status !== 'inactive' && u.id !== currentUser?.id && (
                         <button
                           type="button"

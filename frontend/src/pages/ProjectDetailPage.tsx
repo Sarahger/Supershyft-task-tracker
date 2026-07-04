@@ -2,21 +2,22 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { projectsApi, tasksApi } from '../services/endpoints';
+import { projectsApi } from '../services/endpoints';
 import { useAuth } from '../contexts/AuthContext';
 import { TasksWorkspace } from '../components/tasks/TasksWorkspace';
 import { HealthBadge } from '../components/ui/Badge';
 import { TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
-import type { Task } from '../types';
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const [tab, setTab] = useState<'table' | 'kanban' | 'my-tasks'>('table');
+  const projectId = Number(id);
 
   const { data: project } = useQuery({
     queryKey: ['project', id],
-    queryFn: () => projectsApi.get(Number(id)).then((r) => r.data.data),
+    queryFn: () => projectsApi.get(projectId).then((r) => r.data.data),
+    enabled: Number.isFinite(projectId),
   });
 
   if (!project) return <div className="max-w-5xl mx-auto"><TaskDatabaseSkeleton /></div>;
@@ -27,13 +28,10 @@ export default function ProjectDetailPage() {
     { id: 'my-tasks' as const, label: 'My Tasks' },
   ];
 
-  const fetchProjectTasks = () =>
-    tasksApi.list({ project_id: Number(id), page_size: 200 }).then((r) => r.data.data.items);
-
-  const fetchMyProjectTasks = async () => {
-    const tasks = await fetchProjectTasks();
-    return tasks.filter((t: Task) => t.assignees?.some((a) => a.user_id === user?.id));
-  };
+  const listFilters: Record<string, unknown> = { project_id: projectId };
+  if (tab === 'my-tasks' && user?.id) {
+    listFilters.assignee_id = user.id;
+  }
 
   return (
     <div className="pb-8 w-full">
@@ -74,7 +72,7 @@ export default function ProjectDetailPage() {
         key={tab}
         title=""
         queryKey={tab === 'my-tasks' ? ['project-my-tasks', id!] : ['project-tasks', id!]}
-        fetchTasks={tab === 'my-tasks' ? fetchMyProjectTasks : fetchProjectTasks}
+        listFilters={listFilters}
         showViewSelector={tab !== 'my-tasks'}
         defaultView={tab === 'kanban' ? 'kanban' : 'table'}
       />

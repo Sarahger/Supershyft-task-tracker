@@ -2,8 +2,10 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TaskDrawerProvider, useTaskDrawer } from './contexts/TaskDrawerContext';
+import { UserDrawerProvider, useUserDrawer } from './contexts/UserDrawerContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { TaskDrawer } from './components/tasks/TaskDrawer';
+import { UserDrawer } from './components/users/UserDrawer';
 import { CreateTaskModal } from './components/tasks/CreateTaskModal';
 import { ToastContainer } from './components/ui/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -25,6 +27,7 @@ const queryClient = new QueryClient({
 function ProtectedLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { selectedTaskId, closeTask, isCreateOpen, closeCreate, openCreate } = useTaskDrawer();
+  const { selectedUserId, closeUser } = useUserDrawer();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -52,6 +55,7 @@ function ProtectedLayout() {
   return (
     <>
       <AppLayout />
+      <UserDrawer userId={selectedUserId} onClose={closeUser} />
       <TaskDrawer taskId={selectedTaskId} onClose={closeTask} />
       <CreateTaskModal isOpen={isCreateOpen} onClose={closeCreate} />
     </>
@@ -64,6 +68,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <TaskDrawerProvider>
+            <UserDrawerProvider>
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
@@ -83,6 +88,7 @@ export default function App() {
               </Routes>
               <ToastContainer />
             </BrowserRouter>
+            </UserDrawerProvider>
           </TaskDrawerProvider>
         </AuthProvider>
       </QueryClientProvider>

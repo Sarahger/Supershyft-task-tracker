@@ -1,62 +1,78 @@
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from html import escape
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-async def send_email(to: str, subject: str, html_body: str) -> bool:
+def _build_html(title: str, message: str, link: str | None = None) -> str:
+    app_name = escape(settings.APP_NAME)
+    safe_title = escape(title)
+    safe_message = escape(message)
+    link_url = f"{settings.FRONTEND_URL.rstrip('/')}{link}" if link else settings.FRONTEND_URL
+    link_html = (
+        f'<a href="{link_url}" style="display:inline-block;margin-top:16px;padding:10px 18px;'
+        f'background:#1a1a2e;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;">'
+        f'Open in {app_name}</a>'
+        if link
+        else ""
+    )
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 24px; background: #f4f5f7;">
+        <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb;">
+            <div style="padding: 20px 24px; background: #111827; color: #ffffff;">
+                <p style="margin: 0; font-size: 12px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.08em;">{app_name}</p>
+                <h1 style="margin: 8px 0 0; font-size: 20px; font-weight: 600; line-height: 1.3;">{safe_title}</h1>
+            </div>
+            <div style="padding: 24px;">
+                <p style="margin: 0; color: #374151; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">{safe_message}</p>
+                {link_html}
+            </div>
+            <div style="padding: 16px 24px; border-top: 1px solid #e5e7eb; background: #f9fafb;">
+                <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                    You received this because email notifications are enabled on your account.
+                    Manage preferences in Settings.
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def send_email_sync(to: str, subject: str, html_body: str) -> bool:
     if not settings.EMAIL_ENABLED or not settings.SMTP_USER:
-        logger.info(f"Email disabled. Would send to {to}: {subject}")
+        logger.info("Email disabled. Would send to %s: %s", to, subject)
         return False
 
     try:
-        import aiosmtplib
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-
         message = MIMEMultipart("alternative")
         message["From"] = settings.SMTP_FROM
         message["To"] = to
         message["Subject"] = subject
         message.attach(MIMEText(html_body, "html"))
 
-        await aiosmtplib.send(
-            message,
-            hostname=settings.SMTP_HOST,
-            port=settings.SMTP_PORT,
-            username=settings.SMTP_USER,
-            password=settings.SMTP_PASSWORD,
-            start_tls=settings.SMTP_TLS,
-        )
+        if settings.SMTP_TLS:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+                server.starttls()
+                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.sendmail(settings.SMTP_FROM, [to], message.as_string())
+        else:
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.sendmail(settings.SMTP_FROM, [to], message.as_string())
         return True
-    except Exception as e:
-        logger.error(f"Failed to send email to {to}: {e}")
+    except Exception as exc:
+        logger.error("Failed to send email to %s: %s", to, exc)
         return False
 
 
-def send_notification_email(to: str, title: str, message: str, link: str | None = None) -> None:
-    import asyncio
-
-    link_html = f'<p><a href="{settings.FRONTEND_URL}{link}">View in app</a></p>' if link else ""
-    html = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
-            <h2 style="color: #1a1a2e; margin-top: 0;">{title}</h2>
-            <p style="color: #4a5568;">{message}</p>
-            {link_html}
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
-            <p style="color: #a0aec0; font-size: 12px;">Internal Work Management System</p>
-        </div>
-    </body>
-    </html>
-    """
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(send_email(to, title, html))
-        else:
-            loop.run_until_complete(send_email(to, title, html))
-    except RuntimeError:
-        asyncio.run(send_email(to, title, html))
+def send_notification_email(to: str, title: str, message: str, link: str | None = None) -> bool:
+    html = _build_html(title, message, link)
+    return send_email_sync(to, title, html)

@@ -20,7 +20,8 @@ interface TasksWorkspaceProps {
   title: string;
   subtitle?: string;
   queryKey: string[];
-  fetchTasks: () => Promise<Task[]>;
+  fetchTasks?: () => Promise<Task[]>;
+  listFilters?: Record<string, unknown>;
   showProject?: boolean;
   showViewSelector?: boolean;
   defaultView?: ViewMode;
@@ -47,6 +48,7 @@ export function TasksWorkspace({
   subtitle,
   queryKey,
   fetchTasks,
+  listFilters,
   showProject = false,
   showViewSelector = true,
   defaultView = 'table',
@@ -135,9 +137,9 @@ export function TasksWorkspace({
   }, [sharedListFilters, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: [...queryKey, filters],
+    queryKey: [...queryKey, filters, listFilters],
     queryFn: async () => {
-      if (queryKey[0] === 'my-tasks') {
+      if (queryKey[0] === 'my-tasks' && fetchTasks) {
         const tasks = await fetchTasks();
         let filtered = tasks;
         if (search) filtered = filtered.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
@@ -149,16 +151,17 @@ export function TasksWorkspace({
         }
         return { items: filtered, total: filtered.length, total_pages: 1, page: 1 };
       }
-      const res = await tasksApi.list(filters);
+      const res = await tasksApi.list({ ...filters, ...listFilters });
       return res.data.data;
     },
   });
 
   const { data: undatedCalendarTasks } = useQuery({
-    queryKey: [...queryKey, 'calendar-undated', sharedListFilters],
+    queryKey: [...queryKey, 'calendar-undated', sharedListFilters, listFilters],
     queryFn: () =>
       tasksApi.list({
         ...sharedListFilters,
+        ...listFilters,
         page: 1,
         page_size: 100,
         has_due_date: false,

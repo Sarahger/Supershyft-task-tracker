@@ -1,3 +1,36 @@
+export interface NotificationPreferences {
+  email_notifications_enabled: boolean;
+  notify_task_assigned: boolean;
+  notify_task_updates: boolean;
+  notify_reviews: boolean;
+  notify_comments: boolean;
+}
+
+export interface UserTaskStats {
+  assigned_count: number;
+  pending_count: number;
+  completed_count: number;
+  cancelled_count: number;
+  total_estimated_hours: number;
+  total_actual_hours: number;
+  time_utilization_percent: number | null;
+  on_track_count: number;
+  over_budget_count: number;
+  tasks_with_time_data: number;
+}
+
+export interface UserAssignedTask {
+  id: number;
+  title: string;
+  status: string;
+  priority: string;
+  project_name?: string | null;
+  due_date?: string;
+  estimated_hours?: number | null;
+  actual_hours?: number | null;
+  updated_at: string;
+}
+
 export interface User {
   id: number;
   first_name: string;
@@ -12,6 +45,19 @@ export interface User {
   departments: { id: number; name: string }[];
   last_login?: string;
   created_at: string;
+  email_notifications_enabled?: boolean;
+  notify_task_assigned?: boolean;
+  notify_task_updates?: boolean;
+  notify_reviews?: boolean;
+  notify_comments?: boolean;
+}
+
+export interface UserProfile extends User {
+  open_tasks_count: number;
+  completed_tasks_count: number;
+  pending_reviews_count: number;
+  task_stats: UserTaskStats;
+  assigned_tasks: UserAssignedTask[];
 }
 
 export interface Task {
@@ -121,6 +167,7 @@ export interface Notification {
   message?: string;
   link?: string;
   is_read: boolean;
+  email_sent?: boolean;
   created_at: string;
 }
 

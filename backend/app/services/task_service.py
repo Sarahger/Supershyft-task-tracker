@@ -15,7 +15,7 @@ from app.models import (
     User,
 )
 from app.repositories.base import ActivityRepository, TaskRepository, user_to_dict
-from app.services.auth_service import NotificationService
+from app.services.notification_service import NotificationService
 
 
 class TaskService:
@@ -80,7 +80,14 @@ class TaskService:
             new_ids = set(data["assignee_ids"])
             for uid in new_ids - existing:
                 task.assignees.append(TaskAssignee(user_id=uid))
-                self.activity.log(updater.id, ActivityType.ASSIGNEE_ADDED.value, f"Added assignee", task.id)
+                self.activity.log(updater.id, ActivityType.ASSIGNEE_ADDED.value, "Added assignee", task.id)
+                self.notifications.notify(
+                    uid,
+                    NotificationType.TASK_ASSIGNED.value,
+                    f"Assigned to: {task.title}",
+                    f"You have been assigned to task '{task.title}'",
+                    f"/tasks/{task.id}",
+                )
             task.assignees = [a for a in task.assignees if a.user_id in new_ids]
             del data["assignee_ids"]
 

@@ -43,7 +43,7 @@ def get_project(project_id: int, db: Session = Depends(get_db), current_user: Us
     return APIResponse(data=_format_project(project, db))
 
 
-@router.post("", dependencies=[Depends(require_manager)])
+@router.post("")
 def create_project(data: ProjectCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     project = Project(**data.model_dump(), created_by_id=current_user.id)
     project = ProjectRepository(db).create(project)

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.datetime_utils import as_utc, utcnow
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import get_current_user
@@ -10,7 +10,8 @@ from app.db.database import get_db
 from app.models import ActivityLog, Project, Task, User
 from app.repositories.base import NotificationRepository, TaskRepository
 from app.schemas.common import APIResponse
-from app.schemas.misc import ReportFilter
+from app.schemas.misc import NotificationPreferencesUpdate, ReportFilter
+from app.services.notification_service import NotificationService, notification_preferences_dict
 
 router = APIRouter(tags=["dashboard"])
 
@@ -31,6 +32,7 @@ def get_notifications(
                 "message": n.message,
                 "link": n.link,
                 "is_read": n.is_read,
+                "email_sent": n.email_sent,
                 "created_at": n.created_at,
             }
             for n in notifs
@@ -50,6 +52,38 @@ def mark_notification_read(
 def mark_all_read(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     NotificationRepository(db).mark_all_read(current_user.id)
     return APIResponse(message="All marked as read")
+
+
+@router.get("/notifications/preferences")
+def get_notification_preferences(current_user: User = Depends(get_current_user)):
+    return APIResponse(data=notification_preferences_dict(current_user))
+
+
+@router.patch("/notifications/preferences")
+def update_notification_preferences(
+    data: NotificationPreferencesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user = NotificationService(db).update_preferences(
+        current_user,
+        data.model_dump(exclude_unset=True),
+    )
+    return APIResponse(data=notification_preferences_dict(user), message="Preferences updated")
+
+
+@router.post("/notifications/test-email")
+def send_test_notification_email(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    sent = NotificationService(db).send_test_email(current_user)
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email is disabled or SMTP is not configured on the server",
+        )
+    return APIResponse(message="Test email sent")
 
 
 @router.get("/dashboard")
