@@ -1,18 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { tasksApi, miscApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField } from './TaskDatabase';
 import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
-import { KanbanBoard } from './KanbanBoard';
-import { TaskCalendar, TaskCalendarSkeleton } from './TaskCalendar';
-import { TaskWeekView, TaskWeekViewSkeleton } from './TaskWeekView';
 import { EmptyState } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
 import type { Task } from '../../types';
 import clsx from 'clsx';
 import api from '../../services/api';
+
+const KanbanBoard = lazy(() => import('./KanbanBoard').then((m) => ({ default: m.KanbanBoard })));
+const TaskCalendar = lazy(() => import('./TaskCalendar').then((m) => ({ default: m.TaskCalendar })));
+const TaskWeekView = lazy(() => import('./TaskWeekView').then((m) => ({ default: m.TaskWeekView })));
+const TaskCalendarSkeleton = lazy(() => import('./TaskCalendar').then((m) => ({ default: m.TaskCalendarSkeleton })));
+const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ default: m.TaskWeekViewSkeleton })));
+
+const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
 export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review';
 
@@ -138,6 +143,7 @@ export function TasksWorkspace({
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [...queryKey, filters, listFilters],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       if (queryKey[0] === 'my-tasks' && fetchTasks) {
         const tasks = await fetchTasks();
@@ -169,22 +175,26 @@ export function TasksWorkspace({
         sort_order: 'desc',
       }).then((r) => r.data.data.items),
     enabled: (viewMode === 'calendar' || viewMode === 'weekly') && queryKey[0] !== 'my-tasks',
+    staleTime: REFERENCE_STALE_MS,
   });
 
   const { data: usersList } = useQuery({
     queryKey: ['users-list'],
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
+    staleTime: REFERENCE_STALE_MS,
   });
 
   const { data: savedFilters } = useQuery({
     queryKey: ['saved-filters'],
     queryFn: () => api.get('/saved-filters').then((r) => r.data.data),
     retry: false,
+    staleTime: REFERENCE_STALE_MS,
   });
 
   const { data: taskTypes } = useQuery({
     queryKey: ['task-types'],
     queryFn: () => miscApi.taskTypes().then((r) => r.data.data as { id: number; name: string }[]),
+    staleTime: REFERENCE_STALE_MS,
   });
 
   const bulkMutation = useMutation({
@@ -345,7 +355,13 @@ export function TasksWorkspace({
       {isLoading ? (
         <div className="space-y-3">
           <p className="text-sm text-text-muted">Loading tasks…</p>
-          {viewMode === 'calendar' ? <TaskCalendarSkeleton /> : viewMode === 'weekly' ? <TaskWeekViewSkeleton /> : <TaskDatabaseSkeleton />}
+          {viewMode === 'calendar' ? (
+            <Suspense fallback={<TaskDatabaseSkeleton />}><TaskCalendarSkeleton /></Suspense>
+          ) : viewMode === 'weekly' ? (
+            <Suspense fallback={<TaskDatabaseSkeleton />}><TaskWeekViewSkeleton /></Suspense>
+          ) : (
+            <TaskDatabaseSkeleton />
+          )}
         </div>
       ) : isError ? (
         <EmptyState
@@ -364,25 +380,31 @@ export function TasksWorkspace({
       ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' ? (
         <EmptyState title="No tasks" description="Create a task or adjust your filters." />
       ) : viewMode === 'kanban' ? (
-        <KanbanBoard tasks={displayTasks} queryKey={queryKey} />
+        <Suspense fallback={<TaskDatabaseSkeleton />}>
+          <KanbanBoard tasks={displayTasks} queryKey={queryKey} />
+        </Suspense>
       ) : viewMode === 'calendar' ? (
-        <TaskCalendar
-          tasks={displayTasks}
-          undatedTasks={undatedCalendarTasks ?? []}
-          currentMonth={calendarMonth}
-          onMonthChange={setCalendarMonth}
-          onTaskClick={openTask}
-          showProject={showProject}
-        />
+        <Suspense fallback={<TaskDatabaseSkeleton />}>
+          <TaskCalendar
+            tasks={displayTasks}
+            undatedTasks={undatedCalendarTasks ?? []}
+            currentMonth={calendarMonth}
+            onMonthChange={setCalendarMonth}
+            onTaskClick={openTask}
+            showProject={showProject}
+          />
+        </Suspense>
       ) : viewMode === 'weekly' ? (
-        <TaskWeekView
-          tasks={displayTasks}
-          undatedTasks={undatedCalendarTasks ?? []}
-          currentWeek={calendarWeek}
-          onWeekChange={setCalendarWeek}
-          onTaskClick={openTask}
-          showProject={showProject}
-        />
+        <Suspense fallback={<TaskDatabaseSkeleton />}>
+          <TaskWeekView
+            tasks={displayTasks}
+            undatedTasks={undatedCalendarTasks ?? []}
+            currentWeek={calendarWeek}
+            onWeekChange={setCalendarWeek}
+            onTaskClick={openTask}
+            showProject={showProject}
+          />
+        </Suspense>
       ) : (
         <div className="space-y-6">
           {groups.map((group) => (

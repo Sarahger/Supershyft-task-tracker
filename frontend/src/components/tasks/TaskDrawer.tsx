@@ -55,31 +55,31 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     queryKey: ['task', taskId],
     queryFn: () => tasksApi.get(taskId!).then((r) => r.data.data),
     enabled: !!taskId,
+    staleTime: 30_000,
   });
+
+  const attachments = task?.attachments ?? [];
 
   const { data: comments } = useQuery({
     queryKey: ['task-comments', taskId],
     queryFn: () => tasksApi.getComments(taskId!).then((r) => r.data.data),
     enabled: !!taskId,
+    staleTime: 60_000,
   });
 
   const { data: activity } = useQuery({
     queryKey: ['task-activity', taskId],
     queryFn: () => tasksApi.getActivity(taskId!).then((r) => r.data.data),
     enabled: !!taskId,
-  });
-
-  const { data: attachments } = useQuery({
-    queryKey: ['task-attachments', taskId],
-    queryFn: () => tasksApi.getAttachments(taskId!).then((r) => r.data.data),
-    enabled: !!taskId,
+    staleTime: 60_000,
   });
 
   const { data: taskPickerOptions } = useQuery({
     queryKey: ['tasks-picker'],
     queryFn: () =>
       tasksApi.list({ page_size: 100, sort_by: 'updated_at', sort_order: 'desc' }).then((r) => r.data.data.items),
-    enabled: !!taskId,
+    enabled: !!taskId && !!dependencyPersonPick,
+    staleTime: 60_000,
   });
 
   const commentMutation = useMutation({
@@ -126,7 +126,8 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const { data: usersList } = useQuery({
     queryKey: ['users-list'],
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-    enabled: !!taskId,
+    enabled: !!taskId && !!dependencyPersonPick,
+    staleTime: 5 * 60 * 1000,
   });
 
   const addDependencyMutation = useMutation({
@@ -183,7 +184,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     mutationFn: (file: File) => tasksApi.uploadAttachment(taskId!, file),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
-      qc.invalidateQueries({ queryKey: ['task-attachments', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('File uploaded');
     },

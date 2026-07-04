@@ -14,7 +14,7 @@ from app.models import (
     TaskVersion,
     User,
 )
-from app.repositories.base import ActivityRepository, TaskRepository, user_to_dict
+from app.repositories.base import ActivityRepository, TaskRepository, user_to_brief_dict, user_to_dict
 from app.services.notification_service import NotificationService
 
 
@@ -299,9 +299,18 @@ class TaskService:
         self.db.delete(dep)
         self.db.commit()
 
-    def task_to_list_dict(self, task: Task) -> dict:
-        checklist_total = sum(len(c.items) for c in task.checklists) if task.checklists else 0
-        checklist_done = sum(sum(1 for i in c.items if i.is_completed) for c in task.checklists) if task.checklists else 0
+    def task_to_list_dict(self, task: Task, stats: dict | None = None) -> dict:
+        if stats is not None:
+            comment_count = stats.get("comment_count", 0)
+            attachment_count = stats.get("attachment_count", 0)
+            checklist_progress = stats.get("checklist_progress")
+        else:
+            checklist_total = sum(len(c.items) for c in task.checklists) if task.checklists else 0
+            checklist_done = sum(sum(1 for i in c.items if i.is_completed) for c in task.checklists) if task.checklists else 0
+            comment_count = len(task.comments) if hasattr(task, "comments") and task.comments else 0
+            attachment_count = len(task.attachments) if task.attachments else 0
+            checklist_progress = f"{checklist_done}/{checklist_total}" if checklist_total else None
+
         return {
             "id": task.id,
             "title": task.title,
@@ -317,15 +326,15 @@ class TaskService:
                     "id": a.id,
                     "user_id": a.user_id,
                     "is_completed": a.is_completed,
-                    "user": user_to_dict(a.user),
+                    "user": user_to_brief_dict(a.user),
                 }
                 for a in task.assignees
             ],
             "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in task.tags],
             "task_type": {"id": task.task_type.id, "name": task.task_type.name} if task.task_type else None,
-            "comment_count": len(task.comments) if hasattr(task, "comments") and task.comments else 0,
-            "attachment_count": len(task.attachments) if task.attachments else 0,
-            "checklist_progress": f"{checklist_done}/{checklist_total}" if checklist_total else None,
+            "comment_count": comment_count,
+            "attachment_count": attachment_count,
+            "checklist_progress": checklist_progress,
             "estimated_hours": task.estimated_hours,
             "actual_hours": task.actual_hours,
             "is_blocked": task.status == "blocked",

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { TaskDrawerProvider, useTaskDrawer } from './contexts/TaskDrawerContext';
 import { UserDrawerProvider, useUserDrawer } from './contexts/UserDrawerContext';
@@ -11,18 +12,34 @@ import { ToastContainer } from './components/ui/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
-import MyTasksPage from './pages/MyTasksPage';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetailPage from './pages/ProjectDetailPage';
-import UsersPage from './pages/UsersPage';
-import ReportsPage from './pages/ReportsPage';
-import SettingsPage from './pages/SettingsPage';
 import NotFoundPage from './pages/NotFoundPage';
-import { useEffect } from 'react';
+
+const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
+const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+
+const STALE_REFERENCE_MS = 5 * 60 * 1000;
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30000, retry: 1 } },
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
 });
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center py-16">
+      <div className="animate-spin h-7 w-7 border-2 border-zinc-600 border-t-zinc-200 rounded-full" />
+    </div>
+  );
+}
 
 function ProtectedLayout() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -55,9 +72,9 @@ function ProtectedLayout() {
   return (
     <>
       <AppLayout />
-      <UserDrawer userId={selectedUserId} onClose={closeUser} />
-      <TaskDrawer taskId={selectedTaskId} onClose={closeTask} />
-      <CreateTaskModal isOpen={isCreateOpen} onClose={closeCreate} />
+      {selectedUserId != null && <UserDrawer userId={selectedUserId} onClose={closeUser} />}
+      {selectedTaskId != null && <TaskDrawer taskId={selectedTaskId} onClose={closeTask} />}
+      {isCreateOpen && <CreateTaskModal isOpen={isCreateOpen} onClose={closeCreate} />}
     </>
   );
 }
@@ -74,15 +91,57 @@ export default function App() {
                 <Route path="/login" element={<LoginPage />} />
                 <Route element={<ProtectedLayout />}>
                   <Route index element={<HomePage />} />
-                  <Route path="my-tasks" element={<MyTasksPage />} />
+                  <Route
+                    path="my-tasks"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <MyTasksPage />
+                      </Suspense>
+                    }
+                  />
                   <Route path="tasks" element={<Navigate to="/" replace />} />
                   <Route path="kanban" element={<Navigate to="/" replace />} />
                   <Route path="dashboard" element={<Navigate to="/reports" replace />} />
-                  <Route path="projects" element={<ProjectsPage />} />
-                  <Route path="projects/:id" element={<ProjectDetailPage />} />
-                  <Route path="users" element={<UsersPage />} />
-                  <Route path="reports" element={<ReportsPage />} />
-                  <Route path="settings" element={<SettingsPage />} />
+                  <Route
+                    path="projects"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <ProjectsPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="projects/:id"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <ProjectDetailPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="users"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <UsersPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="reports"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <ReportsPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="settings"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <SettingsPage />
+                      </Suspense>
+                    }
+                  />
                   <Route path="*" element={<NotFoundPage />} />
                 </Route>
               </Routes>

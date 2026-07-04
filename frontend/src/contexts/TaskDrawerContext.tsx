@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from 'react';
 
 interface TaskDrawerContextType {
   selectedTaskId: number | null;
@@ -15,17 +15,25 @@ export function TaskDrawerProvider({ children }: { children: ReactNode }) {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
+  const openTask = useCallback((id: number) => setSelectedTaskId(id), []);
+  const closeTask = useCallback(() => setSelectedTaskId(null), []);
+  const openCreate = useCallback(() => setIsCreateOpen(true), []);
+  const closeCreate = useCallback(() => setIsCreateOpen(false), []);
+
+  const value = useMemo(
+    () => ({
+      selectedTaskId,
+      openTask,
+      closeTask,
+      isCreateOpen,
+      openCreate,
+      closeCreate,
+    }),
+    [selectedTaskId, openTask, closeTask, isCreateOpen, openCreate, closeCreate],
+  );
+
   return (
-    <TaskDrawerContext.Provider
-      value={{
-        selectedTaskId,
-        openTask: setSelectedTaskId,
-        closeTask: () => setSelectedTaskId(null),
-        isCreateOpen,
-        openCreate: () => setIsCreateOpen(true),
-        closeCreate: () => setIsCreateOpen(false),
-      }}
-    >
+    <TaskDrawerContext.Provider value={value}>
       {children}
     </TaskDrawerContext.Provider>
   );

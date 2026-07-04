@@ -2,13 +2,16 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
     ActivityLog,
     Attachment,
+    Checklist,
+    ChecklistItem,
     Client,
+    Comment,
     Department,
     Notification,
     Project,
@@ -33,6 +36,17 @@ def user_to_dict(user: User | None) -> dict | None:
         "role": user.role,
         "profile_picture": user.profile_picture,
         "job_title": user.job_title,
+    }
+
+
+def user_to_brief_dict(user: User | None) -> dict | None:
+    if not user:
+        return None
+    return {
+        "id": user.id,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "profile_picture": user.profile_picture,
     }
 
 
@@ -88,7 +102,7 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.client),
                 joinedload(Task.reviewer),
                 joinedload(Task.creator),
-                joinedload(Task.checklists),
+                joinedload(Task.checklists).joinedload(Checklist.items),
                 joinedload(Task.attachments).joinedload(Attachment.uploader),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on_user),
@@ -169,6 +183,49 @@ class TaskRepository(BaseRepository):
         total = query.count()
         tasks = query.offset(skip).limit(limit).all()
         return tasks, total
+
+    def load_list_stats(self, task_ids: list[int]) -> dict[int, dict]:
+        """Batch-load comment, attachment, and checklist counts for list views."""
+        if not task_ids:
+            return {}
+
+        stats: dict[int, dict] = {task_id: {"comment_count": 0, "attachment_count": 0} for task_id in task_ids}
+
+        for task_id, count in (
+            self.db.query(Comment.task_id, func.count(Comment.id))
+            .filter(Comment.task_id.in_(task_ids))
+            .group_by(Comment.task_id)
+            .all()
+        ):
+            stats[task_id]["comment_count"] = count
+
+        for task_id, count in (
+            self.db.query(Attachment.task_id, func.count(Attachment.id))
+            .filter(Attachment.task_id.in_(task_ids))
+            .group_by(Attachment.task_id)
+            .all()
+        ):
+            if task_id is not None:
+                stats[task_id]["attachment_count"] = count
+
+        checklist_rows = (
+            self.db.query(
+                Checklist.task_id,
+                func.count(ChecklistItem.id),
+                func.sum(case((ChecklistItem.is_completed.is_(True), 1), else_=0)),
+            )
+            .join(ChecklistItem, ChecklistItem.checklist_id == Checklist.id)
+            .filter(Checklist.task_id.in_(task_ids))
+            .group_by(Checklist.task_id)
+            .all()
+        )
+        for task_id, total, done in checklist_rows:
+            done_count = int(done or 0)
+            total_count = int(total or 0)
+            if total_count:
+                stats[task_id]["checklist_progress"] = f"{done_count}/{total_count}"
+
+        return stats
 
     def create(self, task: Task) -> Task:
         self.db.add(task)

@@ -95,9 +95,10 @@ def list_tasks(
     }
     skip = (page - 1) * page_size
     tasks, total = repo.get_filtered(skip=skip, limit=page_size, filters=filters)
+    stats = repo.load_list_stats([t.id for t in tasks])
     return APIResponse(
         data=PaginatedData(
-            items=[service.task_to_list_dict(t) for t in tasks],
+            items=[service.task_to_list_dict(t, stats.get(t.id)) for t in tasks],
             total=total,
             page=page,
             page_size=page_size,
@@ -111,7 +112,8 @@ def my_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_cur
     repo = TaskRepository(db)
     service = TaskService(db)
     tasks, _ = repo.get_filtered(filters={"assignee_id": current_user.id}, limit=200)
-    return APIResponse(data=[service.task_to_list_dict(t) for t in tasks])
+    stats = repo.load_list_stats([t.id for t in tasks])
+    return APIResponse(data=[service.task_to_list_dict(t, stats.get(t.id)) for t in tasks])
 
 
 @router.get("/tasks/{task_id}")
