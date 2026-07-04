@@ -292,13 +292,13 @@ export function TasksWorkspace({
       </div>
 
       {showQuickFilters && (
-        <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto flex-nowrap pb-0.5 -mx-1 px-1">
           {quickFilterOptions.map((opt) => (
             <button
               key={opt.id}
               onClick={() => { setQuickFilter(opt.id); setPage(1); }}
               className={clsx(
-                'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover',
+                'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap',
                 quickFilter === opt.id
                   ? 'bg-white/[0.08] text-text-primary'
                   : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'

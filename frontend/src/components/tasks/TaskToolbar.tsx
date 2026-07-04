@@ -128,7 +128,7 @@ export function TaskToolbar({
           <div className="relative flex-1 min-w-0 sm:max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
             <input
-              className="input pl-8 py-1.5 text-sm bg-dark-bg w-full"
+              className="input pl-8 py-1.5 text-sm bg-dark-bg w-full h-9"
               placeholder="Search tasks..."
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
@@ -139,7 +139,12 @@ export function TaskToolbar({
             <span className="text-2xs text-text-muted hidden md:inline shrink-0">{totalCount} tasks</span>
           )}
 
-          <Button onClick={onNewTask} size="sm" className="gap-1.5 shrink-0 sm:ml-auto" aria-label="New task">
+          <Button
+            onClick={onNewTask}
+            size="sm"
+            className="h-9 px-2.5 py-0 shrink-0 sm:ml-auto"
+            aria-label="New task"
+          >
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">New task</span>
           </Button>

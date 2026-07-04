@@ -105,35 +105,37 @@ export function TaskWeekView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-center gap-1 sm:gap-2 min-w-0">
           <button
             type="button"
             onClick={() => onWeekChange(subWeeks(currentWeek, 1))}
-            className="toolbar-btn"
+            className="toolbar-btn shrink-0"
             aria-label="Previous week"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <h2 className="text-sm font-medium text-text-primary min-w-[12rem] text-center">
+          <h2 className="text-sm font-medium text-text-primary text-center truncate min-w-0">
             {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
           </h2>
           <button
             type="button"
             onClick={() => onWeekChange(addWeeks(currentWeek, 1))}
-            className="toolbar-btn"
+            className="toolbar-btn shrink-0"
             aria-label="Next week"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
-        <button
-          type="button"
-          onClick={() => onWeekChange(new Date())}
-          className="toolbar-btn text-xs"
-        >
-          This week
-        </button>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => onWeekChange(new Date())}
+            className="toolbar-btn text-xs"
+          >
+            This week
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
