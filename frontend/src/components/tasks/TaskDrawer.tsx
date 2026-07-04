@@ -187,9 +187,10 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('File uploaded');
     },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      const detail = error.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : 'Upload failed');
+    onError: (error: { response?: { data?: { detail?: string; message?: string } } }) => {
+      const data = error.response?.data;
+      const detail = typeof data?.detail === 'string' ? data.detail : data?.message;
+      toast.error(detail || 'Upload failed');
     },
   });
 

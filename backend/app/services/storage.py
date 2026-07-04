@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from urllib.parse import quote
@@ -5,6 +6,8 @@ from urllib.parse import quote
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 BLOB_API = "https://vercel.com/api/blob"
 BLOB_API_VERSION = "12"
@@ -46,15 +49,16 @@ def _parse_store_id_from_token(token: str) -> str:
     return _normalize_store_id(parts[3])
 
 
-def _resolve_blob_auth() -> tuple[str, str] | None:
+def _resolve_blob_auth(oidc_token: str | None = None) -> tuple[str, str] | None:
     """
     Resolve Blob credentials.
-    Prefer Vercel OIDC (BLOB_STORE_ID + VERCEL_OIDC_TOKEN), then legacy read-write token.
+    On Vercel runtime, OIDC arrives on the x-vercel-oidc-token request header (not env).
     """
     store_id = _store_id_from_env()
-    oidc_token = os.getenv("VERCEL_OIDC_TOKEN")
-    if oidc_token and store_id:
-        return oidc_token, store_id
+
+    token = (oidc_token or "").strip() or os.getenv("VERCEL_OIDC_TOKEN")
+    if token and store_id:
+        return token, store_id
 
     read_write = _read_write_token()
     if read_write:
@@ -65,7 +69,7 @@ def _resolve_blob_auth() -> tuple[str, str] | None:
 
 
 def use_vercel_blob() -> bool:
-    return _resolve_blob_auth() is not None
+    return bool(_store_id_from_env() or _read_write_token())
 
 
 def _blob_headers(
@@ -74,6 +78,7 @@ def _blob_headers(
     *,
     mime_type: str | None = None,
     for_upload: bool = False,
+    access: str = "public",
 ) -> dict[str, str]:
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -87,7 +92,7 @@ def _blob_headers(
         if for_upload:
             headers.update(
                 {
-                    "x-vercel-blob-access": "public",
+                    "x-vercel-blob-access": access,
                     "x-content-type": mime_type or "application/octet-stream",
                     "x-add-random-suffix": "0",
                 }
@@ -112,8 +117,11 @@ async def _upload_to_vercel_blob(
     mime_type: str | None,
     token: str,
     store_id: str,
+    access: str,
 ) -> tuple[str, str | None]:
-    headers = _blob_headers(token, store_id, mime_type=mime_type, for_upload=True)
+    headers = _blob_headers(
+        token, store_id, mime_type=mime_type, for_upload=True, access=access
+    )
     if not store_id:
         headers["x-filename"] = filename or storage_key
         url = f"{LEGACY_BLOB_API}/{storage_key}"
@@ -131,31 +139,51 @@ async def _upload_to_vercel_blob(
         return data.get("pathname") or storage_key, data.get("url")
 
 
-async def store_file(content: bytes, filename: str, mime_type: str | None) -> tuple[str, str | None]:
+async def store_file(
+    content: bytes,
+    filename: str,
+    mime_type: str | None,
+    *,
+    oidc_token: str | None = None,
+) -> tuple[str, str | None]:
     """
     Persist uploaded bytes. Returns (storage_key, public_url).
     public_url is set when using Vercel Blob; local dev uses disk only.
     """
     ext = os.path.splitext(filename or "file")[1]
     storage_key = f"attachments/{uuid.uuid4()}{ext}"
-    auth = _resolve_blob_auth()
+    auth = _resolve_blob_auth(oidc_token)
 
     if _is_vercel():
         if not auth:
             raise StorageError(
-                "File storage is not configured on Vercel. "
-                "Link a Blob store to this project in the Vercel dashboard (Storage → Blob).",
+                "Blob authentication failed. Your project has BLOB_STORE_ID but no auth token. "
+                "Enable OIDC Federation in Vercel → Project Settings → Security, then redeploy. "
+                "Or add BLOB_READ_WRITE_TOKEN from Storage → your Blob store → Tokens.",
             )
         token, store_id = auth
         if not store_id:
             raise StorageError(
                 "Blob store ID is missing. Re-link your Blob store to this project in the Vercel dashboard.",
             )
-        return await _upload_to_vercel_blob(content, storage_key, filename, mime_type, token, store_id)
+        last_error: StorageError | None = None
+        for access in ("public", "private"):
+            try:
+                return await _upload_to_vercel_blob(
+                    content, storage_key, filename, mime_type, token, store_id, access
+                )
+            except StorageError as exc:
+                last_error = exc
+                logger.warning("Blob upload with access=%s failed: %s", access, exc.message)
+        if last_error:
+            raise last_error
+        raise StorageError("File storage upload failed.")
 
     if auth:
         token, store_id = auth
-        return await _upload_to_vercel_blob(content, storage_key, filename, mime_type, token, store_id)
+        return await _upload_to_vercel_blob(
+            content, storage_key, filename, mime_type, token, store_id, "public"
+        )
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     filepath = os.path.join(settings.UPLOAD_DIR, os.path.basename(storage_key))
@@ -164,8 +192,12 @@ async def store_file(content: bytes, filename: str, mime_type: str | None) -> tu
     return filepath, None
 
 
-async def fetch_blob_bytes(pathname: str) -> tuple[bytes, str]:
-    auth = _resolve_blob_auth()
+async def fetch_blob_bytes(
+    pathname: str,
+    *,
+    oidc_token: str | None = None,
+) -> tuple[bytes, str]:
+    auth = _resolve_blob_auth(oidc_token)
     if not auth:
         raise FileNotFoundError("Blob storage not configured")
     token, store_id = auth
@@ -181,3 +213,25 @@ async def fetch_blob_bytes(pathname: str) -> tuple[bytes, str]:
         response.raise_for_status()
         content_type = response.headers.get("content-type", "application/octet-stream")
         return response.content, content_type
+
+
+async def fetch_url_bytes(
+    url: str,
+    *,
+    oidc_token: str | None = None,
+) -> tuple[bytes, str]:
+    auth = _resolve_blob_auth(oidc_token)
+    if not auth:
+        raise FileNotFoundError("Blob storage not configured")
+    token, _store_id = auth
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "application/octet-stream")
+        return response.content, content_type
+
+
+def is_private_blob_url(url: str) -> bool:
+    return ".private.blob.vercel-storage.com" in url

@@ -1,10 +1,11 @@
+import logging
 import math
 import os
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -40,7 +41,9 @@ from app.schemas.task import (
 )
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
-from app.services.storage import StorageError, store_file
+from app.services.storage import StorageError, fetch_url_bytes, is_private_blob_url, store_file
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tasks"])
 
@@ -407,6 +410,7 @@ def update_checklist_item(
 @router.post("/tasks/{task_id}/attachments")
 async def upload_attachment(
     task_id: int,
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -414,10 +418,19 @@ async def upload_attachment(
     content = await file.read()
     if len(content) > settings.MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
+    oidc_token = request.headers.get("x-vercel-oidc-token")
     try:
-        file_path, public_url = await store_file(content, file.filename or "file", file.content_type)
+        file_path, public_url = await store_file(
+            content,
+            file.filename or "file",
+            file.content_type,
+            oidc_token=oidc_token,
+        )
     except StorageError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+    except Exception as exc:
+        logger.exception("Attachment upload failed for task %s", task_id)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
     attachment = Attachment(
         task_id=task_id,
         uploaded_by_id=current_user.id,
@@ -477,8 +490,9 @@ def list_attachments(
 
 
 @router.get("/attachments/{attachment_id}/download")
-def download_attachment(
+async def download_attachment(
     attachment_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -486,6 +500,20 @@ def download_attachment(
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
     if attachment.url:
+        if is_private_blob_url(attachment.url):
+            try:
+                content, content_type = await fetch_url_bytes(
+                    attachment.url,
+                    oidc_token=request.headers.get("x-vercel-oidc-token"),
+                )
+            except Exception as exc:
+                raise HTTPException(status_code=404, detail=f"File not found: {exc}") from exc
+            filename = attachment.filename or "download"
+            return Response(
+                content=content,
+                media_type=attachment.mime_type or content_type,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
         return RedirectResponse(attachment.url)
     if attachment.file_path and os.path.exists(attachment.file_path):
         return FileResponse(
