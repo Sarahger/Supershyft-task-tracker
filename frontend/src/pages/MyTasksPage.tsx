@@ -18,7 +18,7 @@ function TaskList({
 }: {
   tasks: Task[];
   onTaskClick: (id: number) => void;
-  onDeleteTask: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
 }) {
   const isMobile = useIsMobile();
   if (isMobile) {
@@ -29,13 +29,19 @@ function TaskList({
             key={task.id}
             task={task}
             onClick={() => onTaskClick(task.id)}
-            onDelete={onDeleteTask}
           />
         ))}
       </div>
     );
   }
-  return <TaskDatabase tasks={tasks} onTaskClick={onTaskClick} onDeleteTask={onDeleteTask} showProject />;
+  return (
+    <TaskDatabase
+      tasks={tasks}
+      onTaskClick={onTaskClick}
+      onDeleteTask={onDeleteTask}
+      showProject
+    />
+  );
 }
 
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {

@@ -481,7 +481,6 @@ export function TasksWorkspace({
           tasks={displayTasks}
           onTaskClick={openTask}
           onCreateTask={openCreate}
-          onDeleteTask={requestDeleteTask}
           isLoading={isLoading}
           groupBy={groupBy}
         />

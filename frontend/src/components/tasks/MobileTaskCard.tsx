@@ -1,5 +1,5 @@
 import { format, isPast, isToday, isTomorrow } from 'date-fns';
-import { ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
 import { STATUS_LABELS } from '../../types';
@@ -9,7 +9,6 @@ import { Avatar } from '../ui/Avatar';
 interface MobileTaskCardProps {
   task: Task;
   onClick: () => void;
-  onDelete?: (task: Task) => void;
 }
 
 function formatDueDate(dueDate: string) {
@@ -36,25 +35,22 @@ function statusAccentClass(status: string) {
   return map[status] || 'mobile-card-accent-neutral';
 }
 
-export function MobileTaskCard({ task, onClick, onDelete }: MobileTaskCardProps) {
+export function MobileTaskCard({ task, onClick }: MobileTaskCardProps) {
   const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !['completed', 'cancelled'].includes(task.status);
   const primaryAssignee = task.assignees?.[0]?.user;
   const accent = statusAccentClass(task.status);
 
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className={clsx(
-        'mobile-task-card w-full rounded-xl border border-dark-border bg-dark-card p-3.5',
-        'hover:bg-dark-hover transition-colors duration-hover',
+        'mobile-task-card w-full text-left rounded-xl border border-dark-border bg-dark-card p-3.5',
+        'hover:bg-dark-hover active:bg-dark-hover transition-colors duration-hover',
         'min-h-[72px] flex items-center gap-3',
         accent,
       )}
     >
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex-1 min-w-0 text-left flex items-center gap-3 min-h-[44px]"
-      >
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-text-primary truncate leading-snug">{task.title}</p>
         <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -83,17 +79,6 @@ export function MobileTaskCard({ task, onClick, onDelete }: MobileTaskCardProps)
         )}
         <ChevronRight className="h-4 w-4 text-text-muted" />
       </div>
-      </button>
-      {onDelete && (
-        <button
-          type="button"
-          onClick={() => onDelete(task)}
-          className="shrink-0 p-2 rounded-lg text-text-muted hover:text-accent-danger hover:bg-red-500/10 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-          aria-label={`Delete ${task.title}`}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      )}
-    </div>
+    </button>
   );
 }

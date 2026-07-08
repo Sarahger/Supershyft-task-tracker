@@ -96,7 +96,7 @@ export default function ProjectsPage() {
                 <button
                   type="button"
                   onClick={() => setDeleteTarget(p)}
-                  className="shrink-0 p-2 rounded-lg text-text-muted hover:text-accent-danger hover:bg-red-500/10 transition-colors"
+                  className="max-md:hidden shrink-0 p-2 rounded-lg text-text-muted hover:text-accent-danger hover:bg-red-500/10 transition-colors"
                   title="Delete project"
                   aria-label={`Delete ${p.name}`}
                 >

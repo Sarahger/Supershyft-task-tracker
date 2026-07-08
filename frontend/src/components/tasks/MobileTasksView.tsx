@@ -48,12 +48,11 @@ interface MobileTasksViewProps {
   tasks: Task[];
   onTaskClick: (id: number) => void;
   onCreateTask: () => void;
-  onDeleteTask?: (task: Task) => void;
   isLoading?: boolean;
   groupBy?: 'project' | 'status' | 'priority' | 'none';
 }
 
-export function MobileTasksView({ tasks, onTaskClick, onCreateTask, onDeleteTask, isLoading, groupBy = 'project' }: MobileTasksViewProps) {
+export function MobileTasksView({ tasks, onTaskClick, onCreateTask, isLoading, groupBy = 'project' }: MobileTasksViewProps) {
   const groups = useMemo(() => buildGroups(tasks, groupBy), [tasks, groupBy]);
 
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -169,7 +168,6 @@ export function MobileTasksView({ tasks, onTaskClick, onCreateTask, onDeleteTask
                       key={task.id}
                       task={task}
                       onClick={() => onTaskClick(task.id)}
-                      onDelete={onDeleteTask}
                     />
                   ))}
                 </div>
