@@ -78,7 +78,7 @@ export function KanbanBoard({ tasks, queryKey = ['tasks-kanban'] }: KanbanBoardP
                 <span className="text-2xs text-text-muted">{columnTasks.length}</span>
               </div>
               <SortableContext id={status} items={columnTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-                <div id={status} className="bg-dark-muted/50 rounded-md p-2 min-h-[120px]">
+                <div id={status} className="bg-surface-subtle rounded-md p-2 min-h-[120px]">
                   {columnTasks.map((task) => <SortableTask key={task.id} task={task} onClick={() => openTask(task.id)} />)}
                 </div>
               </SortableContext>
@@ -88,7 +88,7 @@ export function KanbanBoard({ tasks, queryKey = ['tasks-kanban'] }: KanbanBoardP
       </div>
       <DragOverlay>
         {activeTask && (
-          <div className="bg-dark-card rounded-md border border-dark-border p-3 w-64 opacity-95 shadow-lg">
+          <div className="bg-dark-card rounded-md border border-dark-border p-3 w-64 opacity-95 dropdown-panel">
             <p className="text-sm font-medium text-text-primary">{activeTask.title}</p>
           </div>
         )}

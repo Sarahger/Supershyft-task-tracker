@@ -11,7 +11,7 @@ import { AvatarGroup } from '../ui/Avatar';
 import { STATUS_LABELS, PRIORITY_LABELS } from '../../types';
 
 const INLINE_SELECT_CLASS =
-  'chip cursor-pointer appearance-none pl-2 pr-7 max-w-full truncate text-xs leading-tight border border-transparent hover:border-dark-border focus:outline-none focus-visible:ring-1 focus-visible:ring-white/20';
+  'chip cursor-pointer appearance-none pl-2 pr-7 max-w-full truncate text-xs leading-tight border border-transparent hover:border-dark-border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]';
 
 function stopRowActivation(e: React.SyntheticEvent) {
   e.stopPropagation();
@@ -74,7 +74,7 @@ function InlineStatusSelect({
 }) {
   if (!editable || !onStatusChange) {
     return (
-      <span className={clsx('chip', statusStyles[task.status] || 'bg-white/5 text-text-secondary')}>
+      <span className={clsx('chip', statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}>
         {STATUS_LABELS[task.status] || task.status}
       </span>
     );
@@ -88,7 +88,7 @@ function InlineStatusSelect({
         stopRowActivation(e);
         onStatusChange(task.id, e.target.value);
       }}
-      className={clsx(INLINE_SELECT_CLASS, statusStyles[task.status] || 'bg-white/5 text-text-secondary')}
+      className={clsx(INLINE_SELECT_CLASS, statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}
       aria-label={`Status for ${task.title}`}
     >
       {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -123,7 +123,7 @@ function InlinePrioritySelect({
         stopRowActivation(e);
         onPriorityChange(task.id, e.target.value);
       }}
-      className={clsx(INLINE_SELECT_CLASS, priorityStyles[task.priority] || 'text-text-secondary', 'bg-dark-muted/50')}
+      className={clsx(INLINE_SELECT_CLASS, priorityStyles[task.priority] || 'text-text-secondary', 'bg-surface-muted')}
       aria-label={`Priority for ${task.title}`}
     >
       {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
@@ -149,7 +149,7 @@ function InlineTaskTypeSelect({
 
   if (!editable || !onTaskTypeChange || !taskTypes.length) {
     return typeName ? (
-      <span className="chip bg-white/5 text-text-secondary">{typeName}</span>
+      <span className="chip bg-surface-muted text-text-secondary">{typeName}</span>
     ) : (
       <span className="text-text-muted text-sm">—</span>
     );
@@ -165,7 +165,7 @@ function InlineTaskTypeSelect({
         const next = e.target.value ? Number(e.target.value) : null;
         onTaskTypeChange(task.id, next);
       }}
-      className={clsx(INLINE_SELECT_CLASS, 'bg-white/5 text-text-secondary')}
+      className={clsx(INLINE_SELECT_CLASS, 'bg-surface-muted text-text-secondary')}
       aria-label={`Type for ${task.title}`}
     >
       <option value="">None</option>
@@ -182,7 +182,7 @@ function DueDate({ date, status }: { date?: string; status: string }) {
   const overdue = isPast(d) && !isToday(d) && !['completed', 'cancelled'].includes(status);
   const today = isToday(d);
   return (
-    <span className={clsx('text-sm tabular-nums', overdue ? 'text-red-400' : today ? 'text-blue-300' : 'text-text-muted')}>
+    <span className={clsx('text-sm tabular-nums', overdue ? 'priority-critical' : today ? 'text-accent-primary' : 'text-text-muted')}>
       {format(d, 'MMM d')}
     </span>
   );
@@ -305,17 +305,17 @@ export function TaskDatabase({
   };
 
   return (
-    <div ref={tableRef} className="relative rounded-lg border border-dark-border bg-dark-card overflow-hidden">
+    <div ref={tableRef} className="task-table relative rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
         <div style={{ minWidth: totalWidth }}>
           {/* Header */}
-          <div className="flex items-stretch border-b border-dark-border bg-dark-bg/50 sticky top-0 z-10">
+          <div className="task-table-header flex items-stretch sticky top-0 z-10">
             <div className="db-header-cell w-10 shrink-0 flex items-center justify-center">
               <input
                 type="checkbox"
                 checked={tasks.length > 0 && selectedIds.size === tasks.length}
                 onChange={toggleSelectAll}
-                className="rounded border-dark-border bg-dark-card text-text-primary focus:ring-white/10"
+                className="rounded border-dark-border bg-dark-card text-text-primary focus:ring-[var(--focus-ring)]"
               />
             </div>
             {visibleColumns.map((col) => (
@@ -337,7 +337,7 @@ export function TaskDatabase({
                 )}
                 {col.id !== 'indicators' && (
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-white/10 flex items-center justify-center"
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-surface-active flex items-center justify-center"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       setResizing({ colId: col.id, startX: e.clientX, startWidth: col.width });
@@ -442,7 +442,7 @@ export function TaskDatabase({
 
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[160px] rounded-md border border-dark-border bg-dark-card py-1 shadow-lg animate-in fade-in duration-dropdown"
+          className="fixed z-50 min-w-[160px] rounded-xl dropdown-panel border border-dark-border py-1 animate-in fade-in duration-dropdown"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
@@ -478,7 +478,7 @@ export function TaskDatabaseSkeleton() {
   return (
     <div className="rounded-lg border border-dark-border bg-dark-card overflow-hidden">
       {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="h-11 border-b border-dark-border bg-dark-muted/30 animate-pulse" />
+        <div key={i} className="h-11 border-b border-dark-border bg-surface-subtle animate-pulse" />
       ))}
     </div>
   );

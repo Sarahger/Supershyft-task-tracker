@@ -1,10 +1,10 @@
 import clsx from 'clsx';
 
 const variants = {
-  primary: 'bg-text-primary text-dark-bg hover:bg-white/90',
-  secondary: 'bg-dark-card text-text-primary border border-dark-border hover:bg-dark-hover',
-  ghost: 'text-text-secondary hover:bg-dark-hover hover:text-text-primary',
-  danger: 'bg-red-600 text-white hover:bg-red-700',
+  primary: 'btn-primary',
+  secondary: 'btn-secondary',
+  ghost: 'btn-ghost',
+  danger: 'btn-danger',
 };
 
 const sizes = {

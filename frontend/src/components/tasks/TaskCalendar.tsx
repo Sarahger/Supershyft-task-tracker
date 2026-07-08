@@ -23,10 +23,10 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MAX_VISIBLE_TASKS = 3;
 
 const priorityAccent: Record<string, string> = {
-  critical: 'border-l-red-400 bg-red-500/10',
-  high: 'border-l-amber-400 bg-amber-500/10',
-  medium: 'border-l-blue-400 bg-blue-500/10',
-  low: 'border-l-zinc-500 bg-white/[0.03]',
+  critical: 'border-l-2 calendar-accent-critical',
+  high: 'border-l-2 calendar-accent-high',
+  medium: 'border-l-2 calendar-accent-medium',
+  low: 'border-l-2 calendar-accent-low',
 };
 
 interface TaskCalendarProps {
@@ -76,8 +76,8 @@ function CalendarTaskChip({
         onClick();
       }}
       className={clsx(
-        'w-full text-left rounded px-1.5 py-1 text-xs leading-snug truncate border-l-2 transition-colors hover:brightness-125',
-        overdue ? 'border-l-red-400 bg-red-500/15 text-red-200' : priorityAccent[task.priority] || priorityAccent.low,
+        'w-full text-left rounded px-1.5 py-1 text-xs leading-snug truncate border-l-2 transition-colors hover:bg-dark-hover',
+        overdue ? 'border-l-2 calendar-overdue' : priorityAccent[task.priority] || priorityAccent.low,
         'text-text-primary',
       )}
       title={`${task.title}${showProject && task.project_name ? ` · ${task.project_name}` : ''} · ${STATUS_LABELS[task.status] || task.status}`}
@@ -166,7 +166,7 @@ export function TaskCalendar({
       </div>
 
       <div className="rounded-lg border border-dark-border bg-dark-card overflow-hidden">
-        <div className="grid grid-cols-7 border-b border-dark-border bg-dark-muted/40">
+        <div className="grid grid-cols-7 border-b border-dark-border bg-dark-muted">
           {WEEKDAYS.map((day) => (
             <div
               key={day}
@@ -201,18 +201,18 @@ export function TaskCalendar({
                 }}
                 className={clsx(
                   'min-h-[88px] border-b border-r border-dark-border p-1.5 flex flex-col gap-1 transition-colors cursor-pointer',
-                  !inMonth && 'bg-dark-muted/20',
+                  !inMonth && 'bg-surface-subtle',
                   inMonth && 'bg-dark-card',
-                  today && 'ring-1 ring-inset ring-sky-500/40 bg-sky-500/[0.04]',
-                  selected && 'bg-white/[0.04]',
-                  'hover:bg-dark-hover/50',
+                  today && 'ring-1 ring-inset ring-accent-primary/30 bg-accent-primary/5',
+                  selected && 'bg-surface-highlight',
+                  'hover:bg-dark-hover',
                 )}
               >
                 <div className="flex items-center justify-between gap-1">
                   <span
                     className={clsx(
                       'inline-flex h-6 w-6 items-center justify-center rounded-full text-xs tabular-nums',
-                      today && 'bg-sky-500 text-white font-semibold',
+                      today && 'calendar-today-pill font-semibold',
                       !today && inMonth && 'text-text-primary',
                       !today && !inMonth && 'text-text-muted',
                     )}
@@ -264,7 +264,7 @@ export function TaskCalendar({
                       <button
                         type="button"
                         onClick={() => onTaskClick(task.id)}
-                        className="w-full text-left rounded-md border border-dark-border bg-dark-muted/30 px-3 py-2 hover:bg-dark-hover transition-colors"
+                        className="w-full text-left rounded-md border border-dark-border bg-surface-subtle px-3 py-2 hover:bg-dark-hover transition-colors"
                       >
                         <p className="text-sm font-medium text-text-primary">{task.title}</p>
                         <p className="text-2xs text-text-muted mt-0.5 capitalize">
@@ -314,10 +314,10 @@ export function TaskCalendar({
 export function TaskCalendarSkeleton() {
   return (
     <div className="rounded-lg border border-dark-border bg-dark-card overflow-hidden animate-pulse">
-      <div className="h-10 bg-dark-muted/40 border-b border-dark-border" />
+      <div className="h-10 bg-dark-muted border-b border-dark-border" />
       <div className="grid grid-cols-7 min-h-[480px]">
         {Array.from({ length: 35 }).map((_, i) => (
-          <div key={i} className="min-h-[88px] border-b border-r border-dark-border bg-dark-muted/20" />
+          <div key={i} className="min-h-[88px] border-b border-r border-dark-border bg-surface-subtle" />
         ))}
       </div>
     </div>

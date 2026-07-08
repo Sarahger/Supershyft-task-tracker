@@ -55,7 +55,7 @@ export default function ProjectsPage() {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-medium text-text-primary group-hover:text-white transition-colors truncate">
+                  <h3 className="text-sm font-medium text-text-primary group-hover:text-text-primary transition-colors truncate">
                     {p.name}
                   </h3>
                   <HealthBadge health={p.health} />

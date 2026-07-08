@@ -14,16 +14,10 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Avatar } from '../components/ui/Avatar';
 import { toast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
+import { getChartTheme } from '../lib/chartTheme';
 import { STATUS_LABELS, PRIORITY_LABELS, HEALTH_LABELS } from '../types';
 import type { ReportAssigneeStats } from '../types';
-
-const chartTooltipStyle = {
-  backgroundColor: '#252525',
-  border: '1px solid #323232',
-  borderRadius: '8px',
-  color: '#F5F5F5',
-  fontSize: '13px',
-};
 
 const STATUS_COLORS: Record<string, string> = {
   unassigned: '#94a3b8',
@@ -135,7 +129,7 @@ function PersonWorkloadTable({ people }: { people: ReportAssigneeStats[] }) {
         </thead>
         <tbody>
           {people.map((person) => (
-            <tr key={person.user_id} className="border-b border-dark-border hover:bg-dark-hover/50 transition-colors">
+            <tr key={person.user_id} className="border-b border-dark-border hover:bg-dark-hover transition-colors">
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3 min-w-[160px]">
                   <Avatar name={person.name} size="sm" />
@@ -148,19 +142,19 @@ function PersonWorkloadTable({ people }: { people: ReportAssigneeStats[] }) {
                 </div>
               </td>
               <td className="px-3 py-3 text-center">
-                <span className={clsx('font-semibold tabular-nums', person.pending > 0 ? 'text-sky-300' : 'text-text-muted')}>
+                <span className={clsx('font-semibold tabular-nums', person.pending > 0 ? 'metric-sky-strong' : 'text-text-muted')}>
                   {person.pending}
                 </span>
               </td>
-              <td className="px-3 py-3 text-center tabular-nums text-amber-300/90">{person.in_progress}</td>
+              <td className="px-3 py-3 text-center tabular-nums metric-amber-strong">{person.in_progress}</td>
               <td className="px-3 py-3 text-center">
-                <span className={clsx('tabular-nums font-medium', person.overdue > 0 ? 'text-red-400' : 'text-text-muted')}>
+                <span className={clsx('tabular-nums font-medium', person.overdue > 0 ? 'metric-red' : 'text-text-muted')}>
                   {person.overdue}
                 </span>
               </td>
-              <td className="px-3 py-3 text-center tabular-nums text-orange-300/90">{person.blocked}</td>
-              <td className="px-3 py-3 text-center tabular-nums text-purple-300/90">{person.due_this_week}</td>
-              <td className="px-3 py-3 text-center tabular-nums text-emerald-400/90">{person.completed}</td>
+              <td className="px-3 py-3 text-center tabular-nums metric-orange-strong">{person.blocked}</td>
+              <td className="px-3 py-3 text-center tabular-nums metric-purple-strong">{person.due_this_week}</td>
+              <td className="px-3 py-3 text-center tabular-nums metric-emerald-strong">{person.completed}</td>
               <td className="px-4 py-3">
                 <WorkloadBar person={person} />
               </td>
@@ -174,6 +168,8 @@ function PersonWorkloadTable({ people }: { people: ReportAssigneeStats[] }) {
 
 export default function ReportsPage() {
   const { user } = useAuth();
+  const { theme } = useTheme();
+  const chartTheme = getChartTheme(theme);
   const isManager = user?.role === 'administrator' || user?.role === 'manager';
   const [departmentFilter, setDepartmentFilter] = useState('');
 
@@ -315,31 +311,31 @@ export default function ReportsPage() {
       {(overdue > 0 || unassignedPending > 0 || (data?.people_with_overdue ?? 0) > 0) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {overdue > 0 && (
-            <div className="flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3">
-              <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="insight-danger">
+              <AlertTriangle className="h-5 w-5 insight-danger-icon shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-red-200">{overdue} overdue task{overdue !== 1 ? 's' : ''}</p>
-                <p className="text-xs text-red-200/70 mt-0.5">Past due date and not finished yet</p>
+                <p className="insight-danger-title">{overdue} overdue task{overdue !== 1 ? 's' : ''}</p>
+                <p className="insight-danger-sub">Past due date and not finished yet</p>
               </div>
             </div>
           )}
           {isManager && (data?.people_with_overdue ?? 0) > 0 && (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-              <Users className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="insight-warning">
+              <Users className="h-5 w-5 insight-warning-icon shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-amber-200">
+                <p className="insight-warning-title">
                   {data!.people_with_overdue} team member{data!.people_with_overdue !== 1 ? 's' : ''} with overdue work
                 </p>
-                <p className="text-xs text-amber-200/70 mt-0.5">Check the workload table below</p>
+                <p className="insight-warning-sub">Check the workload table below</p>
               </div>
             </div>
           )}
           {isManager && unassignedPending > 0 && (
-            <div className="flex items-start gap-3 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-3">
-              <ClipboardList className="h-5 w-5 text-sky-400 shrink-0 mt-0.5" />
+            <div className="insight-info">
+              <ClipboardList className="h-5 w-5 insight-info-icon shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-sky-200">{unassignedPending} unassigned pending task{unassignedPending !== 1 ? 's' : ''}</p>
-                <p className="text-xs text-sky-200/70 mt-0.5">No one owns these yet</p>
+                <p className="insight-info-title">{unassignedPending} unassigned pending task{unassignedPending !== 1 ? 's' : ''}</p>
+                <p className="insight-info-sub">No one owns these yet</p>
               </div>
             </div>
           )}
@@ -353,14 +349,14 @@ export default function ReportsPage() {
           <p className="text-xs text-text-muted mb-4">Tasks assigned to you right now</p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: 'Pending', value: myStats.pending, color: 'text-sky-300' },
-              { label: 'In progress', value: myStats.in_progress, color: 'text-amber-300' },
-              { label: 'Overdue', value: myStats.overdue, color: 'text-red-400' },
-              { label: 'Blocked', value: myStats.blocked, color: 'text-orange-300' },
-              { label: 'Due this week', value: myStats.due_this_week, color: 'text-purple-300' },
-              { label: 'Completed', value: myStats.completed, color: 'text-emerald-400' },
+              { label: 'Pending', value: myStats.pending, color: 'metric-sky-strong' },
+              { label: 'In progress', value: myStats.in_progress, color: 'metric-amber-strong' },
+              { label: 'Overdue', value: myStats.overdue, color: 'metric-red' },
+              { label: 'Blocked', value: myStats.blocked, color: 'metric-orange-strong' },
+              { label: 'Due this week', value: myStats.due_this_week, color: 'metric-purple-strong' },
+              { label: 'Completed', value: myStats.completed, color: 'metric-emerald-strong' },
             ].map((item) => (
-              <div key={item.label} className="rounded-lg bg-dark-bg/60 border border-dark-border px-3 py-3 text-center">
+              <div key={item.label} className="rounded-lg bg-surface-subtle border border-dark-border px-3 py-3 text-center">
                 <p className={clsx('text-2xl font-semibold tabular-nums', item.color)}>{item.value}</p>
                 <p className="text-xs text-text-muted mt-1">{item.label}</p>
               </div>
@@ -380,7 +376,7 @@ export default function ReportsPage() {
             hint="Not finished yet"
             value={pending}
             icon={ClipboardList}
-            color="text-sky-400"
+            color="metric-sky"
             bg="bg-sky-500/10"
             border="border-sky-500/30"
           />
@@ -389,7 +385,7 @@ export default function ReportsPage() {
             hint="Actively being worked on"
             value={inProgress}
             icon={PlayCircle}
-            color="text-amber-400"
+            color="metric-amber"
             bg="bg-amber-500/10"
             border="border-amber-500/30"
           />
@@ -398,7 +394,7 @@ export default function ReportsPage() {
             hint="Past due date"
             value={overdue}
             icon={Clock}
-            color="text-red-400"
+            color="metric-red"
             bg="bg-red-500/10"
             border="border-red-500/30"
           />
@@ -407,7 +403,7 @@ export default function ReportsPage() {
             hint="Waiting on something"
             value={blocked}
             icon={Ban}
-            color="text-orange-400"
+            color="metric-orange"
             bg="bg-orange-500/10"
             border="border-orange-500/30"
           />
@@ -416,7 +412,7 @@ export default function ReportsPage() {
             hint={`${completionRate}% of all tasks`}
             value={completed}
             icon={CheckCircle2}
-            color="text-emerald-400"
+            color="metric-emerald"
             bg="bg-emerald-500/10"
             border="border-emerald-500/30"
           />
@@ -443,9 +439,9 @@ export default function ReportsPage() {
           <p className="text-xs text-text-muted mb-4">Blue = pending · Red segment = overdue within pending</p>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={assigneeChart} margin={{ left: 8, right: 16, bottom: 8 }}>
-              <XAxis dataKey="name" tick={{ fill: '#A1A1AA', fontSize: 12 }} axisLine={{ stroke: '#323232' }} tickLine={false} />
-              <YAxis tick={{ fill: '#71717A', fontSize: 11 }} axisLine={{ stroke: '#323232' }} tickLine={false} width={32} allowDecimals={false} />
-              <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+              <XAxis dataKey="name" tick={{ fill: chartTheme.axisTick, fontSize: 12 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
+              <YAxis tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} width={32} allowDecimals={false} />
+              <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} />
               <Bar dataKey="pending" stackId="a" fill="#60a5fa" name="Pending" radius={[0, 0, 0, 0]} />
               <Bar dataKey="overdue" stackId="a" fill="#ef4444" name="Overdue" radius={[4, 4, 0, 0]} />
               <Legend formatter={(value) => <span className="text-text-secondary text-xs">{value}</span>} />
@@ -458,7 +454,7 @@ export default function ReportsPage() {
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card p-6 border border-emerald-500/20 bg-emerald-500/5 flex flex-col justify-center min-h-[240px] md:col-span-1">
           <p className="text-sm text-text-secondary mb-1">Completion rate</p>
-          <p className="text-4xl font-semibold text-emerald-400 tabular-nums">{completionRate}%</p>
+          <p className="text-4xl font-semibold metric-emerald tabular-nums">{completionRate}%</p>
           <p className="text-xs text-text-muted mt-2">{completed} of {total} tasks finished</p>
           <div className="mt-4 h-2 rounded-full bg-dark-muted overflow-hidden">
             <div
@@ -483,13 +479,13 @@ export default function ReportsPage() {
                   paddingAngle={3}
                   dataKey="value"
                   label={({ name, value }) => `${name}: ${value}`}
-                  labelLine={{ stroke: '#71717a', strokeWidth: 1 }}
+                  labelLine={{ stroke: chartTheme.axisTick, strokeWidth: 1 }}
                 >
                   {overviewPie.map((entry) => (
                     <Cell key={entry.name} fill={entry.fill} stroke="transparent" />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={chartTooltipStyle} />
+                <Tooltip contentStyle={chartTheme.tooltip} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -507,7 +503,7 @@ export default function ReportsPage() {
               label="Your open tasks"
               value={dashboard.stats.open_tasks}
               icon={TrendingUp}
-              color="text-sky-400"
+              color="metric-sky"
               bg="bg-sky-500/10"
               border="border-sky-500/20"
             />
@@ -515,7 +511,7 @@ export default function ReportsPage() {
               label="Due this week"
               value={dashboard.stats.my_tasks_week}
               icon={CalendarClock}
-              color="text-purple-400"
+              color="metric-purple"
               bg="bg-purple-500/10"
               border="border-purple-500/20"
             />
@@ -523,7 +519,7 @@ export default function ReportsPage() {
               label="Reviews waiting on you"
               value={dashboard.stats.pending_reviews}
               icon={Eye}
-              color="text-violet-400"
+              color="metric-violet"
               bg="bg-violet-500/10"
               border="border-violet-500/20"
             />
@@ -539,9 +535,9 @@ export default function ReportsPage() {
           {statusData.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={statusData} layout="vertical" margin={{ left: 8, right: 16 }}>
-                <XAxis type="number" tick={{ fill: '#71717A', fontSize: 11 }} axisLine={{ stroke: '#323232' }} tickLine={false} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" width={120} tick={{ fill: '#A1A1AA', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <XAxis type="number" tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" width={120} tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
                   {statusData.map((entry) => (
                     <Cell key={entry.key} fill={entry.fill} />
@@ -560,9 +556,9 @@ export default function ReportsPage() {
           {priorityData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={priorityData}>
-                <XAxis dataKey="name" tick={{ fill: '#A1A1AA', fontSize: 12 }} axisLine={{ stroke: '#323232' }} tickLine={false} />
-                <YAxis tick={{ fill: '#71717A', fontSize: 11 }} axisLine={{ stroke: '#323232' }} tickLine={false} width={28} allowDecimals={false} />
-                <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <XAxis dataKey="name" tick={{ fill: chartTheme.axisTick, fontSize: 12 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
+                <YAxis tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} width={28} allowDecimals={false} />
+                <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} />
                 <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={48}>
                   {priorityData.map((entry) => (
                     <Cell key={entry.key} fill={entry.fill} />

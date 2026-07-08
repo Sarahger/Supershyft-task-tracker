@@ -150,7 +150,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
                   key={u.id}
                   className={clsx(
                     'flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-dark-hover transition-colors',
-                    selected && 'bg-white/[0.03]'
+                    selected && 'bg-surface-subtle'
                   )}
                 >
                   <input

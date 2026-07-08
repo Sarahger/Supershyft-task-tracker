@@ -3,9 +3,25 @@ import { useQuery } from '@tanstack/react-query';
 import { isPast, isToday, isThisWeek } from 'date-fns';
 import { tasksApi } from '../services/endpoints';
 import { useTaskDrawer } from '../contexts/TaskDrawerContext';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
+import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { EmptyState } from '../components/ui/Skeleton';
 import type { Task } from '../types';
+
+function TaskList({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (id: number) => void }) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return (
+      <div className="space-y-2 md:hidden">
+        {tasks.map((task) => (
+          <MobileTaskCard key={task.id} task={task} onClick={() => onTaskClick(task.id)} />
+        ))}
+      </div>
+    );
+  }
+  return <TaskDatabase tasks={tasks} onTaskClick={onTaskClick} showProject />;
+}
 
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
@@ -64,13 +80,13 @@ export default function MyTasksPage() {
         <EmptyState title="Nothing assigned yet" description="Tasks assigned to you will show up here." />
       ) : (
         <>
-          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskDatabase tasks={groups.overdue} onTaskClick={openTask} showProject /></Section>}
-          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskDatabase tasks={groups.blocked} onTaskClick={openTask} showProject /></Section>}
-          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskDatabase tasks={groups.review} onTaskClick={openTask} showProject /></Section>}
-          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskDatabase tasks={groups.today} onTaskClick={openTask} showProject /></Section>}
-          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskDatabase tasks={groups.thisWeek} onTaskClick={openTask} showProject /></Section>}
-          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskDatabase tasks={groups.later} onTaskClick={openTask} showProject /></Section>}
-          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskDatabase tasks={groups.completed} onTaskClick={openTask} showProject /></Section>}
+          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} onTaskClick={openTask} /></Section>}
+          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} onTaskClick={openTask} /></Section>}
+          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} onTaskClick={openTask} /></Section>}
+          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} onTaskClick={openTask} /></Section>}
+          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} onTaskClick={openTask} /></Section>}
+          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} onTaskClick={openTask} /></Section>}
+          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} onTaskClick={openTask} /></Section>}
         </>
       )}
     </div>

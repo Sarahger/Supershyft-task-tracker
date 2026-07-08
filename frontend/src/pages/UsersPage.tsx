@@ -16,9 +16,9 @@ import { USER_STATUSES, USER_STATUS_LABELS } from '../types';
 import type { User } from '../types';
 
 const STATUS_CHIP: Record<string, string> = {
-  active: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  on_leave: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  inactive: 'bg-red-500/15 text-red-400 border-red-500/30',
+  active: 'status-chip-active',
+  on_leave: 'status-chip-leave',
+  inactive: 'status-chip-inactive',
 };
 
 function UserStatusControl({
@@ -36,7 +36,7 @@ function UserStatusControl({
 
   if (!canEdit) {
     return (
-      <span className={clsx('chip border capitalize', chipClass)}>
+      <span className={clsx(chipClass)}>
         {USER_STATUS_LABELS[user.status] || user.status.replace(/_/g, ' ')}
       </span>
     );
@@ -49,7 +49,7 @@ function UserStatusControl({
       onChange={(e) => onChange(user.id, e.target.value)}
       className={clsx(
         'chip border cursor-pointer appearance-none pr-7 max-w-full truncate',
-        'focus:outline-none focus-visible:ring-1 focus-visible:ring-white/10',
+        'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         chipClass,
       )}
@@ -368,16 +368,13 @@ export default function UsersPage() {
               {selectedDepartments.map((d) => (
                 <span
                   key={`existing-${d.id}`}
-                  className={clsx(
-                    'chip inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1',
-                    'bg-purple-500/10 text-purple-200 border border-purple-500/25',
-                  )}
+                  className="dept-chip-existing"
                 >
                   <span className="text-sm text-text-primary">{d.name}</span>
                   <button
                     type="button"
                     onClick={() => removeDepartment(d.id)}
-                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"
+                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
                     aria-label={`Remove ${d.name}`}
                   >
                     <X className="h-3.5 w-3.5" />
@@ -387,17 +384,14 @@ export default function UsersPage() {
               {createForm.new_department_names.map((name) => (
                 <span
                   key={`new-${name}`}
-                  className={clsx(
-                    'chip inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1',
-                    'bg-emerald-500/10 text-emerald-200 border border-emerald-500/25',
-                  )}
+                  className="dept-chip-new"
                 >
                   <span className="text-sm text-text-primary">{name}</span>
-                  <span className="text-2xs text-emerald-400/80">new</span>
+                  <span className="dept-chip-new-label">new</span>
                   <button
                     type="button"
                     onClick={() => removeNewDepartmentName(name)}
-                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"
+                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
                     aria-label={`Remove ${name}`}
                   >
                     <X className="h-3.5 w-3.5" />

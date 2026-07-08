@@ -365,7 +365,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                       type="checkbox"
                       checked={item.is_completed}
                       onChange={(e) => checklistMutation.mutate({ itemId: item.id, done: e.target.checked })}
-                      className="rounded border-dark-border text-text-primary focus:ring-white/10"
+                      className="rounded border-dark-border text-text-primary focus:ring-[var(--focus-ring)]"
                     />
                     <span className={`text-sm ${item.is_completed ? 'line-through text-text-muted' : 'text-text-primary'}`}>
                       {item.title}
@@ -419,7 +419,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                         <button
                           type="button"
                           onClick={() => openAttachmentPreview(file)}
-                          className="text-sm text-text-primary hover:text-sky-300 truncate block max-w-full text-left transition-colors"
+                          className="link-sky"
                         >
                           {file.filename}
                         </button>

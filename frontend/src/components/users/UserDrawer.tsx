@@ -28,7 +28,7 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="rounded-lg border border-dark-border bg-dark-bg/40 p-4">
+    <div className="rounded-lg border border-dark-border bg-surface-subtle p-4">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className={clsx('text-2xl font-semibold tabular-nums', color)}>{value}</p>
@@ -43,9 +43,9 @@ function StatCard({
 
 function performanceLabel(utilization: number | null) {
   if (utilization == null) return { text: 'No time data yet', tone: 'text-text-muted' };
-  if (utilization <= 100) return { text: 'On or under estimate', tone: 'text-emerald-400' };
-  if (utilization <= 120) return { text: 'Slightly over estimate', tone: 'text-amber-400' };
-  return { text: 'Over estimate', tone: 'text-red-400' };
+  if (utilization <= 100) return { text: 'On or under estimate', tone: 'metric-emerald' };
+  if (utilization <= 120) return { text: 'Slightly over estimate', tone: 'metric-amber' };
+  return { text: 'Over estimate', tone: 'metric-red' };
 }
 
 function UserProfileContent({ profile }: { profile: UserProfile }) {
@@ -64,8 +64,8 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
             </h1>
             <p className="text-sm text-text-muted mt-0.5 truncate">{profile.email}</p>
             <div className="flex flex-wrap items-center gap-2 mt-2">
-              <span className="chip bg-dark-muted text-text-secondary capitalize">{profile.role}</span>
-              <span className="chip bg-dark-muted text-text-secondary capitalize">
+              <span className="chip bg-surface-muted text-text-secondary capitalize">{profile.role}</span>
+              <span className="chip bg-surface-muted text-text-secondary capitalize">
                 {USER_STATUS_LABELS[profile.status] || profile.status.replace(/_/g, ' ')}
               </span>
             </div>
@@ -88,20 +88,20 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
             label="Assigned"
             value={stats.assigned_count}
             icon={ClipboardList}
-            color="text-sky-400"
+            color="metric-sky"
           />
           <StatCard
             label="Pending"
             value={stats.pending_count}
             icon={Clock}
-            color="text-amber-400"
+            color="metric-amber"
           />
           <StatCard
             label="Completed"
             value={stats.completed_count}
             hint={`${stats.cancelled_count} cancelled`}
             icon={CheckCircle2}
-            color="text-emerald-400"
+            color="metric-emerald"
           />
         </div>
       </section>
@@ -116,22 +116,22 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <div className="rounded-md border border-dark-border bg-dark-bg/40 p-3">
+          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
             <p className="text-2xs uppercase tracking-wider text-text-muted">Required</p>
             <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">{stats.total_estimated_hours}h</p>
           </div>
-          <div className="rounded-md border border-dark-border bg-dark-bg/40 p-3">
+          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
             <p className="text-2xs uppercase tracking-wider text-text-muted">Taken</p>
             <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">{stats.total_actual_hours}h</p>
           </div>
-          <div className="rounded-md border border-dark-border bg-dark-bg/40 p-3">
+          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
             <p className="text-2xs uppercase tracking-wider text-text-muted">Utilization</p>
             <p className={clsx('text-lg font-semibold mt-0.5 tabular-nums', perf.tone)}>
               {stats.time_utilization_percent != null ? `${stats.time_utilization_percent}%` : '—'}
             </p>
             <p className={clsx('text-2xs mt-0.5', perf.tone)}>{perf.text}</p>
           </div>
-          <div className="rounded-md border border-dark-border bg-dark-bg/40 p-3">
+          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
             <p className="text-2xs uppercase tracking-wider text-text-muted">On track</p>
             <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">
               {stats.on_track_count}/{stats.tasks_with_time_data || 0}
@@ -187,7 +187,7 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-text-primary truncate">{task.title}</p>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <span className="chip bg-dark-muted text-text-secondary text-2xs capitalize">
+                        <span className="chip bg-surface-muted text-text-secondary text-2xs capitalize">
                           {STATUS_LABELS[task.status] || task.status.replace(/_/g, ' ')}
                         </span>
                         {task.project_name && (
@@ -205,7 +205,7 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
                         <p
                           className={clsx(
                             'mt-0.5',
-                            taskUtil <= 100 ? 'text-emerald-400' : taskUtil <= 120 ? 'text-amber-400' : 'text-red-400',
+                            taskUtil <= 100 ? 'metric-emerald' : taskUtil <= 120 ? 'metric-amber' : 'metric-red',
                           )}
                         >
                           {taskUtil}%

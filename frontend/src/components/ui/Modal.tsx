@@ -23,8 +23,8 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-      <div className={clsx('relative w-full rounded-lg bg-dark-card border border-dark-border', sizes[size])}>
+      <div className="fixed inset-0 bg-[var(--overlay-backdrop)]" onClick={onClose} />
+      <div className={clsx('relative w-full rounded-2xl bg-dark-card border border-dark-border modal-panel', sizes[size])}>
         {title && (
           <div className="flex items-center justify-between px-5 py-4 border-b border-dark-border">
             <h2 className="text-base font-semibold text-text-primary">{title}</h2>
@@ -63,11 +63,11 @@ export function Drawer({ isOpen, onClose, children }: DrawerProps) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
-        className="fixed inset-0 bg-black/50 transition-opacity duration-drawer"
+        className="fixed inset-0 bg-[var(--overlay-backdrop)] transition-opacity duration-drawer"
         onClick={onClose}
       />
       <div className={clsx(
-        'relative w-full max-w-[680px] sm:max-w-[720px] bg-dark-drawer flex flex-col h-full border-l border-dark-border',
+        'relative w-full max-w-[680px] sm:max-w-[720px] bg-dark-drawer flex flex-col h-full border-l border-dark-border drawer-panel',
         'animate-slide-in max-sm:max-w-full'
       )}>
         <button

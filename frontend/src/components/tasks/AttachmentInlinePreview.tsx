@@ -49,7 +49,7 @@ export function AttachmentInlinePreview({ attachment, isSelected, onPreview }: A
           onClick={onPreview}
           className={clsx(
             'flex items-center gap-3 w-full rounded-lg border px-3 py-4 text-left transition-colors',
-            isSelected ? 'border-sky-500/50 bg-sky-500/5' : 'border-dark-border bg-dark-muted/50 hover:bg-dark-hover',
+            isSelected ? 'border-accent-primary/50 bg-accent-primary/5' : 'border-dark-border bg-surface-subtle hover:bg-dark-hover',
           )}
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-dark-card border border-dark-border shrink-0">

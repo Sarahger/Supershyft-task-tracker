@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Sun, Moon, Monitor } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
@@ -82,7 +83,7 @@ function NotificationSettingsSection() {
     return (
       <>
         <h2 className="text-sm font-medium text-text-primary mb-2">Notifications</h2>
-        <div className="h-24 bg-dark-muted/30 rounded animate-pulse" />
+        <div className="h-24 bg-surface-subtle rounded animate-pulse" />
       </>
     );
   }
@@ -100,9 +101,9 @@ function NotificationSettingsSection() {
             <label
               key={item.key}
               className={clsx(
-                'flex items-start justify-between gap-4 px-4 py-3 bg-dark-bg/30',
+                'flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle',
                 disabled && 'opacity-50',
-                !disabled && 'cursor-pointer hover:bg-dark-hover/40',
+                !disabled && 'cursor-pointer hover:bg-dark-hover',
               )}
             >
               <div>
@@ -154,6 +155,7 @@ const APPLIES_TO = [
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const { preference, setPreference } = useTheme();
   const qc = useQueryClient();
   const isAdmin = user?.role === 'administrator';
 
@@ -212,6 +214,47 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <div className="card p-6">
+        <h2 className="text-sm font-medium text-text-primary mb-1">Appearance</h2>
+        <p className="text-sm text-text-secondary mb-4">
+          Choose how the app looks. Your preference is saved on this device.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {([
+            { id: 'light' as const, label: 'Light', icon: Sun },
+            { id: 'dark' as const, label: 'Dark', icon: Moon },
+            { id: 'system' as const, label: 'System', icon: Monitor },
+          ]).map((option) => {
+            const selected = preference === option.id;
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setPreference(option.id)}
+                className={clsx(
+                  'flex flex-col items-stretch gap-3 rounded-lg border p-3 transition-colors duration-hover text-left',
+                  selected
+                    ? 'border-text-primary ring-1 ring-text-primary/20 bg-surface-highlight'
+                    : 'border-dark-border bg-surface-subtle hover:bg-dark-hover',
+                )}
+              >
+                <div className={clsx(
+                  'w-full aspect-[5/3] rounded-xl border border-dark-border overflow-hidden flex',
+                  option.id === 'light' && 'theme-preview-light',
+                  option.id === 'dark' && 'theme-preview-dark',
+                  option.id === 'system' && 'theme-preview-system',
+                )} />
+                <div className="flex items-center gap-2 px-0.5">
+                  <Icon className="h-4 w-4 text-text-secondary" />
+                  <span className="text-sm font-medium text-text-primary">{option.label}</span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {isAdmin && (
         <div className="card p-6">
           <h2 className="text-sm font-medium text-text-primary mb-2">Custom fields</h2>
@@ -220,7 +263,7 @@ export default function SettingsPage() {
           </p>
 
           {isLoading ? (
-            <div className="h-24 bg-dark-muted/30 rounded animate-pulse" />
+            <div className="h-24 bg-surface-subtle rounded animate-pulse" />
           ) : (
             <>
               {customFields && customFields.length > 0 ? (
@@ -228,7 +271,7 @@ export default function SettingsPage() {
                   {customFields.map((field: CustomFieldDefinition) => (
                     <li
                       key={field.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-dark-border bg-dark-bg/50"
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-dark-border bg-surface-subtle"
                     >
                       <div>
                         <p className="text-sm text-text-primary">{field.name}</p>

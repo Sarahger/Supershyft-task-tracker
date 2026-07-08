@@ -3,8 +3,12 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { tasksApi, miscApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField } from './TaskDatabase';
 import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
+import { MobileTaskToolbar } from './MobileTaskToolbar';
+import { MobileTasksView } from './MobileTasksView';
+import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
 import type { Task } from '../../types';
@@ -19,7 +23,7 @@ const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ 
 
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
-export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review';
+export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review' | 'completed';
 
 interface TasksWorkspaceProps {
   title: string;
@@ -62,6 +66,7 @@ export function TasksWorkspace({
 }: TasksWorkspaceProps) {
   const { openTask, openCreate } = useTaskDrawer();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -70,7 +75,7 @@ export function TasksWorkspace({
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'project' : 'none'));
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [calendarWeek, setCalendarWeek] = useState(() => new Date());
@@ -99,7 +104,7 @@ export function TasksWorkspace({
 
   const sharedListFilters = useMemo(() => ({
     search: search || undefined,
-    status: statusFilter || undefined,
+    status: quickFilter === 'completed' ? 'completed' : (statusFilter || undefined),
     priority: priorityFilter || undefined,
     assignee_id: assigneeFilter ? Number(assigneeFilter) : undefined,
     overdue: quickFilter === 'overdue' ? true : undefined,
@@ -210,8 +215,13 @@ export function TasksWorkspace({
 
   const tasks = data?.items || [];
   const displayTasks = useMemo(() => {
-    if (quickFilter !== 'today') return tasks;
-    return tasks.filter((t) => t.due_date && isToday(new Date(t.due_date)));
+    if (quickFilter === 'today') {
+      return tasks.filter((t) => t.due_date && isToday(new Date(t.due_date)));
+    }
+    if (quickFilter === 'completed') {
+      return tasks.filter((t) => t.status === 'completed');
+    }
+    return tasks;
   }, [tasks, quickFilter]);
   const groups = groupTasks(displayTasks, groupBy);
 
@@ -285,23 +295,25 @@ export function TasksWorkspace({
   const quickFilterOptions: { id: QuickFilter; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'overdue', label: 'Overdue' },
-    { id: 'today', label: 'Due today' },
+    { id: 'today', label: 'Today' },
     { id: 'blocked', label: 'Blocked' },
-    { id: 'review', label: 'In review' },
+    { id: 'review', label: 'Review' },
+    { id: 'completed', label: 'Completed' },
   ];
 
   return (
-    <div className={clsx('flex flex-col min-h-0 pb-8', fullWidth ? 'w-full max-w-none' : 'max-w-workspace mx-auto')}>
-      <div className="mb-5">
+    <div className={clsx('flex flex-col min-h-0 pb-8', fullWidth ? 'w-full max-w-none' : 'max-w-workspace mx-auto', isMobile && 'pb-24')}>
+      <div className={clsx('mb-5', isMobile && 'mb-3')}>
         {title && (
           <>
-            <h1 className="text-xl font-semibold text-text-primary tracking-tight">{title}</h1>
-            {subtitle && <p className="text-sm text-text-muted mt-0.5">{subtitle}</p>}
+            <h1 className={clsx('font-semibold text-text-primary tracking-tight', isMobile ? 'text-lg' : 'text-xl')}>{title}</h1>
+            {subtitle && !isMobile && <p className="text-sm text-text-muted mt-0.5">{subtitle}</p>}
           </>
         )}
       </div>
 
-      {showQuickFilters && (
+      {/* Desktop quick filters */}
+      {showQuickFilters && !isMobile && (
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto flex-nowrap pb-0.5 -mx-1 px-1">
           {quickFilterOptions.map((opt) => (
             <button
@@ -310,7 +322,7 @@ export function TasksWorkspace({
               className={clsx(
                 'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap',
                 quickFilter === opt.id
-                  ? 'bg-white/[0.08] text-text-primary'
+                  ? 'bg-surface-highlight text-text-primary'
                   : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'
               )}
             >
@@ -320,6 +332,35 @@ export function TasksWorkspace({
         </div>
       )}
 
+      {/* Mobile toolbar */}
+      {isMobile && (
+        <MobileTaskToolbar
+          search={search}
+          onSearchChange={(v) => { setSearch(v); setPage(1); }}
+          statusFilter={statusFilter}
+          onStatusFilterChange={(v) => { setStatusFilter(v); setPage(1); }}
+          priorityFilter={priorityFilter}
+          onPriorityFilterChange={(v) => { setPriorityFilter(v); setPage(1); }}
+          assigneeFilter={assigneeFilter}
+          onAssigneeFilterChange={(v) => { setAssigneeFilter(v); setPage(1); }}
+          assigneeOptions={usersList ?? []}
+          sortField={sortField}
+          sortDir={sortDir}
+          onSortFieldChange={(v) => setSortField(v as SortField)}
+          onSortDirToggle={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
+          groupBy={groupBy}
+          onGroupByChange={setGroupBy}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          showViewSelector={showViewSelector}
+          quickFilter={quickFilter}
+          onQuickFilterChange={(v) => { setQuickFilter(v as QuickFilter); setPage(1); }}
+          quickFilterOptions={quickFilterOptions}
+        />
+      )}
+
+      {/* Desktop toolbar */}
+      <div className="max-md:hidden">
       <TaskToolbar
         search={search}
         onSearchChange={(v) => { setSearch(v); setPage(1); }}
@@ -347,15 +388,18 @@ export function TasksWorkspace({
         onClearSelection={() => setSelectedIds(new Set())}
         showViewSelector={showViewSelector}
       />
+      </div>
 
-      {savedFilters?.length > 0 && (
+      {savedFilters?.length > 0 && !isMobile && (
         <SavedFiltersBar filters={savedFilters} onApply={applySavedFilter} />
       )}
 
       {isLoading ? (
         <div className="space-y-3">
-          <p className="text-sm text-text-muted">Loading tasks…</p>
-          {viewMode === 'calendar' ? (
+          <p className="text-sm text-text-muted max-md:hidden">Loading tasks…</p>
+          {isMobile ? (
+            <MobileTasksView tasks={[]} onTaskClick={() => {}} onCreateTask={openCreate} isLoading />
+          ) : viewMode === 'calendar' ? (
             <Suspense fallback={<TaskDatabaseSkeleton />}><TaskCalendarSkeleton /></Suspense>
           ) : viewMode === 'weekly' ? (
             <Suspense fallback={<TaskDatabaseSkeleton />}><TaskWeekViewSkeleton /></Suspense>
@@ -377,12 +421,14 @@ export function TasksWorkspace({
             </button>
           }
         />
-      ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' ? (
+      ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' && !isMobile ? (
         <EmptyState title="No tasks" description="Create a task or adjust your filters." />
       ) : viewMode === 'kanban' ? (
+        <div className={clsx(isMobile && 'overflow-x-auto -mx-4 px-4')}>
         <Suspense fallback={<TaskDatabaseSkeleton />}>
           <KanbanBoard tasks={displayTasks} queryKey={queryKey} />
         </Suspense>
+        </div>
       ) : viewMode === 'calendar' ? (
         <Suspense fallback={<TaskDatabaseSkeleton />}>
           <TaskCalendar
@@ -405,6 +451,14 @@ export function TasksWorkspace({
             showProject={showProject}
           />
         </Suspense>
+      ) : isMobile ? (
+        <MobileTasksView
+          tasks={displayTasks}
+          onTaskClick={openTask}
+          onCreateTask={openCreate}
+          isLoading={isLoading}
+          groupBy={groupBy}
+        />
       ) : (
         <div className="space-y-6">
           {groups.map((group) => (
@@ -448,6 +502,8 @@ export function TasksWorkspace({
           )}
         </div>
       )}
+
+      {isMobile && <FloatingActionButton onClick={openCreate} />}
     </div>
   );
 }

@@ -18,10 +18,10 @@ import { STATUS_LABELS } from '../../types';
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const priorityAccent: Record<string, string> = {
-  critical: 'border-l-red-400 bg-red-500/10',
-  high: 'border-l-amber-400 bg-amber-500/10',
-  medium: 'border-l-blue-400 bg-blue-500/10',
-  low: 'border-l-zinc-500 bg-white/[0.03]',
+  critical: 'border-l-2 calendar-accent-critical',
+  high: 'border-l-2 calendar-accent-high',
+  medium: 'border-l-2 calendar-accent-medium',
+  low: 'border-l-2 calendar-accent-low',
 };
 
 interface TaskWeekViewProps {
@@ -57,8 +57,8 @@ function WeekTaskCard({
       type="button"
       onClick={onClick}
       className={clsx(
-        'w-full text-left rounded-md px-2 py-1.5 text-xs border-l-2 transition-colors hover:brightness-125',
-        overdue ? 'border-l-red-400 bg-red-500/15 text-red-200' : priorityAccent[task.priority] || priorityAccent.low,
+        'w-full text-left rounded-md px-2 py-1.5 text-xs border-l-2 transition-colors hover:bg-dark-hover',
+        overdue ? 'border-l-2 calendar-overdue' : priorityAccent[task.priority] || priorityAccent.low,
       )}
     >
       <p className="font-medium truncate text-text-primary">{task.title}</p>
@@ -148,12 +148,12 @@ export function TaskWeekView({
               key={key}
               className={clsx(
                 'rounded-lg border min-h-[10rem] flex flex-col',
-                today ? 'border-blue-500/40 bg-blue-500/5' : 'border-dark-border bg-dark-card',
+                today ? 'border-accent-primary/30 bg-accent-primary/5' : 'border-dark-border bg-dark-card',
               )}
             >
-              <div className={clsx('px-3 py-2 border-b border-dark-border', today && 'bg-blue-500/10')}>
+              <div className={clsx('px-3 py-2 border-b border-dark-border', today && 'bg-accent-primary/8')}>
                 <p className="text-2xs uppercase tracking-wider text-text-muted">{WEEKDAYS[i]}</p>
-                <p className={clsx('text-sm font-medium tabular-nums', today ? 'text-blue-300' : 'text-text-primary')}>
+                <p className={clsx('text-sm font-medium tabular-nums', today ? 'text-accent-primary' : 'text-text-primary')}>
                   {format(day, 'MMM d')}
                 </p>
               </div>
@@ -201,7 +201,7 @@ export function TaskWeekViewSkeleton() {
   return (
     <div className="grid grid-cols-7 gap-3">
       {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} className="h-48 rounded-lg bg-dark-muted/30 animate-pulse border border-dark-border" />
+        <div key={i} className="h-48 rounded-lg bg-surface-subtle animate-pulse border border-dark-border" />
       ))}
     </div>
   );

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { TaskDrawerProvider, useTaskDrawer } from './contexts/TaskDrawerContext';
 import { UserDrawerProvider, useUserDrawer } from './contexts/UserDrawerContext';
 import { AppLayout } from './components/layout/AppLayout';
@@ -36,7 +37,7 @@ const queryClient = new QueryClient({
 function PageLoader() {
   return (
     <div className="flex items-center justify-center py-16">
-      <div className="animate-spin h-7 w-7 border-2 border-zinc-600 border-t-zinc-200 rounded-full" />
+      <div className="animate-spin h-7 w-7 border-2 border-dark-border border-t-text-primary rounded-full" />
     </div>
   );
 }
@@ -58,9 +59,9 @@ function ProtectedLayout() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-[#191919] gap-3">
-        <div className="animate-spin h-8 w-8 border-2 border-zinc-600 border-t-zinc-200 rounded-full" />
-        <p className="text-sm text-zinc-400">Loading workspace…</p>
+      <div className="flex flex-col items-center justify-center h-screen bg-dark-bg gap-3">
+        <div className="animate-spin h-8 w-8 border-2 border-dark-border border-t-text-primary rounded-full" />
+        <p className="text-sm text-text-secondary">Loading workspace…</p>
       </div>
     );
   }
@@ -83,6 +84,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
         <AuthProvider>
           <TaskDrawerProvider>
             <UserDrawerProvider>
@@ -150,6 +152,7 @@ export default function App() {
             </UserDrawerProvider>
           </TaskDrawerProvider>
         </AuthProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

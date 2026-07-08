@@ -301,8 +301,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
               <span
                 key={u.id}
                 className={clsx(
-                  'chip inline-flex items-center gap-1.5 pl-1 pr-1.5 py-1',
-                  'bg-blue-500/10 text-blue-200 border border-blue-500/25',
+                  'chip badge-todo inline-flex items-center gap-1.5 pl-1 pr-1.5 py-1 border border-dark-border',
                 )}
               >
                 <Avatar name={name} size="sm" />
@@ -310,7 +309,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
                 <button
                   type="button"
                   onClick={() => removeAssignee(u.id)}
-                  className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-white/10 transition-colors"
+                  className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
                   aria-label={`Remove ${name}`}
                 >
                   <X className="h-3.5 w-3.5" />

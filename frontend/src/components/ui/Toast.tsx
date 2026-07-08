@@ -33,17 +33,17 @@ export function ToastContainer() {
   }, []);
 
   const colors = {
-    success: 'bg-dark-card border-emerald-500/30 text-emerald-300',
-    error: 'bg-dark-card border-red-500/30 text-red-300',
-    info: 'bg-dark-card border-dark-border text-text-primary',
+    success: 'dropdown-panel border-accent-success/30 badge-approved',
+    error: 'dropdown-panel border-accent-danger/30 badge-blocked',
+    info: 'dropdown-panel border-dark-border text-text-primary',
   };
 
   return (
     <div className="fixed bottom-4 right-4 z-[100] space-y-2">
       {items.map((t) => (
-        <div key={t.id} className={clsx('flex items-center gap-3 rounded-md border px-4 py-3 shadow-lg min-w-[280px] text-sm transition-all duration-status', colors[t.type])}>
+        <div key={t.id} className={clsx('flex items-center gap-3 rounded-xl border px-4 py-3 min-w-[280px] text-sm transition-all duration-status', colors[t.type])}>
           <span className="flex-1">{t.message}</span>
-          <button onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}>
+          <button onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))} className="text-text-muted hover:text-text-primary">
             <X className="h-4 w-4 opacity-60" />
           </button>
         </div>

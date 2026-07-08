@@ -104,7 +104,7 @@ export function TaskToolbar({
     <div className="space-y-3 mb-4">
       {/* Bulk action bar */}
       {selectedCount > 0 && (
-        <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-white/[0.04] border border-dark-border animate-in fade-in duration-status">
+        <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-surface-subtle border border-dark-border animate-in fade-in duration-status">
           <span className="text-sm text-text-secondary">{selectedCount} selected</span>
           <select
             className="input py-1 text-xs w-auto"
@@ -128,7 +128,7 @@ export function TaskToolbar({
           <div className="relative flex-1 min-w-0 sm:max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
             <input
-              className="input pl-8 py-1.5 text-sm bg-dark-bg w-full h-9"
+              className="input pl-8 py-1.5 text-sm w-full h-9"
               placeholder="Search tasks..."
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
@@ -162,10 +162,10 @@ export function TaskToolbar({
             >
               <Filter className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Filter</span>
-              {activeFilters > 0 && <span className="text-2xs bg-white/10 px-1 rounded">{activeFilters}</span>}
+              {activeFilters > 0 && <span className="text-2xs bg-surface-active px-1 rounded">{activeFilters}</span>}
             </button>
             {showFilter && (
-              <div className="absolute top-full left-0 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-md border border-dark-border bg-dark-card p-3 z-30 shadow-lg">
+              <div className="absolute top-full left-0 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-3 z-30">
                 <label className="text-2xs text-text-muted uppercase tracking-wider mb-1 block">Status</label>
                 <select className="input py-1 text-sm mb-3" value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)}>
                   <option value="">All</option>
@@ -207,7 +207,7 @@ export function TaskToolbar({
               <span className="hidden sm:inline">Sort</span>
             </button>
             {showSort && (
-              <div className="absolute top-full left-0 mt-1 w-48 max-w-[calc(100vw-2rem)] rounded-md border border-dark-border bg-dark-card p-2 z-30 shadow-lg">
+              <div className="absolute top-full left-0 mt-1 w-48 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
                 {[
                   { v: 'updated_at', l: 'Last updated' },
                   { v: 'title', l: 'Name' },
@@ -244,7 +244,7 @@ export function TaskToolbar({
               {groupBy !== 'none' && <span className="text-2xs hidden sm:inline">· {groupBy}</span>}
             </button>
             {showGroup && (
-              <div className="absolute top-full left-0 mt-1 w-40 max-w-[calc(100vw-2rem)] rounded-md border border-dark-border bg-dark-card p-2 z-30 shadow-lg">
+              <div className="absolute top-full left-0 mt-1 w-40 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
                 {(['none', 'status', 'priority', 'project'] as GroupBy[]).map((g) => (
                   <button
                     key={g}
@@ -270,7 +270,7 @@ export function TaskToolbar({
                 <span className="hidden sm:inline">Columns</span>
               </button>
               {showColumns && (
-                <div className="absolute top-full left-0 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-md border border-dark-border bg-dark-card p-2 z-30 shadow-lg">
+                <div className="absolute top-full left-0 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
                   {visibleColumns.filter((c) => c.id !== 'indicators').map((col) => (
                     <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-dark-hover rounded cursor-pointer">
                       <input
@@ -290,7 +290,7 @@ export function TaskToolbar({
 
           {/* View selector — always visible on the right */}
           {showViewSelector && (
-            <div className="flex items-center rounded-md border border-dark-border p-0.5 shrink-0 ml-auto">
+            <div className="flex items-center rounded-lg border border-dark-border bg-dark-card p-0.5 shrink-0 ml-auto">
               <button
                 onClick={() => { onViewModeChange('table'); closeMenus(); }}
                 className={clsx('px-2 py-1 rounded text-2xs transition-all duration-hover', viewMode === 'table' ? 'bg-dark-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
@@ -336,7 +336,7 @@ export function SavedFiltersBar({ filters, onApply }: { filters: { id: number; n
         <button
           key={f.id}
           onClick={() => onApply(f.filter_json)}
-          className="chip bg-white/5 text-text-secondary hover:bg-dark-hover hover:text-text-primary transition-colors duration-hover"
+          className="chip bg-surface-muted text-text-secondary hover:bg-dark-hover hover:text-text-primary transition-colors duration-hover"
         >
           {f.name}
         </button>

@@ -90,7 +90,7 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/70" onClick={onClose} />
+      <div className="fixed inset-0 bg-[var(--overlay-backdrop)]" onClick={onClose} />
       <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg bg-dark-card border border-dark-border shadow-2xl">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-dark-border shrink-0">
           <div className="min-w-0">

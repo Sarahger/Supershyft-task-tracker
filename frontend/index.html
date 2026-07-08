@@ -8,6 +8,22 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>Work Manager</title>
+    <script>
+      (function () {
+        var pref = localStorage.getItem('theme-preference');
+        if (!pref) {
+          var legacy = localStorage.getItem('theme');
+          if (legacy === 'light' || legacy === 'dark') pref = legacy;
+        }
+        if (pref !== 'light' && pref !== 'dark' && pref !== 'system') pref = 'dark';
+        var resolved = pref === 'system'
+          ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : pref;
+        document.documentElement.classList.add(resolved);
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

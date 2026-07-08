@@ -25,17 +25,17 @@ export function TaskCard({ task, onClick, compact }: TaskCardProps) {
             <StatusBadge status={task.status} />
             <PriorityBadge priority={task.priority} />
             {task.is_blocked && (
-              <span className="chip bg-red-500/15 text-red-400 flex items-center gap-1">
+              <span className="chip badge-blocked flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> Blocked
               </span>
             )}
             {task.review_required && task.status === 'in_review' && (
-              <span className="chip bg-purple-500/15 text-purple-300 flex items-center gap-1">
+              <span className="chip badge-review flex items-center gap-1">
                 <Eye className="h-3 w-3" /> Review
               </span>
             )}
             {task.testing_required && (
-              <span className="chip bg-cyan-500/15 text-cyan-300 flex items-center gap-1">
+              <span className="chip badge-testing flex items-center gap-1">
                 <FlaskConical className="h-3 w-3" /> Testing
               </span>
             )}
@@ -63,7 +63,7 @@ export function TaskCard({ task, onClick, compact }: TaskCardProps) {
               <span className="flex items-center gap-1"><Paperclip className="h-3.5 w-3.5" />{task.attachment_count}</span>
             ) : null}
             {task.due_date && (
-              <span className={isOverdue ? 'text-red-400 font-medium' : ''}>
+              <span className={isOverdue ? 'priority-critical font-medium' : ''}>
                 {format(new Date(task.due_date), 'MMM d')}
               </span>
             )}

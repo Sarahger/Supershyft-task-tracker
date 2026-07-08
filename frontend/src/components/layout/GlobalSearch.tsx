@@ -50,8 +50,8 @@ export function GlobalSearch() {
       </button>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]">
-          <div className="fixed inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
-          <div className="relative w-full max-w-md rounded-lg bg-dark-card border border-dark-border overflow-hidden shadow-lg">
+          <div className="fixed inset-0 bg-[var(--overlay-backdrop)]" onClick={() => setIsOpen(false)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-dark-card overflow-hidden dropdown-panel">
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-dark-border">
               <Search className="h-4 w-4 text-text-muted shrink-0" />
               <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tasks, projects, people..." className="flex-1 text-sm text-text-primary outline-none placeholder:text-text-muted bg-transparent" />
