@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { Download, X } from 'lucide-react';
 import api from '../../services/api';
 import { tasksApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
 import type { TaskAttachment } from '../../types';
+
+const PdfViewer = lazy(() => import('./PdfViewer').then((m) => ({ default: m.PdfViewer })));
 
 interface AttachmentPreviewModalProps {
   attachment: TaskAttachment | null;
@@ -29,6 +31,7 @@ export function canPreviewInApp(mime?: string) {
 
 export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPreviewModalProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -36,6 +39,7 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
   useEffect(() => {
     if (!attachment) {
       setPreviewUrl(null);
+      setPdfData(null);
       setTextContent(null);
       setError(false);
       return;
@@ -48,6 +52,7 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
       setLoading(true);
       setError(false);
       setPreviewUrl(null);
+      setPdfData(null);
       setTextContent(null);
 
       try {
@@ -59,7 +64,9 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
 
         if (isTextMime(mime)) {
           setTextContent(await blob.text());
-        } else if (canPreviewInApp(mime)) {
+        } else if (isPdfMime(mime)) {
+          setPdfData(await blob.arrayBuffer());
+        } else if (isImageMime(mime)) {
           objectUrl = URL.createObjectURL(blob);
           setPreviewUrl(objectUrl);
         }
@@ -89,9 +96,9 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
   if (!attachment) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4">
       <div className="fixed inset-0 bg-[var(--overlay-backdrop)]" onClick={onClose} />
-      <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg bg-dark-card border border-dark-border shadow-2xl">
+      <div className="relative w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] flex flex-col sm:rounded-lg bg-dark-card border-0 sm:border border-dark-border shadow-2xl">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-dark-border shrink-0">
           <div className="min-w-0">
             <h2 className="text-base font-semibold text-text-primary truncate">{attachment.filename}</h2>
@@ -120,7 +127,7 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-5 min-h-[240px]">
+        <div className="flex-1 overflow-auto p-4 sm:p-5 min-h-0">
           {loading && (
             <div className="space-y-3">
               <Skeleton className="h-8 w-1/3" />
@@ -142,12 +149,10 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
             </div>
           )}
 
-          {!loading && !error && previewUrl && isPdfMime(attachment.mime_type) && (
-            <iframe
-              src={previewUrl}
-              title={attachment.filename}
-              className="w-full h-[70vh] rounded-lg border border-dark-border bg-white"
-            />
+          {!loading && !error && pdfData && isPdfMime(attachment.mime_type) && (
+            <Suspense fallback={<Skeleton className="h-[60vh] w-full" />}>
+              <PdfViewer data={pdfData} />
+            </Suspense>
           )}
 
           {!loading && !error && textContent !== null && (
@@ -156,7 +161,7 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
             </pre>
           )}
 
-          {!loading && !error && !previewUrl && textContent === null && (
+          {!loading && !error && !previewUrl && !pdfData && textContent === null && (
             <div className="text-center py-12">
               <p className="text-sm text-text-muted mb-4">No in-app preview for this file type.</p>
               <Button

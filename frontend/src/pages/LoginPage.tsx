@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { AppLogo } from '../components/layout/AppLogo';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { toast } from '../components/ui/Toast';
@@ -32,7 +33,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-dark-bg px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <h1 className="text-xl font-semibold text-text-primary">WorkManager</h1>
+          <div className="flex justify-center mb-4">
+            <AppLogo size="lg" showName={false} />
+          </div>
+          <h1 className="text-xl font-semibold text-text-primary">SuperShyft</h1>
           <p className="text-sm text-text-muted mt-1.5">Sign in to your workspace</p>
         </div>
         <div className="bg-dark-card rounded-lg border border-dark-border p-8">

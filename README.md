@@ -26,8 +26,8 @@ Built for startup teams (~15–100 employees) with full review workflows, depend
 cd backend
 python -m venv venv
 venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env   # edit .env locally — never commit it
+# pip install -r requirements.txt
+# copy .env.example .env   # edit .env locally — never commit it
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -35,7 +35,7 @@ uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
+# npm install
 copy .env.example .env   # optional for local dev; Vite proxies /api by default
 npm run dev
 ```

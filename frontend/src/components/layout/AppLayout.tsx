@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
+import { AppLogo } from './AppLogo';
 import { Avatar } from '../ui/Avatar';
 import { GlobalSearch } from './GlobalSearch';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -87,10 +88,7 @@ export function AppLayout() {
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
         <div className="flex items-center h-12 px-4 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="h-5 w-5 rounded bg-surface-highlight flex items-center justify-center text-2xs font-semibold text-text-primary shrink-0">W</span>
-            <span className="text-sm font-semibold text-text-primary truncate">Work OS</span>
-          </div>
+          <AppLogo size="sm" className="min-w-0 flex-1" />
           <button onClick={() => setSidebarOpen(false)} className="ml-auto lg:hidden p-1 text-text-muted">
             <X className="h-4 w-4" />
           </button>
@@ -138,10 +136,7 @@ export function AppLayout() {
           </button>
 
           {/* Mobile logo */}
-          <div className="md:hidden flex items-center gap-2 min-w-0">
-            <span className="h-6 w-6 rounded bg-surface-highlight flex items-center justify-center text-2xs font-semibold text-text-primary shrink-0">W</span>
-            <span className="text-sm font-semibold text-text-primary truncate">Work OS</span>
-          </div>
+          <AppLogo size="md" className="md:hidden" />
 
           {/* Global search — desktop + tablet only */}
           <div className="max-md:hidden flex-1 min-w-0">
