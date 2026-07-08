@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { Plus, Trash2, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
@@ -217,6 +218,7 @@ const APPLIES_TO = [
 ];
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { preference, setPreference } = useTheme();
   const qc = useQueryClient();
@@ -264,7 +266,11 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto pb-12 space-y-6">
-      <PageHeader title="Settings" subtitle="Profile and workspace configuration" />
+      <PageHeader
+        title="Settings"
+        subtitle="Profile and workspace configuration"
+        onMobileBack={() => navigate(-1)}
+      />
 
       <div className="card p-6">
         <h2 className="text-sm font-medium text-text-primary mb-4">Profile</h2>

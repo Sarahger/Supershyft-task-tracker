@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut, User, Sun, Moon, Monitor } from 'lucide-react';
+import { Settings, LogOut, Sun, Moon, Monitor } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme, type ThemePreference } from '../../contexts/ThemeContext';
@@ -49,14 +49,6 @@ export function MobileProfileSheet({ isOpen, onClose }: MobileProfileSheetProps)
       )}
 
       <div className="space-y-1">
-        <button
-          type="button"
-          onClick={() => go('/settings')}
-          className="mobile-menu-item w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left text-text-primary hover:bg-dark-hover transition-colors min-h-[48px]"
-        >
-          <User className="h-5 w-5 text-text-muted shrink-0" />
-          <span className="text-sm font-medium">Profile</span>
-        </button>
         <button
           type="button"
           onClick={() => go('/settings')}
