@@ -12,6 +12,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { canAccessManagerFeatures } from '../lib/roles';
 import { USER_STATUSES, USER_STATUS_LABELS } from '../types';
 import type { User } from '../types';
 
@@ -80,8 +81,7 @@ export default function UsersPage() {
   const { openUser } = useUserDrawer();
   const queryClient = useQueryClient();
   const isAdmin = currentUser?.role === 'administrator';
-  const canManageStatus =
-    currentUser?.role === 'administrator' || currentUser?.role === 'manager';
+  const canManageStatus = canAccessManagerFeatures(currentUser);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);

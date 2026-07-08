@@ -4,6 +4,7 @@ import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-
 import { tasksApi, miscApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
 import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField } from './TaskDatabase';
 import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
 import { MobileTaskToolbar } from './MobileTaskToolbar';
@@ -67,6 +68,7 @@ export function TasksWorkspace({
   const { openTask, openCreate } = useTaskDrawer();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
+  const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -76,13 +78,23 @@ export function TasksWorkspace({
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [groupBy, setGroupBy] = useState<GroupBy>(() => (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'project' : 'none'));
-  const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => normalizeView(defaultView));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [calendarWeek, setCalendarWeek] = useState(() => new Date());
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const { columns, toggleColumn, setColumns } = useColumnVisibility();
+
+  useEffect(() => {
+    setViewMode((current) => normalizeView(current));
+  }, [normalizeView]);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(normalizeView(mode));
+  };
+
+  const showViews = showViewSelector && hasOptionalViews;
 
   const calendarWindow = useMemo(() => {
     const monthStart = startOfMonth(calendarMonth);
@@ -351,8 +363,8 @@ export function TasksWorkspace({
           groupBy={groupBy}
           onGroupByChange={setGroupBy}
           viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          showViewSelector={showViewSelector}
+          onViewModeChange={handleViewModeChange}
+          showViewSelector={showViews}
           quickFilter={quickFilter}
           onQuickFilterChange={(v) => { setQuickFilter(v as QuickFilter); setPage(1); }}
           quickFilterOptions={quickFilterOptions}
@@ -378,7 +390,7 @@ export function TasksWorkspace({
         groupBy={groupBy}
         onGroupByChange={setGroupBy}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={handleViewModeChange}
         onNewTask={openCreate}
         totalCount={data?.total}
         visibleColumns={columns}
@@ -386,7 +398,7 @@ export function TasksWorkspace({
         selectedCount={selectedIds.size}
         onBulkStatusChange={(status) => bulkMutation.mutate({ ids: Array.from(selectedIds), status })}
         onClearSelection={() => setSelectedIds(new Set())}
-        showViewSelector={showViewSelector}
+        showViewSelector={showViews}
       />
       </div>
 

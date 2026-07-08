@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Plus, Trash2, Sun, Moon, Monitor } from 'lucide-react';
+import { Plus, Trash2, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTaskViewPreferences } from '../contexts/TaskViewPreferencesContext';
+import { OPTIONAL_TASK_VIEWS } from '../lib/taskViewPreferences';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
@@ -139,6 +141,67 @@ function NotificationSettingsSection() {
   );
 }
 
+const OPTIONAL_VIEW_ICONS = {
+  kanban: Columns3,
+  calendar: CalendarDays,
+  weekly: CalendarRange,
+} as const;
+
+function TaskViewsSettingsSection() {
+  const { isViewEnabled, toggleView } = useTaskViewPreferences();
+
+  return (
+    <>
+      <h2 className="text-sm font-medium text-text-primary mb-1">Task views</h2>
+      <p className="text-sm text-text-secondary mb-4">
+        Choose which views appear on the Tasks screen. List is always available.
+      </p>
+      <div className="space-y-0 divide-y divide-dark-border border border-dark-border rounded-lg overflow-hidden">
+        <label className="flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle opacity-70 cursor-default">
+          <div className="flex items-start gap-3">
+            <LayoutList className="h-4 w-4 text-text-muted mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm text-text-primary">List</p>
+              <p className="text-xs text-text-muted mt-0.5">Table view with sortable columns</p>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            checked
+            disabled
+            readOnly
+            className="mt-1 rounded border-dark-border"
+            aria-label="List view always enabled"
+          />
+        </label>
+        {OPTIONAL_TASK_VIEWS.map((view) => {
+          const Icon = OPTIONAL_VIEW_ICONS[view.id];
+          return (
+            <label
+              key={view.id}
+              className="flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle cursor-pointer hover:bg-dark-hover"
+            >
+              <div className="flex items-start gap-3">
+                <Icon className="h-4 w-4 text-text-muted mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm text-text-primary">{view.label}</p>
+                  <p className="text-xs text-text-muted mt-0.5">{view.description}</p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={isViewEnabled(view.id)}
+                onChange={() => toggleView(view.id)}
+                className="mt-1 rounded border-dark-border"
+              />
+            </label>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
   { value: 'number', label: 'Number' },
@@ -253,6 +316,10 @@ export default function SettingsPage() {
             );
           })}
         </div>
+      </div>
+
+      <div className="card p-6">
+        <TaskViewsSettingsSection />
       </div>
 
       {isAdmin && (

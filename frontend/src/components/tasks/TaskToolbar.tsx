@@ -5,11 +5,19 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { STATUS_LABELS } from '../../types';
+import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
 import type { ColumnId } from './TaskDatabase';
 import { Button } from '../ui/Button';
 
 export type ViewMode = 'table' | 'kanban' | 'calendar' | 'weekly';
 export type GroupBy = 'none' | 'status' | 'priority' | 'project';
+
+const VIEW_BUTTONS: { mode: ViewMode; icon: typeof LayoutList; title: string }[] = [
+  { mode: 'table', icon: LayoutList, title: 'List' },
+  { mode: 'kanban', icon: Columns3, title: 'Board' },
+  { mode: 'calendar', icon: CalendarDays, title: 'Calendar' },
+  { mode: 'weekly', icon: CalendarRange, title: 'Week' },
+];
 
 interface AssigneeOption {
   id: number;
@@ -72,6 +80,7 @@ export function TaskToolbar({
   onClearSelection,
   showViewSelector = true,
 }: TaskToolbarProps) {
+  const { enabledViewModes } = useTaskViewPreferences();
   const [showFilter, setShowFilter] = useState(false);
   const [showSort, setShowSort] = useState(false);
   const [showGroup, setShowGroup] = useState(false);
@@ -291,34 +300,16 @@ export function TaskToolbar({
           {/* View selector — always visible on the right */}
           {showViewSelector && (
             <div className="flex items-center rounded-lg border border-dark-border bg-dark-card p-0.5 shrink-0 ml-auto">
-              <button
-                onClick={() => { onViewModeChange('table'); closeMenus(); }}
-                className={clsx('px-2 py-1 rounded text-2xs transition-all duration-hover', viewMode === 'table' ? 'bg-dark-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
-                title="Table"
-              >
-                <LayoutList className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => { onViewModeChange('kanban'); closeMenus(); }}
-                className={clsx('px-2 py-1 rounded text-2xs transition-all duration-hover', viewMode === 'kanban' ? 'bg-dark-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
-                title="Kanban board"
-              >
-                <Columns3 className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => { onViewModeChange('calendar'); closeMenus(); }}
-                className={clsx('px-2 py-1 rounded text-2xs transition-all duration-hover', viewMode === 'calendar' ? 'bg-dark-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
-                title="Calendar"
-              >
-                <CalendarDays className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => { onViewModeChange('weekly'); closeMenus(); }}
-                className={clsx('px-2 py-1 rounded text-2xs transition-all duration-hover', viewMode === 'weekly' ? 'bg-dark-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
-                title="Weekly"
-              >
-                <CalendarRange className="h-3.5 w-3.5" />
-              </button>
+              {VIEW_BUTTONS.filter((btn) => enabledViewModes.includes(btn.mode)).map((btn) => (
+                <button
+                  key={btn.mode}
+                  onClick={() => { onViewModeChange(btn.mode); closeMenus(); }}
+                  className={clsx('px-2 py-1 rounded text-2xs transition-all duration-hover', viewMode === btn.mode ? 'bg-dark-hover text-text-primary' : 'text-text-muted hover:text-text-secondary')}
+                  title={btn.title}
+                >
+                  <btn.icon className="h-3.5 w-3.5" />
+                </button>
+              ))}
             </div>
           )}
         </div>

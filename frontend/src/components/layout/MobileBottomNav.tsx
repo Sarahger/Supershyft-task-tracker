@@ -2,6 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { LayoutList, CheckSquare, FolderKanban, BarChart3, Users } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
+import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
 import type { User } from '../../types';
 
 const items: {
@@ -14,8 +15,8 @@ const items: {
   { to: '/', icon: LayoutList, label: 'All tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My tasks', end: true },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
-  { to: '/reports', icon: BarChart3, label: 'Reports' },
-  { to: '/users', icon: Users, label: 'Users', roles: ['administrator', 'manager'] },
+  { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },
+  { to: '/users', icon: Users, label: 'Users', roles: MANAGER_ACCESS_ROLES },
 ];
 
 function NavItem({ to, icon: Icon, label, end }: { to: string; icon: typeof LayoutList; label: string; end?: boolean }) {

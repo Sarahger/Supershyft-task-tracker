@@ -3,9 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { TaskViewPreferencesProvider } from './contexts/TaskViewPreferencesContext';
 import { TaskDrawerProvider, useTaskDrawer } from './contexts/TaskDrawerContext';
 import { UserDrawerProvider, useUserDrawer } from './contexts/UserDrawerContext';
 import { AppLayout } from './components/layout/AppLayout';
+import { RequireManager } from './components/auth/RequireManager';
+import { canAccessManagerFeatures } from './lib/roles';
 import { TaskDrawer } from './components/tasks/TaskDrawer';
 import { UserDrawer } from './components/users/UserDrawer';
 import { CreateTaskModal } from './components/tasks/CreateTaskModal';
@@ -40,6 +43,11 @@ function PageLoader() {
       <div className="animate-spin h-7 w-7 border-2 border-dark-border border-t-text-primary rounded-full" />
     </div>
   );
+}
+
+function DashboardRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={canAccessManagerFeatures(user) ? '/reports' : '/'} replace />;
 }
 
 function ProtectedLayout() {
@@ -85,6 +93,7 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
+        <TaskViewPreferencesProvider>
         <AuthProvider>
           <TaskDrawerProvider>
             <UserDrawerProvider>
@@ -103,7 +112,7 @@ export default function App() {
                   />
                   <Route path="tasks" element={<Navigate to="/" replace />} />
                   <Route path="kanban" element={<Navigate to="/" replace />} />
-                  <Route path="dashboard" element={<Navigate to="/reports" replace />} />
+                  <Route path="dashboard" element={<DashboardRedirect />} />
                   <Route
                     path="projects"
                     element={
@@ -123,17 +132,21 @@ export default function App() {
                   <Route
                     path="users"
                     element={
-                      <Suspense fallback={<PageLoader />}>
-                        <UsersPage />
-                      </Suspense>
+                      <RequireManager>
+                        <Suspense fallback={<PageLoader />}>
+                          <UsersPage />
+                        </Suspense>
+                      </RequireManager>
                     }
                   />
                   <Route
                     path="reports"
                     element={
-                      <Suspense fallback={<PageLoader />}>
-                        <ReportsPage />
-                      </Suspense>
+                      <RequireManager>
+                        <Suspense fallback={<PageLoader />}>
+                          <ReportsPage />
+                        </Suspense>
+                      </RequireManager>
                     }
                   />
                   <Route
@@ -152,6 +165,7 @@ export default function App() {
             </UserDrawerProvider>
           </TaskDrawerProvider>
         </AuthProvider>
+        </TaskViewPreferencesProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>

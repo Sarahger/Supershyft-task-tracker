@@ -14,6 +14,7 @@ import { ThemeToggle } from '../ui/ThemeToggle';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileProfileSheet } from './MobileProfileSheet';
 import { notificationsApi } from '../../services/endpoints';
+import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
 import type { Notification, User } from '../../types';
 
 const navItems: {
@@ -26,8 +27,8 @@ const navItems: {
   { to: '/', icon: LayoutList, label: 'Tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My Tasks' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
-  { to: '/reports', icon: BarChart3, label: 'Reports' },
-  { to: '/users', icon: Users, label: 'Users', roles: ['administrator', 'manager'] },
+  { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },
+  { to: '/users', icon: Users, label: 'Users', roles: MANAGER_ACCESS_ROLES },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

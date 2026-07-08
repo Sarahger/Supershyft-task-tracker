@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { STATUS_LABELS } from '../../types';
+import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
 import { BottomSheet } from '../ui/BottomSheet';
 import type { GroupBy, ViewMode } from './TaskToolbar';
 
@@ -76,6 +77,8 @@ export function MobileTaskToolbar({
   onQuickFilterChange,
   quickFilterOptions,
 }: MobileTaskToolbarProps) {
+  const { enabledViewModes } = useTaskViewPreferences();
+  const visibleViewOptions = viewOptions.filter((opt) => enabledViewModes.includes(opt.v));
   const [sheetOpen, setSheetOpen] = useState(false);
   const activeFilters = [statusFilter, priorityFilter, assigneeFilter].filter(Boolean).length;
 
@@ -135,14 +138,19 @@ export function MobileTaskToolbar({
 
       <BottomSheet isOpen={sheetOpen} onClose={() => setSheetOpen(false)} title="Filter & sort">
         {/* View */}
-        {showViewSelector && (
+        {showViewSelector && visibleViewOptions.length > 1 && (
           <section className="mb-5">
             <div className="flex items-center gap-2 mb-2">
               <LayoutList className="h-4 w-4 text-text-muted" />
               <h3 className="text-xs font-medium uppercase tracking-wider text-text-muted">View</h3>
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              {viewOptions.map((opt) => (
+            <div className={clsx(
+              'grid gap-2',
+              visibleViewOptions.length === 2 && 'grid-cols-2',
+              visibleViewOptions.length === 3 && 'grid-cols-3',
+              visibleViewOptions.length >= 4 && 'grid-cols-4',
+            )}>
+              {visibleViewOptions.map((opt) => (
                 <button
                   key={opt.v}
                   type="button"

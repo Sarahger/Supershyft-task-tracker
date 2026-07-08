@@ -14,6 +14,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Avatar } from '../components/ui/Avatar';
 import { toast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { canAccessManagerFeatures } from '../lib/roles';
 import { useTheme } from '../contexts/ThemeContext';
 import { getChartTheme } from '../lib/chartTheme';
 import { STATUS_LABELS, PRIORITY_LABELS, HEALTH_LABELS } from '../types';
@@ -170,7 +171,7 @@ export default function ReportsPage() {
   const { user } = useAuth();
   const { theme } = useTheme();
   const chartTheme = getChartTheme(theme);
-  const isManager = user?.role === 'administrator' || user?.role === 'manager';
+  const isManager = canAccessManagerFeatures(user);
   const [departmentFilter, setDepartmentFilter] = useState('');
 
   const reportFilters = useMemo(

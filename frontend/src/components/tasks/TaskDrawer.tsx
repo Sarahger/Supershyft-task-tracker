@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CheckCircle2, Circle, Send, GitBranch, FlaskConical, Eye, Paperclip, Upload, RotateCcw, Ban, Unlock, Plus, Download, X } from 'lucide-react';
+import { CheckCircle2, Circle, Send, GitBranch, FlaskConical, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X } from 'lucide-react';
 import { Drawer, DrawerSection } from '../ui/Modal';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
@@ -35,8 +35,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const [dependencyPersonPick, setDependencyPersonPick] = useState('');
   const [dependencyPick, setDependencyPick] = useState('');
   const [reviewComments, setReviewComments] = useState('');
-  const [blockReason, setBlockReason] = useState('');
-  const [showBlockForm, setShowBlockForm] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<TaskAttachment | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
@@ -70,7 +68,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const { data: activity } = useQuery({
     queryKey: ['task-activity', taskId],
     queryFn: () => tasksApi.getActivity(taskId!).then((r) => r.data.data),
-    enabled: !!taskId,
+    enabled: !!taskId && (task?.current_version ?? 1) > 1,
     staleTime: 60_000,
   });
 
@@ -154,16 +152,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     onError: () => toast.error('Failed to remove dependency'),
   });
 
-  const blockMutation = useMutation({
-    mutationFn: (reason: string) => tasksApi.block(taskId!, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['task', taskId] });
-      setShowBlockForm(false);
-      setBlockReason('');
-      toast.success('Task blocked');
-    },
-  });
-
   const unblockMutation = useMutation({
     mutationFn: () => tasksApi.unblock(taskId!),
     onSuccess: () => {
@@ -245,42 +233,18 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <RotateCcw className="h-3.5 w-3.5" /> Reopen
                 </Button>
               )}
-              {task.status === 'blocked' ? (
+              {task.status === 'blocked' && (
                 <Button variant="secondary" size="sm" onClick={() => unblockMutation.mutate()} className="gap-1.5">
                   <Unlock className="h-3.5 w-3.5" /> Unblock
                 </Button>
-              ) : !['completed', 'cancelled'].includes(task.status) && (
-                <Button variant="secondary" size="sm" onClick={() => setShowBlockForm(!showBlockForm)} className="gap-1.5">
-                  <Ban className="h-3.5 w-3.5" /> Block
-                </Button>
               )}
             </div>
-            {showBlockForm && (
-              <div className="mt-3 flex gap-2">
-                <Textarea
-                  value={blockReason}
-                  onChange={(e) => setBlockReason(e.target.value)}
-                  placeholder="Why is this blocked?"
-                  rows={2}
-                  className="flex-1 text-sm"
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() => blockMutation.mutate(blockReason)}
-                  disabled={!blockReason.trim()}
-                  className="self-end"
-                >
-                  Confirm
-                </Button>
-              </div>
-            )}
           </div>
 
           <TaskPropertiesEditor task={task} taskId={task.id} />
 
           {task.assignees?.length > 0 && (
-            <div className="py-5 border-b border-dark-border">
-              <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-3">Assignee progress</p>
+            <DrawerSection title="Assignee progress" defaultOpen={false}>
               <div className="space-y-1.5">
                 {task.assignees.map((a) => (
                   <div key={a.id} className="flex items-center justify-between gap-2">
@@ -298,7 +262,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   </div>
                 ))}
               </div>
-            </div>
+            </DrawerSection>
           )}
 
           {task.block_reason && (
@@ -483,36 +447,38 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             </Button>
           </DrawerSection>
 
-          {/* Version History */}
-          <DrawerSection title={`Version History · v${task.current_version || 1}`} defaultOpen={false}>
-            <p className="text-sm text-text-secondary">
-              Current version: <span className="font-medium text-text-primary">{task.current_version || 1}</span>
-            </p>
-            <p className="text-2xs text-text-muted mt-1">Previous versions are preserved after review cycles.</p>
-          </DrawerSection>
+          {(task.current_version ?? 1) > 1 && (
+            <>
+              <DrawerSection title={`Version History · v${task.current_version}`} defaultOpen={false}>
+                <p className="text-sm text-text-secondary">
+                  Current version: <span className="font-medium text-text-primary">{task.current_version}</span>
+                </p>
+                <p className="text-2xs text-text-muted mt-1">Previous versions are preserved after review cycles.</p>
+              </DrawerSection>
 
-          {/* Activity */}
-          <DrawerSection title="Activity" defaultOpen={false}>
-            <div className="space-y-3">
-              {activity?.length ? activity.map((a: {
-                id: number; description: string; created_at: string;
-                user?: { first_name: string; last_name: string };
-              }) => (
-                <div key={a.id} className="flex gap-3 text-sm">
-                  <div className="w-1 h-1 rounded-full bg-text-muted mt-2 shrink-0" />
-                  <div>
-                    <p className="text-text-secondary">{a.description}</p>
-                    <p className="text-2xs text-text-muted mt-0.5">
-                      {a.user ? `${a.user.first_name} ${a.user.last_name} · ` : ''}
-                      {format(new Date(a.created_at), 'MMM d, h:mm a')}
-                    </p>
-                  </div>
+              <DrawerSection title="Activity" defaultOpen={false}>
+                <div className="space-y-3">
+                  {activity?.length ? activity.map((a: {
+                    id: number; description: string; created_at: string;
+                    user?: { first_name: string; last_name: string };
+                  }) => (
+                    <div key={a.id} className="flex gap-3 text-sm">
+                      <div className="w-1 h-1 rounded-full bg-text-muted mt-2 shrink-0" />
+                      <div>
+                        <p className="text-text-secondary">{a.description}</p>
+                        <p className="text-2xs text-text-muted mt-0.5">
+                          {a.user ? `${a.user.first_name} ${a.user.last_name} · ` : ''}
+                          {format(new Date(a.created_at), 'MMM d, h:mm a')}
+                        </p>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="text-sm text-text-muted">No activity yet</p>
+                  )}
                 </div>
-              )) : (
-                <p className="text-sm text-text-muted">No activity yet</p>
-              )}
-            </div>
-          </DrawerSection>
+              </DrawerSection>
+            </>
+          )}
 
           {/* Dependencies */}
           <DrawerSection

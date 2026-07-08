@@ -5,8 +5,10 @@ import clsx from 'clsx';
 import { tasksApi, projectsApi, usersApi, miscApi, customFieldsApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
+import { Modal } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
 import { toast } from '../ui/Toast';
+import { AssigneeMentionInput } from './AssigneeMentionInput';
 import { STATUS_LABELS } from '../../types';
 import type { Task } from '../../types';
 
@@ -60,6 +62,8 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
   const qc = useQueryClient();
   const [form, setForm] = useState<TaskFormState>(() => taskToForm(task));
   const [savedForm, setSavedForm] = useState<TaskFormState>(() => taskToForm(task));
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockReasonInput, setBlockReasonInput] = useState('');
 
   useEffect(() => {
     const next = taskToForm(task);
@@ -146,6 +150,30 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     onError: () => toast.error('Failed to save task'),
   });
 
+  const blockMutation = useMutation({
+    mutationFn: (reason: string) => tasksApi.block(taskId, reason),
+    onSuccess: () => {
+      const next = { ...form, status: 'blocked' };
+      setForm(next);
+      setSavedForm(next);
+      setShowBlockModal(false);
+      setBlockReasonInput('');
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      toast.success('Task blocked');
+    },
+    onError: () => toast.error('Failed to block task'),
+  });
+
+  const handleStatusChange = (nextStatus: string) => {
+    if (nextStatus === 'blocked' && savedForm.status !== 'blocked') {
+      setShowBlockModal(true);
+      return;
+    }
+    setForm({ ...form, status: nextStatus });
+  };
+
   const removeAssignee = (userId: number) => {
     setForm((prev) => ({
       ...prev,
@@ -220,7 +248,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         <Select
           label="Status"
           value={form.status}
-          onChange={(e) => setForm({ ...form, status: e.target.value })}
+          onChange={(e) => handleStatusChange(e.target.value)}
           options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
         />
         <Select
@@ -321,21 +349,51 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           )}
         </div>
         {availableAssignees.length > 0 && (
-          <select
-            value=""
-            onChange={(e) => addAssignee(Number(e.target.value))}
-            className="input mt-2 text-sm"
-            aria-label="Add assignee"
-          >
-            <option value="">Add assignee…</option>
-            {availableAssignees.map((u: UserOption) => (
-              <option key={u.id} value={u.id}>
-                {u.first_name} {u.last_name}
-              </option>
-            ))}
-          </select>
+          <AssigneeMentionInput
+            users={availableAssignees}
+            onSelect={addAssignee}
+            className="mt-2"
+          />
         )}
       </div>
+
+      <Modal
+        isOpen={showBlockModal}
+        onClose={() => {
+          setShowBlockModal(false);
+          setBlockReasonInput('');
+        }}
+        title="Block task"
+        size="sm"
+      >
+        <p className="text-sm text-text-secondary mb-3">Please provide a reason for blocking this task.</p>
+        <Textarea
+          value={blockReasonInput}
+          onChange={(e) => setBlockReasonInput(e.target.value)}
+          placeholder="Why is this blocked?"
+          rows={3}
+          className="text-sm mb-4"
+          autoFocus
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowBlockModal(false);
+              setBlockReasonInput('');
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => blockMutation.mutate(blockReasonInput.trim())}
+            disabled={!blockReasonInput.trim() || blockMutation.isPending}
+            loading={blockMutation.isPending}
+          >
+            Block task
+          </Button>
+        </div>
+      </Modal>
 
       <div className="flex flex-wrap gap-4 text-sm">
         <label className="flex items-center gap-2 cursor-pointer">
