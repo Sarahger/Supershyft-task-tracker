@@ -31,6 +31,7 @@ from app.schemas.task import (
     ChecklistCreate,
     ChecklistItemCreate,
     ChecklistItemUpdate,
+    DeleteTaskRequest,
     ReviewActionRequest,
     TaskAssigneeComplete,
     TaskCreate,
@@ -225,6 +226,20 @@ def reopen_task(task_id: int, db: Session = Depends(get_db), current_user: User 
         raise HTTPException(status_code=404, detail="Task not found")
     task = TaskService(db).reopen_task(task, current_user)
     return APIResponse(data=TaskService(db).task_to_detail_dict(task))
+
+
+@router.post("/tasks/{task_id}/delete")
+def delete_task(
+    task_id: int,
+    data: DeleteTaskRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = TaskRepository(db).get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    TaskService(db).delete_task(task, current_user, data.reason)
+    return APIResponse(message="Task deleted")
 
 
 @router.post("/tasks/{task_id}/dependencies/{depends_on_id}")

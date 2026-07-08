@@ -136,6 +136,7 @@ export interface Project {
   open_tasks_count: number;
   completed_tasks_count: number;
   overdue_tasks_count: number;
+  tasks_count: number;
   progress: number;
   created_at: string;
 }

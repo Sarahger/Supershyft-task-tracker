@@ -25,6 +25,7 @@ export const tasksApi = {
   review: (id: number, action: string, review_comments?: string) =>
     api.post<APIResponse<Task>>(`/tasks/${id}/review`, { action, review_comments }),
   reopen: (id: number) => api.post<APIResponse<Task>>(`/tasks/${id}/reopen`),
+  delete: (id: number, reason: string) => api.post<APIResponse<null>>(`/tasks/${id}/delete`, { reason }),
   getComments: (id: number) => api.get(`/tasks/${id}/comments`),
   addComment: (id: number, content: string, parent_id?: number) =>
     api.post(`/tasks/${id}/comments`, { content, parent_id }),
@@ -68,6 +69,7 @@ export const projectsApi = {
   get: (id: number) => api.get<APIResponse<Project>>(`/projects/${id}`),
   create: (data: Partial<Project>) => api.post<APIResponse<Project>>('/projects', data),
   update: (id: number, data: Partial<Project>) => api.put<APIResponse<Project>>(`/projects/${id}`, data),
+  remove: (id: number) => api.delete<APIResponse<null>>(`/projects/${id}`),
 };
 
 export const usersApi = {

@@ -1,26 +1,41 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isPast, isToday, isThisWeek } from 'date-fns';
 import { tasksApi } from '../services/endpoints';
 import { useTaskDrawer } from '../contexts/TaskDrawerContext';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
+import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
 import { EmptyState } from '../components/ui/Skeleton';
 import type { Task } from '../types';
 
-function TaskList({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (id: number) => void }) {
+function TaskList({
+  tasks,
+  onTaskClick,
+  onDeleteTask,
+}: {
+  tasks: Task[];
+  onTaskClick: (id: number) => void;
+  onDeleteTask: (task: Task) => void;
+}) {
   const isMobile = useIsMobile();
   if (isMobile) {
     return (
       <div className="space-y-2 md:hidden">
         {tasks.map((task) => (
-          <MobileTaskCard key={task.id} task={task} onClick={() => onTaskClick(task.id)} />
+          <MobileTaskCard
+            key={task.id}
+            task={task}
+            onClick={() => onTaskClick(task.id)}
+            onDelete={onDeleteTask}
+          />
         ))}
       </div>
     );
   }
-  return <TaskDatabase tasks={tasks} onTaskClick={onTaskClick} showProject />;
+  return <TaskDatabase tasks={tasks} onTaskClick={onTaskClick} onDeleteTask={onDeleteTask} showProject />;
 }
 
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
@@ -35,7 +50,17 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 }
 
 export default function MyTasksPage() {
-  const { openTask } = useTaskDrawer();
+  const { openTask, closeTask, selectedTaskId } = useTaskDrawer();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
+  const deleteMutation = useDeleteTaskMutation((taskId) => {
+    setDeleteTarget(null);
+    if (selectedTaskId === taskId) closeTask();
+  });
+
+  const requestDeleteTask = (task: Task) => {
+    setDeleteTarget({ id: task.id, title: task.title });
+  };
+
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => tasksApi.my().then((r) => r.data.data),
@@ -80,15 +105,25 @@ export default function MyTasksPage() {
         <EmptyState title="Nothing assigned yet" description="Tasks assigned to you will show up here." />
       ) : (
         <>
-          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} onTaskClick={openTask} /></Section>}
-          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} onTaskClick={openTask} /></Section>}
-          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} onTaskClick={openTask} /></Section>}
-          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} onTaskClick={openTask} /></Section>}
-          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} onTaskClick={openTask} /></Section>}
-          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} onTaskClick={openTask} /></Section>}
-          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} onTaskClick={openTask} /></Section>}
+          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
         </>
       )}
+
+      <DeleteTaskModal
+        isOpen={deleteTarget != null}
+        taskTitle={deleteTarget?.title}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={(reason) => {
+          if (deleteTarget) deleteMutation.mutate({ id: deleteTarget.id, reason });
+        }}
+        isPending={deleteMutation.isPending}
+      />
     </div>
   );
 }

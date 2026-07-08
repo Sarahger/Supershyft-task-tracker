@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CheckCircle2, Circle, Send, GitBranch, FlaskConical, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X } from 'lucide-react';
+import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2 } from 'lucide-react';
 import { Drawer, DrawerSection } from '../ui/Modal';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
@@ -10,10 +10,11 @@ import { Textarea, Input } from '../ui/Input';
 import { Skeleton } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
 import { tasksApi, usersApi } from '../../services/endpoints';
-import { useAuth } from '../../contexts/AuthContext';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { TaskPropertiesEditor } from './TaskPropertiesEditor';
+import { DeleteTaskModal } from './DeleteTaskModal';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
+import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
 
@@ -34,12 +35,16 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const [checklistInput, setChecklistInput] = useState('');
   const [dependencyPersonPick, setDependencyPersonPick] = useState('');
   const [dependencyPick, setDependencyPick] = useState('');
-  const [reviewComments, setReviewComments] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState<TaskAttachment | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { user } = useAuth();
-  const { openTask } = useTaskDrawer();
+  const { openTask, closeTask } = useTaskDrawer();
   const qc = useQueryClient();
+
+  const deleteMutation = useDeleteTaskMutation(() => {
+    setShowDeleteModal(false);
+    closeTask();
+  });
 
   useEffect(() => {
     setChecklistInput('');
@@ -47,6 +52,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     setDependencyPick('');
     setComment('');
     setPreviewAttachment(null);
+    setShowDeleteModal(false);
   }, [taskId]);
 
   const { data: task, isLoading } = useQuery({
@@ -89,15 +95,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     mutationFn: ({ userId, done }: { userId: number; done: boolean }) =>
       tasksApi.markComplete(taskId!, userId, done),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task', taskId] }),
-  });
-
-  const reviewMutation = useMutation({
-    mutationFn: (action: string) => tasksApi.review(taskId!, action, reviewComments || undefined),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['task', taskId] });
-      setReviewComments('');
-      toast.success('Review submitted');
-    },
   });
 
   const checklistMutation = useMutation({
@@ -194,8 +191,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     setPreviewAttachment(file);
   };
 
-  const isReviewer = task?.reviewer_id === user?.id;
-
   const existingDependencyIds = new Set(task?.dependencies?.map((d) => d.depends_on_id) ?? []);
   const personFilteredTasks = (taskPickerOptions ?? []).filter((t) => {
     if (t.id === taskId || existingDependencyIds.has(t.id)) return false;
@@ -238,12 +233,20 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <Unlock className="h-3.5 w-3.5" /> Unblock
                 </Button>
               )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowDeleteModal(true)}
+                className="gap-1.5 text-accent-danger hover:text-accent-danger hover:bg-red-500/10 border-red-500/20"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </Button>
             </div>
           </div>
 
           <TaskPropertiesEditor task={task} taskId={task.id} />
 
-          {task.assignees?.length > 0 && (
+          {task.assignees && task.assignees.length > 1 && (
             <DrawerSection title="Assignee progress" defaultOpen={false}>
               <div className="space-y-1.5">
                 {task.assignees.map((a) => (
@@ -572,54 +575,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             </div>
           </DrawerSection>
 
-          {/* Review — tertiary, collapsed */}
-          {(task.review_required || task.reviewer) && (
-            <DrawerSection title="Review" defaultOpen={task.status === 'in_review'}>
-              <div className="space-y-3 text-sm">
-                {task.reviewer && (
-                  <p className="text-text-secondary">
-                    Reviewer: <span className="text-text-primary font-medium">{task.reviewer.first_name} {task.reviewer.last_name}</span>
-                  </p>
-                )}
-                {isReviewer && task.status === 'in_review' && (
-                  <div className="space-y-2 pt-1">
-                    <Textarea
-                      value={reviewComments}
-                      onChange={(e) => setReviewComments(e.target.value)}
-                      placeholder="Review comments (optional)"
-                      rows={2}
-                      className="text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <Button onClick={() => reviewMutation.mutate('approve')} className="gap-1.5">
-                        <Eye className="h-3.5 w-3.5" /> Approve
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        onClick={() => reviewMutation.mutate('request_changes')}
-                      >
-                        Request changes
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </DrawerSection>
-          )}
-
-          {/* Testing — tertiary */}
-          {task.testing_required && (
-            <DrawerSection title="Testing" defaultOpen={task.status === 'testing'}>
-              <div className="flex items-center gap-2 text-sm text-text-secondary">
-                <FlaskConical className="h-4 w-4 text-text-muted" />
-                Testing is required before this task can be completed.
-              </div>
-              {task.bug_notes && (
-                <p className="mt-2 text-sm text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{task.bug_notes}</p>
-              )}
-            </DrawerSection>
-          )}
-
           {/* Metadata — tertiary, always collapsed */}
           <DrawerSection title="Details" defaultOpen={false}>
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -647,6 +602,15 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     <AttachmentPreviewModal
       attachment={previewAttachment}
       onClose={() => setPreviewAttachment(null)}
+    />
+    <DeleteTaskModal
+      isOpen={showDeleteModal}
+      taskTitle={task?.title}
+      onClose={() => setShowDeleteModal(false)}
+      onConfirm={(reason) => {
+        if (taskId) deleteMutation.mutate({ id: taskId, reason });
+      }}
+      isPending={deleteMutation.isPending}
     />
     </>
   );

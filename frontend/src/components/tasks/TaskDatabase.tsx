@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { format, isPast, isToday } from 'date-fns';
 import {
   MessageSquare, Paperclip, ListChecks, Link2, Bug, Eye, FlaskConical,
-  ChevronUp, ChevronDown, GripVertical,
+  ChevronUp, ChevronDown, GripVertical, Trash2,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
@@ -31,6 +31,7 @@ interface TaskDatabaseProps {
   onStatusChange?: (id: number, status: string) => void;
   onPriorityChange?: (id: number, priority: string) => void;
   onTaskTypeChange?: (id: number, taskTypeId: number | null) => void;
+  onDeleteTask?: (task: Task) => void;
   taskTypes?: { id: number; name: string }[];
   editable?: boolean;
   columns?: ColumnDef[];
@@ -232,6 +233,7 @@ export function TaskDatabase({
   onStatusChange,
   onPriorityChange,
   onTaskTypeChange,
+  onDeleteTask,
   taskTypes = [],
   editable = false,
   columns: columnsProp,
@@ -297,7 +299,7 @@ export function TaskDatabase({
     }
   }, [resizing, handleResizeMove, handleResizeEnd]);
 
-  const totalWidth = visibleColumns.reduce((s, c) => s + c.width, 0) + 40;
+  const totalWidth = visibleColumns.reduce((s, c) => s + c.width, 0) + 40 + (onDeleteTask ? 44 : 0);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
@@ -348,6 +350,7 @@ export function TaskDatabase({
                 )}
               </div>
             ))}
+            {onDeleteTask && <div className="db-header-cell w-11 shrink-0" aria-hidden />}
           </div>
 
           {/* Rows */}
@@ -361,7 +364,7 @@ export function TaskDatabase({
                 onContextMenu={(e) => handleContextMenu(e, task.id)}
                 onMouseEnter={() => onFocusIndexChange?.(index)}
                 className={clsx(
-                  'db-row',
+                  'db-row group',
                   isSelected && 'db-row-selected',
                   isFocused && 'db-row-focused'
                 )}
@@ -383,7 +386,7 @@ export function TaskDatabase({
                     {col.id === 'title' && (
                       <div className="min-w-0 flex items-center gap-2">
                         {task.is_blocked && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />}
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-text-primary truncate">{task.title}</p>
                           {showProject && task.project_name && (
                             <p className="text-2xs text-text-muted truncate mt-0.5">{task.project_name}</p>
@@ -434,6 +437,22 @@ export function TaskDatabase({
                     {col.id === 'indicators' && <RowIndicators task={task} />}
                   </div>
                 ))}
+                {onDeleteTask && (
+                  <div
+                    className="db-cell w-11 shrink-0 justify-center"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onDeleteTask(task)}
+                      className="p-1.5 rounded-md text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent-danger hover:bg-red-500/10 transition-all duration-hover"
+                      title="Delete task"
+                      aria-label={`Delete ${task.title}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -460,6 +479,18 @@ export function TaskDatabase({
           >
             Select
           </button>
+          {onDeleteTask && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-accent-danger hover:bg-dark-hover transition-colors duration-hover"
+              onClick={() => {
+                const task = tasks.find((t) => t.id === contextMenu.taskId);
+                if (task) onDeleteTask(task);
+                setContextMenu(null);
+              }}
+            >
+              Delete
+            </button>
+          )}
         </div>
       )}
     </div>

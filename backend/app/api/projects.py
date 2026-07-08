@@ -62,6 +62,28 @@ def update_project(project_id: int, data: ProjectUpdate, db: Session = Depends(g
     return APIResponse(data=_format_project(project, db), message="Project updated")
 
 
+@router.delete("/{project_id}")
+def delete_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    repo = ProjectRepository(db)
+    project = repo.get_by_id(project_id)
+    if not project or project.is_archived:
+        raise HTTPException(status_code=404, detail="Project not found")
+    task_count = (
+        db.query(Task)
+        .filter(Task.project_id == project_id, Task.is_archived == False)
+        .count()
+    )
+    if task_count > 0:
+        raise HTTPException(status_code=400, detail="Cannot delete a project that has tasks")
+    db.delete(project)
+    db.commit()
+    return APIResponse(message="Project deleted")
+
+
 def _format_project(project: Project, db: Session) -> dict:
     tasks = db.query(Task).filter(Task.project_id == project.id, Task.is_archived == False).all()
     open_tasks = [t for t in tasks if t.status not in ("completed", "cancelled")]
@@ -83,5 +105,6 @@ def _format_project(project: Project, db: Session) -> dict:
         "open_tasks_count": len(open_tasks),
         "completed_tasks_count": len(completed),
         "overdue_tasks_count": len(overdue),
+        "tasks_count": total,
         "progress": round(progress, 1),
     }

@@ -11,7 +11,9 @@ import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
+import { DeleteTaskModal } from './DeleteTaskModal';
 import { toast } from '../ui/Toast';
+import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import type { Task } from '../../types';
 import clsx from 'clsx';
 import api from '../../services/api';
@@ -65,7 +67,7 @@ export function TasksWorkspace({
   fullWidth = false,
   showQuickFilters = false,
 }: TasksWorkspaceProps) {
-  const { openTask, openCreate } = useTaskDrawer();
+  const { openTask, openCreate, closeTask, selectedTaskId } = useTaskDrawer();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
@@ -84,7 +86,14 @@ export function TasksWorkspace({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const { columns, toggleColumn, setColumns } = useColumnVisibility();
+
+  const deleteMutation = useDeleteTaskMutation((taskId) => {
+    setDeleteTarget(null);
+    if (selectedTaskId === taskId) closeTask();
+    qc.invalidateQueries({ queryKey });
+  });
 
   useEffect(() => {
     setViewMode((current) => normalizeView(current));
@@ -95,6 +104,10 @@ export function TasksWorkspace({
   };
 
   const showViews = showViewSelector && hasOptionalViews;
+
+  const requestDeleteTask = (task: Task) => {
+    setDeleteTarget({ id: task.id, title: task.title });
+  };
 
   const calendarWindow = useMemo(() => {
     const monthStart = startOfMonth(calendarMonth);
@@ -468,6 +481,7 @@ export function TasksWorkspace({
           tasks={displayTasks}
           onTaskClick={openTask}
           onCreateTask={openCreate}
+          onDeleteTask={requestDeleteTask}
           isLoading={isLoading}
           groupBy={groupBy}
         />
@@ -501,6 +515,7 @@ export function TasksWorkspace({
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
                 onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
+                onDeleteTask={requestDeleteTask}
               />
             </div>
           ))}
@@ -516,6 +531,16 @@ export function TasksWorkspace({
       )}
 
       {isMobile && <FloatingActionButton onClick={openCreate} />}
+
+      <DeleteTaskModal
+        isOpen={deleteTarget != null}
+        taskTitle={deleteTarget?.title}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={(reason) => {
+          if (deleteTarget) deleteMutation.mutate({ id: deleteTarget.id, reason });
+        }}
+        isPending={deleteMutation.isPending}
+      />
     </div>
   );
 }

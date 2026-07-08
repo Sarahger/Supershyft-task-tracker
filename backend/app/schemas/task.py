@@ -140,6 +140,10 @@ class BlockTaskRequest(BaseModel):
     block_reason: str
 
 
+class DeleteTaskRequest(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+
 class ReviewActionRequest(BaseModel):
     action: str  # approve or request_changes
     review_comments: str | None = None

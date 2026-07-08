@@ -299,6 +299,17 @@ class TaskService:
         self.db.delete(dep)
         self.db.commit()
 
+    def delete_task(self, task: Task, user: User, reason: str) -> None:
+        task.is_archived = True
+        task.updated_by_id = user.id
+        self.db.commit()
+        self.activity.log(
+            user.id,
+            ActivityType.TASK_DELETED.value,
+            f"Deleted task: {task.title}. Reason: {reason.strip()}",
+            task.id,
+        )
+
     def task_to_list_dict(self, task: Task, stats: dict | None = None) -> dict:
         if stats is not None:
             comment_count = stats.get("comment_count", 0)
