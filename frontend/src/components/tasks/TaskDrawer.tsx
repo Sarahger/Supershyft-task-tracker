@@ -15,6 +15,8 @@ import { TaskPropertiesEditor } from './TaskPropertiesEditor';
 import { DeleteTaskModal } from './DeleteTaskModal';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
+import { useAuth } from '../../contexts/AuthContext';
+import { canDeleteTasks } from '../../lib/roles';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
 
@@ -39,7 +41,9 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { openTask, closeTask } = useTaskDrawer();
+  const { user } = useAuth();
   const qc = useQueryClient();
+  const allowDelete = canDeleteTasks(user);
 
   const deleteMutation = useDeleteTaskMutation(() => {
     setShowDeleteModal(false);
@@ -233,6 +237,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <Unlock className="h-3.5 w-3.5" /> Unblock
                 </Button>
               )}
+              {allowDelete && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -241,6 +246,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
               >
                 <Trash2 className="h-3.5 w-3.5" /> Delete
               </Button>
+              )}
             </div>
           </div>
 
@@ -603,6 +609,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
       attachment={previewAttachment}
       onClose={() => setPreviewAttachment(null)}
     />
+    {allowDelete && (
     <DeleteTaskModal
       isOpen={showDeleteModal}
       taskTitle={task?.title}
@@ -612,6 +619,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
       }}
       isPending={deleteMutation.isPending}
     />
+    )}
     </>
   );
 }

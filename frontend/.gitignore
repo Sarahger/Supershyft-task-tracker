@@ -30,3 +30,5 @@ vercel.env
 *.njsproj
 *.sln
 *.sw?
+
+.cursor/*

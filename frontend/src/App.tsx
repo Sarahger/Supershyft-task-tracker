@@ -14,6 +14,8 @@ import { UserDrawer } from './components/users/UserDrawer';
 import { CreateTaskModal } from './components/tasks/CreateTaskModal';
 import { ToastContainer } from './components/ui/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
+// AI Task Assistant plugin (disabled — see plugins/ai-task-assistant/ locally)
+// import { AiAssistantPlugin } from './plugins/ai-task-assistant';
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -84,6 +86,7 @@ function ProtectedLayout() {
       {selectedUserId != null && <UserDrawer userId={selectedUserId} onClose={closeUser} />}
       {selectedTaskId != null && <TaskDrawer taskId={selectedTaskId} onClose={closeTask} />}
       {isCreateOpen && <CreateTaskModal isOpen={isCreateOpen} onClose={closeCreate} />}
+      {/* <AiAssistantPlugin /> */}
     </>
   );
 }

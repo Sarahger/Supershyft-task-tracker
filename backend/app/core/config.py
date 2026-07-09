@@ -50,6 +50,10 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # AI Task Assistant plugin (disabled — see backend/app/plugins/ locally)
+    # AI_ASSISTANT_ENABLED: bool = False
+    # OPENAI_API_KEY: str | None = None
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

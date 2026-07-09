@@ -70,6 +70,11 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(custom_fields.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 
+# AI Task Assistant plugin (disabled — see backend/app/plugins/ locally)
+# if settings.AI_ASSISTANT_ENABLED:
+#     from app.plugins.ai_task_assistant.router import router as ai_router
+#     app.include_router(ai_router, prefix="/api")
+
 if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 

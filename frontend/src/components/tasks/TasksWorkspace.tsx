@@ -14,6 +14,8 @@ import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
 import { toast } from '../ui/Toast';
 import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
+import { useAuth } from '../../contexts/AuthContext';
+import { canDeleteTasks } from '../../lib/roles';
 import type { Task } from '../../types';
 import clsx from 'clsx';
 import api from '../../services/api';
@@ -68,6 +70,7 @@ export function TasksWorkspace({
   showQuickFilters = false,
 }: TasksWorkspaceProps) {
   const { openTask, openCreate, closeTask, selectedTaskId } = useTaskDrawer();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
@@ -104,6 +107,7 @@ export function TasksWorkspace({
   };
 
   const showViews = showViewSelector && hasOptionalViews;
+  const allowDelete = canDeleteTasks(user);
 
   const requestDeleteTask = (task: Task) => {
     setDeleteTarget({ id: task.id, title: task.title });
@@ -514,7 +518,7 @@ export function TasksWorkspace({
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
                 onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
-                onDeleteTask={requestDeleteTask}
+                onDeleteTask={allowDelete ? requestDeleteTask : undefined}
               />
             </div>
           ))}
@@ -531,6 +535,7 @@ export function TasksWorkspace({
 
       {isMobile && <FloatingActionButton onClick={openCreate} />}
 
+      {allowDelete && (
       <DeleteTaskModal
         isOpen={deleteTarget != null}
         taskTitle={deleteTarget?.title}
@@ -540,6 +545,7 @@ export function TasksWorkspace({
         }}
         isPending={deleteMutation.isPending}
       />
+      )}
     </div>
   );
 }
