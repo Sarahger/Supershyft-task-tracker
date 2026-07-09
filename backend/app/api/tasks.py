@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.constants import NotificationType
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import (
     Attachment,
@@ -239,7 +239,7 @@ def reopen_task(task_id: int, db: Session = Depends(get_db), current_user: User 
     return APIResponse(data=TaskService(db).task_to_detail_dict(task))
 
 
-@router.post("/tasks/{task_id}/delete")
+@router.post("/tasks/{task_id}/delete", dependencies=[Depends(require_manager)])
 def delete_task(
     task_id: int,
     data: DeleteTaskRequest,

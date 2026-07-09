@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { isPast, isToday, isThisWeek } from 'date-fns';
 import { tasksApi } from '../services/endpoints';
 import { useTaskDrawer } from '../contexts/TaskDrawerContext';
+import { useAuth } from '../contexts/AuthContext';
+import { canDeleteTasks } from '../lib/roles';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
@@ -57,6 +59,8 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 
 export default function MyTasksPage() {
   const { openTask, closeTask, selectedTaskId } = useTaskDrawer();
+  const { user } = useAuth();
+  const allowDelete = canDeleteTasks(user);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const deleteMutation = useDeleteTaskMutation((taskId) => {
     setDeleteTarget(null);
@@ -111,16 +115,17 @@ export default function MyTasksPage() {
         <EmptyState title="Nothing assigned yet" description="Tasks assigned to you will show up here." />
       ) : (
         <>
-          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
-          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
-          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
-          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
-          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
-          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
-          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} onTaskClick={openTask} onDeleteTask={requestDeleteTask} /></Section>}
+          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
+          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
+          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
+          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
+          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
+          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
+          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} onTaskClick={openTask} onDeleteTask={allowDelete ? requestDeleteTask : undefined} /></Section>}
         </>
       )}
 
+      {allowDelete && (
       <DeleteTaskModal
         isOpen={deleteTarget != null}
         taskTitle={deleteTarget?.title}
@@ -130,6 +135,7 @@ export default function MyTasksPage() {
         }}
         isPending={deleteMutation.isPending}
       />
+      )}
     </div>
   );
 }
