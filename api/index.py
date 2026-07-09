@@ -37,7 +37,7 @@ def _bootstrap_database() -> None:
             seed()
         logger.info("Vercel database bootstrap complete")
     except Exception as exc:
-        logger.warning("Vercel database bootstrap failed: %s", exc)
+        logger.error("Vercel database bootstrap failed: %s", exc, exc_info=True)
 
 
 _bootstrap_database()

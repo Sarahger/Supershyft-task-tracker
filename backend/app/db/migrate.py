@@ -54,11 +54,18 @@ def run_lightweight_migrations(engine) -> None:
     if "tasks" in tables:
         task_cols = {c["name"] for c in inspector.get_columns("tasks")}
         dialect = engine.dialect.name
-        task_additions = [
-            ("deletion_reason", "TEXT"),
-            ("deleted_by_id", "INTEGER REFERENCES users(id)"),
-            ("deleted_at", "DATETIME"),
-        ]
+        if dialect == "postgresql":
+            task_additions = [
+                ("deletion_reason", "TEXT"),
+                ("deleted_by_id", "INTEGER REFERENCES users(id)"),
+                ("deleted_at", "TIMESTAMP WITH TIME ZONE"),
+            ]
+        else:
+            task_additions = [
+                ("deletion_reason", "TEXT"),
+                ("deleted_by_id", "INTEGER REFERENCES users(id)"),
+                ("deleted_at", "DATETIME"),
+            ]
         for col_name, col_def in task_additions:
             if col_name not in task_cols:
                 if dialect == "postgresql":
