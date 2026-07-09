@@ -9,6 +9,7 @@ import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField
 import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
+import { DeletedTasksList } from './DeletedTasksList';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
@@ -26,7 +27,7 @@ const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ 
 
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
-export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review' | 'completed';
+export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review' | 'completed' | 'deleted';
 
 interface TasksWorkspaceProps {
   title: string;
@@ -127,6 +128,8 @@ export function TasksWorkspace({
     };
   }, [calendarWeek]);
 
+  const isDeletedView = quickFilter === 'deleted' && showQuickFilters;
+
   const sharedListFilters = useMemo(() => ({
     search: search || undefined,
     status: quickFilter === 'completed' ? 'completed' : (statusFilter || undefined),
@@ -135,9 +138,19 @@ export function TasksWorkspace({
     overdue: quickFilter === 'overdue' ? true : undefined,
     blocked: quickFilter === 'blocked' ? true : undefined,
     awaiting_review: quickFilter === 'review' ? true : undefined,
-  }), [search, statusFilter, priorityFilter, assigneeFilter, quickFilter]);
+    archived: isDeletedView ? true : undefined,
+  }), [search, statusFilter, priorityFilter, assigneeFilter, quickFilter, isDeletedView]);
 
   const filters = useMemo(() => {
+    if (isDeletedView) {
+      return {
+        ...sharedListFilters,
+        page,
+        page_size: 50,
+        sort_by: 'deleted_at',
+        sort_order: 'desc',
+      };
+    }
     if (viewMode === 'calendar') {
       return {
         ...sharedListFilters,
@@ -169,7 +182,7 @@ export function TasksWorkspace({
       sort_by: sortField,
       sort_order: sortDir,
     };
-  }, [sharedListFilters, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
+  }, [sharedListFilters, isDeletedView, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [...queryKey, filters, listFilters],
@@ -240,6 +253,7 @@ export function TasksWorkspace({
 
   const tasks = data?.items || [];
   const displayTasks = useMemo(() => {
+    if (isDeletedView) return tasks;
     if (quickFilter === 'today') {
       return tasks.filter((t) => t.due_date && isToday(new Date(t.due_date)));
     }
@@ -247,7 +261,9 @@ export function TasksWorkspace({
       return tasks.filter((t) => t.status === 'completed');
     }
     return tasks;
-  }, [tasks, quickFilter]);
+  }, [tasks, quickFilter, isDeletedView]);
+
+  const showViewsEffective = showViews && !isDeletedView;
   const groups = groupTasks(displayTasks, groupBy);
 
   const statusMutation = useMutation({
@@ -324,6 +340,7 @@ export function TasksWorkspace({
     { id: 'blocked', label: 'Blocked' },
     { id: 'review', label: 'Review' },
     { id: 'completed', label: 'Completed' },
+    { id: 'deleted', label: 'Deleted' },
   ];
 
   return (
@@ -377,7 +394,7 @@ export function TasksWorkspace({
           onGroupByChange={setGroupBy}
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
-          showViewSelector={showViews}
+          showViewSelector={showViewsEffective}
           quickFilter={quickFilter}
           onQuickFilterChange={(v) => { setQuickFilter(v as QuickFilter); setPage(1); }}
           quickFilterOptions={quickFilterOptions}
@@ -404,18 +421,18 @@ export function TasksWorkspace({
         onGroupByChange={setGroupBy}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
-        onNewTask={openCreate}
+        onNewTask={isDeletedView ? undefined : openCreate}
         totalCount={data?.total}
         visibleColumns={columns}
         onToggleColumn={toggleColumn}
         selectedCount={selectedIds.size}
         onBulkStatusChange={(status) => bulkMutation.mutate({ ids: Array.from(selectedIds), status })}
         onClearSelection={() => setSelectedIds(new Set())}
-        showViewSelector={showViews}
+        showViewSelector={showViewsEffective}
       />
       </div>
 
-      {savedFilters?.length > 0 && !isMobile && (
+      {savedFilters?.length > 0 && !isMobile && !isDeletedView && (
         <SavedFiltersBar filters={savedFilters} onApply={applySavedFilter} />
       )}
 
@@ -446,6 +463,8 @@ export function TasksWorkspace({
             </button>
           }
         />
+      ) : isDeletedView ? (
+        <DeletedTasksList tasks={displayTasks} onTaskClick={openTask} />
       ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' && !isMobile ? (
         <EmptyState title="No tasks" description="Create a task or adjust your filters." />
       ) : viewMode === 'kanban' ? (
@@ -514,7 +533,7 @@ export function TasksWorkspace({
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
                 onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
-                onDeleteTask={requestDeleteTask}
+                onDeleteTask={isDeletedView ? undefined : requestDeleteTask}
               />
             </div>
           ))}
@@ -529,7 +548,7 @@ export function TasksWorkspace({
         </div>
       )}
 
-      {isMobile && <FloatingActionButton onClick={openCreate} />}
+      {isMobile && !isDeletedView && <FloatingActionButton onClick={openCreate} />}
 
       <DeleteTaskModal
         isOpen={deleteTarget != null}

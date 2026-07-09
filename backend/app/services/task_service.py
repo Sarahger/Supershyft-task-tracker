@@ -301,6 +301,9 @@ class TaskService:
 
     def delete_task(self, task: Task, user: User, reason: str) -> None:
         task.is_archived = True
+        task.deletion_reason = reason.strip()
+        task.deleted_by_id = user.id
+        task.deleted_at = datetime.now(timezone.utc)
         task.updated_by_id = user.id
         self.db.commit()
         self.activity.log(
@@ -309,6 +312,23 @@ class TaskService:
             f"Deleted task: {task.title}. Reason: {reason.strip()}",
             task.id,
         )
+
+    def task_to_deleted_list_dict(self, task: Task) -> dict:
+        return {
+            "id": task.id,
+            "title": task.title,
+            "is_archived": True,
+            "deletion_reason": task.deletion_reason,
+            "deleted_at": task.deleted_at,
+            "deleted_by": user_to_brief_dict(task.deleted_by) if task.deleted_by else None,
+        }
+
+    def task_to_deleted_detail_dict(self, task: Task) -> dict:
+        return {
+            **self.task_to_deleted_list_dict(task),
+            "status": task.status,
+            "created_at": task.created_at,
+        }
 
     def task_to_list_dict(self, task: Task, stats: dict | None = None) -> dict:
         if stats is not None:

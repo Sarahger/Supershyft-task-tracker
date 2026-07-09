@@ -42,6 +42,7 @@ from app.schemas.task import (
 )
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
+from app.utils.mentions import resolve_mentioned_user_ids
 from app.services.storage import StorageError, fetch_url_bytes, is_private_blob_url, store_file
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def list_tasks(
     has_due_date: bool | None = None,
     due_after: datetime | None = None,
     due_before: datetime | None = None,
+    archived: bool | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
     db: Session = Depends(get_db),
@@ -89,6 +91,7 @@ def list_tasks(
             "has_due_date": has_due_date,
             "due_after": due_after,
             "due_before": due_before,
+            "archived": archived,
             "sort_by": sort_by,
             "sort_order": sort_order,
         }.items()
@@ -96,10 +99,14 @@ def list_tasks(
     }
     skip = (page - 1) * page_size
     tasks, total = repo.get_filtered(skip=skip, limit=page_size, filters=filters)
-    stats = repo.load_list_stats([t.id for t in tasks])
+    if archived is True:
+        items = [service.task_to_deleted_list_dict(t) for t in tasks]
+    else:
+        stats = repo.load_list_stats([t.id for t in tasks])
+        items = [service.task_to_list_dict(t, stats.get(t.id)) for t in tasks]
     return APIResponse(
         data=PaginatedData(
-            items=[service.task_to_list_dict(t, stats.get(t.id)) for t in tasks],
+            items=items,
             total=total,
             page=page,
             page_size=page_size,
@@ -119,10 +126,14 @@ def my_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_cur
 
 @router.get("/tasks/{task_id}")
 def get_task(task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    task = TaskRepository(db).get_by_id(task_id)
+    repo = TaskRepository(db)
+    task = repo.get_by_id(task_id, include_archived=True)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return APIResponse(data=TaskService(db).task_to_detail_dict(task))
+    service = TaskService(db)
+    if task.is_archived:
+        return APIResponse(data=service.task_to_deleted_detail_dict(task))
+    return APIResponse(data=service.task_to_detail_dict(task))
 
 
 @router.post("/tasks")
@@ -312,12 +323,30 @@ def add_comment(
         preview = data.content.strip()
         if len(preview) > 120:
             preview = preview[:117] + "..."
+
+        mentioned_ids = resolve_mentioned_user_ids(
+            data.content,
+            db,
+            data.mentioned_user_ids,
+        )
+        mentioned_ids.discard(current_user.id)
+
+        for user_id in mentioned_ids:
+            NotificationService(db).notify(
+                user_id,
+                NotificationType.MENTION.value,
+                f"You were mentioned on: {task.title}",
+                f'{current_user.full_name} mentioned you: "{preview}"',
+                f"/tasks/{task.id}",
+            )
+
         NotificationService(db).notify_task_watchers(
             task,
             NotificationType.TASK_COMMENT.value,
             f"New comment on: {task.title}",
             f"{current_user.full_name} commented: {preview}",
             exclude_user_id=current_user.id,
+            also_exclude_user_ids=mentioned_ids,
         )
 
     return APIResponse(data=_format_comment(comment))

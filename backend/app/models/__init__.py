@@ -203,6 +203,9 @@ class Task(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     updated_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     is_archived = Column(Boolean, default=False)
+    deletion_reason = Column(Text, nullable=True)
+    deleted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     # Blocked state overlay
     previous_status = Column(String(50), nullable=True)
@@ -228,6 +231,7 @@ class Task(Base):
     reviewer = relationship("User", foreign_keys=[reviewer_id])
     creator = relationship("User", back_populates="created_tasks", foreign_keys=[created_by_id])
     updater = relationship("User", foreign_keys=[updated_by_id])
+    deleted_by = relationship("User", foreign_keys=[deleted_by_id])
     blocked_by = relationship("User", foreign_keys=[blocked_by_id])
     bug_reporter = relationship("User", foreign_keys=[bug_reported_by_id])
     departments = relationship("Department", secondary=task_departments)

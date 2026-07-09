@@ -6,13 +6,16 @@ import { Drawer, DrawerSection } from '../ui/Modal';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
-import { Textarea, Input } from '../ui/Input';
+import { Input } from '../ui/Input';
 import { Skeleton } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
 import { tasksApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { TaskPropertiesEditor } from './TaskPropertiesEditor';
+import { CommentMentionTextarea } from './CommentMentionTextarea';
+import { CommentMentionText } from './CommentMentionText';
 import { DeleteTaskModal } from './DeleteTaskModal';
+import { extractMentionedUserIds } from '../../lib/mentions';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
@@ -87,7 +90,8 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   });
 
   const commentMutation = useMutation({
-    mutationFn: (content: string) => tasksApi.addComment(taskId!, content),
+    mutationFn: (payload: { content: string; mentioned_user_ids: number[] }) =>
+      tasksApi.addComment(taskId!, payload.content, undefined, payload.mentioned_user_ids),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['task-comments', taskId] }); setComment(''); },
   });
 
@@ -121,7 +125,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const { data: usersList } = useQuery({
     queryKey: ['users-list'],
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-    enabled: !!taskId && !!dependencyPersonPick,
+    enabled: !!taskId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -203,12 +207,53 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     (a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9),
   );
 
+  const submitComment = () => {
+    const trimmed = comment.trim();
+    if (!trimmed) return;
+    const mentioned_user_ids = extractMentionedUserIds(trimmed, usersList ?? []);
+    commentMutation.mutate({ content: trimmed, mentioned_user_ids });
+  };
+
   return (
     <>
     <Drawer isOpen={!!taskId} onClose={onClose}>
       {isLoading ? (
         <div className="p-8 space-y-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24" /><Skeleton className="h-32" /></div>
       ) : task ? (
+        task.is_archived ? (
+          <div className="px-8 py-7 max-w-none">
+            <div className="pr-10 mb-6">
+              <h1 className="text-2xl font-semibold text-text-primary leading-snug tracking-tight">{task.title}</h1>
+              <span className="inline-flex items-center mt-3 px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                Deleted
+              </span>
+            </div>
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Reason for deletion</p>
+                <p className="text-sm text-text-primary leading-relaxed">
+                  {task.deletion_reason || 'No reason provided'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Deleted by</p>
+                <p className="text-sm text-text-primary">
+                  {task.deleted_by
+                    ? `${task.deleted_by.first_name} ${task.deleted_by.last_name}`
+                    : 'Unknown'}
+                </p>
+              </div>
+              {task.deleted_at && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Deleted on</p>
+                  <p className="text-sm text-text-primary">
+                    {format(new Date(task.deleted_at), 'MMM d, yyyy · h:mm a')}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="px-8 py-7 max-w-none">
           {/* Header */}
           <div className="pr-10 mb-6">
@@ -289,24 +334,22 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                       <span className="text-sm font-medium text-text-primary">{c.author?.first_name} {c.author?.last_name}</span>
                       <span className="text-2xs text-text-muted">{format(new Date(c.created_at), 'MMM d, h:mm a')}</span>
                     </div>
-                    <p className="text-sm text-text-secondary mt-0.5 leading-relaxed">{c.content}</p>
+                    <CommentMentionText content={c.content} />
                   </div>
                 </div>
               )) : (
                 <p className="text-sm text-text-muted">No comments yet</p>
               )}
               <div className="flex gap-2 pt-2">
-                <Textarea
+                <CommentMentionTextarea
                   value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Write a comment..."
-                  rows={2}
-                  className="flex-1 text-sm"
+                  onChange={setComment}
+                  users={usersList ?? []}
                 />
                 <Button
                   variant="secondary"
-                  onClick={() => commentMutation.mutate(comment)}
-                  disabled={!comment.trim()}
+                  onClick={submitComment}
+                  disabled={!comment.trim() || commentMutation.isPending}
                   className="self-end"
                 >
                   <Send className="h-4 w-4" />
@@ -597,6 +640,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             </div>
           </DrawerSection>
         </div>
+        )
       ) : null}
     </Drawer>
     <AttachmentPreviewModal

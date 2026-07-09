@@ -43,7 +43,7 @@ interface TaskToolbarProps {
   onGroupByChange: (v: GroupBy) => void;
   viewMode: ViewMode;
   onViewModeChange: (v: ViewMode) => void;
-  onNewTask: () => void;
+  onNewTask?: () => void;
   totalCount?: number;
   visibleColumns?: { id: ColumnId; label: string; visible: boolean }[];
   onToggleColumn?: (id: ColumnId) => void;
@@ -148,6 +148,7 @@ export function TaskToolbar({
             <span className="text-2xs text-text-muted hidden md:inline shrink-0">{totalCount} tasks</span>
           )}
 
+          {onNewTask && (
           <Button
             onClick={onNewTask}
             size="sm"
@@ -157,6 +158,7 @@ export function TaskToolbar({
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">New task</span>
           </Button>
+          )}
         </div>
 
         {/* Filters, sort, group, columns + view switcher */}

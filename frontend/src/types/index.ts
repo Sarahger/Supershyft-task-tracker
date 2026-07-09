@@ -102,6 +102,10 @@ export interface Task {
   custom_field_values?: Record<string, string | null>;
   attachments?: TaskAttachment[];
   current_version?: number;
+  is_archived?: boolean;
+  deletion_reason?: string;
+  deleted_at?: string;
+  deleted_by?: UserBrief;
   created_at: string;
   updated_at: string;
   completed_at?: string;

@@ -90,8 +90,8 @@ class UserRepository(BaseRepository):
 
 
 class TaskRepository(BaseRepository):
-    def get_by_id(self, task_id: int) -> Task | None:
-        return (
+    def get_by_id(self, task_id: int, *, include_archived: bool = False) -> Task | None:
+        query = (
             self.db.query(Task)
             .options(
                 joinedload(Task.assignees).joinedload(TaskAssignee.user),
@@ -102,15 +102,18 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.client),
                 joinedload(Task.reviewer),
                 joinedload(Task.creator),
+                joinedload(Task.deleted_by),
                 joinedload(Task.checklists).joinedload(Checklist.items),
                 joinedload(Task.attachments).joinedload(Attachment.uploader),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on_user),
                 joinedload(Task.custom_field_values).joinedload(TaskCustomFieldValue.field_definition),
             )
-            .filter(Task.id == task_id, Task.is_archived == False)
-            .first()
+            .filter(Task.id == task_id)
         )
+        if not include_archived:
+            query = query.filter(Task.is_archived == False)
+        return query.first()
 
     def get_filtered(
         self,
@@ -125,10 +128,15 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.tags),
                 joinedload(Task.project),
                 joinedload(Task.task_type),
+                joinedload(Task.deleted_by),
             )
-            .filter(Task.is_archived == False)
         )
         filters = filters or {}
+
+        if filters.get("archived") is True:
+            query = query.filter(Task.is_archived == True)
+        else:
+            query = query.filter(Task.is_archived == False)
 
         if status := filters.get("status"):
             if isinstance(status, list):
@@ -170,13 +178,18 @@ class TaskRepository(BaseRepository):
             query = query.filter(Task.due_date <= due_before)
         if search := filters.get("search"):
             term = f"%{search}%"
-            query = query.filter(or_(Task.title.ilike(term), Task.description.ilike(term)))
+            if filters.get("archived") is True:
+                query = query.filter(or_(Task.title.ilike(term), Task.deletion_reason.ilike(term)))
+            else:
+                query = query.filter(or_(Task.title.ilike(term), Task.description.ilike(term)))
         if department_id := filters.get("department_id"):
             from app.models import task_departments
             query = query.join(task_departments).filter(task_departments.c.department_id == department_id)
 
         sort_by = filters.get("sort_by", "updated_at")
         sort_order = filters.get("sort_order", "desc")
+        if filters.get("archived") is True and sort_by == "updated_at":
+            sort_by = "deleted_at"
         sort_col = getattr(Task, sort_by, Task.updated_at)
         query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 

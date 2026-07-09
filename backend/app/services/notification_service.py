@@ -116,12 +116,15 @@ class NotificationService:
         title: str,
         message: str,
         exclude_user_id: int | None = None,
+        also_exclude_user_ids: set[int] | None = None,
     ) -> None:
         recipient_ids: set[int] = {a.user_id for a in task.assignees}
         if task.reviewer_id:
             recipient_ids.add(task.reviewer_id)
         if exclude_user_id:
             recipient_ids.discard(exclude_user_id)
+        if also_exclude_user_ids:
+            recipient_ids -= also_exclude_user_ids
         for user_id in recipient_ids:
             self.notify(user_id, notification_type, title, message, f"/tasks/{task.id}")
 

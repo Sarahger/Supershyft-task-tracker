@@ -50,3 +50,21 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added users.%s column", col_name)
+
+    if "tasks" in tables:
+        task_cols = {c["name"] for c in inspector.get_columns("tasks")}
+        dialect = engine.dialect.name
+        task_additions = [
+            ("deletion_reason", "TEXT"),
+            ("deleted_by_id", "INTEGER REFERENCES users(id)"),
+            ("deleted_at", "DATETIME"),
+        ]
+        for col_name, col_def in task_additions:
+            if col_name not in task_cols:
+                if dialect == "postgresql":
+                    sql = f"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                else:
+                    sql = f"ALTER TABLE tasks ADD COLUMN {col_name} {col_def}"
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                logger.info("Added tasks.%s column", col_name)

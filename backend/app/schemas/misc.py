@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class CommentCreate(BaseModel):
     content: str = Field(..., min_length=1)
     parent_id: int | None = None
+    mentioned_user_ids: list[int] | None = None
 
 
 class CommentUpdate(BaseModel):

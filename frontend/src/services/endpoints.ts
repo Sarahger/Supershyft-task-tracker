@@ -27,8 +27,8 @@ export const tasksApi = {
   reopen: (id: number) => api.post<APIResponse<Task>>(`/tasks/${id}/reopen`),
   delete: (id: number, reason: string) => api.post<APIResponse<null>>(`/tasks/${id}/delete`, { reason }),
   getComments: (id: number) => api.get(`/tasks/${id}/comments`),
-  addComment: (id: number, content: string, parent_id?: number) =>
-    api.post(`/tasks/${id}/comments`, { content, parent_id }),
+  addComment: (id: number, content: string, parent_id?: number, mentioned_user_ids?: number[]) =>
+    api.post(`/tasks/${id}/comments`, { content, parent_id, mentioned_user_ids }),
   getActivity: (id: number) => api.get(`/tasks/${id}/activity`),
   uploadAttachment: (id: number, file: File) => {
     const form = new FormData();
