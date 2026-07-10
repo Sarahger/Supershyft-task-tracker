@@ -148,6 +148,19 @@ export const customFieldsApi = {
     api.put(`/custom-fields/tasks/${taskId}/values`, { values }),
 };
 
+export const meetingsApi = {
+  join: (data: { kind: 'morning' | 'quick' | 'task'; task_id?: number }) =>
+    api.post<APIResponse<{ redirect_url: string; log: import('../types').MeetingLog }>>('/meetings/join', data),
+  leave: (log_id?: number) =>
+    api.post<APIResponse<import('../types').MeetingLog>>('/meetings/leave', { log_id: log_id ?? null }),
+  getDay: (date: string) =>
+    api.get<APIResponse<import('../types').MeetingDaySummary>>('/meetings/day', { params: { date } }),
+  updateDaySettings: (meeting_date: string, morning_call_enabled: boolean) =>
+    api.put('/meetings/day-settings', { meeting_date, morning_call_enabled }),
+  getTaskLogs: (taskId: number) =>
+    api.get<APIResponse<import('../types').MeetingLog[]>>(`/meetings/task/${taskId}`),
+};
+
 export const reportsApi = {
   tasks: (filters: Record<string, unknown>) =>
     api.post<APIResponse<TaskReportData>>('/reports/tasks', filters),

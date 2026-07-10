@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2, Video, ExternalLink } from 'lucide-react';
 import { Drawer, DrawerSection } from '../ui/Modal';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
@@ -9,7 +9,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Skeleton } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
-import { tasksApi, usersApi } from '../../services/endpoints';
+import { tasksApi, usersApi, meetingsApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { TaskPropertiesEditor } from './TaskPropertiesEditor';
 import { CommentMentionTextarea } from './CommentMentionTextarea';
@@ -20,6 +20,7 @@ import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { useAuth } from '../../contexts/AuthContext';
 import { canDeleteTasks } from '../../lib/roles';
+import { joinMeetingAndRedirect, DEFAULT_MEET_URL } from '../../lib/meetings';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
 
@@ -67,6 +68,23 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     queryFn: () => tasksApi.get(taskId!).then((r) => r.data.data),
     enabled: !!taskId,
     staleTime: 30_000,
+  });
+
+  const { data: taskMeetingLogs } = useQuery({
+    queryKey: ['task-meeting-logs', taskId],
+    queryFn: () => meetingsApi.getTaskLogs(taskId!).then((r) => r.data.data),
+    enabled: !!taskId && !!task && !task.is_archived,
+    staleTime: 30_000,
+  });
+
+  const taskCallMutation = useMutation({
+    mutationFn: () => joinMeetingAndRedirect('task', taskId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
+      qc.invalidateQueries({ queryKey: ['meetings-day'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Call started — assignees notified');
+    },
   });
 
   const attachments = task?.attachments ?? [];
@@ -282,6 +300,15 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <Unlock className="h-3.5 w-3.5" /> Unblock
                 </Button>
               )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => taskCallMutation.mutate()}
+                disabled={taskCallMutation.isPending}
+                className="gap-1.5"
+              >
+                <Video className="h-3.5 w-3.5" /> Start Impromptu Task Call
+              </Button>
               {allowDelete && (
               <Button
                 variant="secondary"
@@ -296,6 +323,34 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           </div>
 
           <TaskPropertiesEditor task={task} taskId={task.id} />
+
+          {(taskMeetingLogs?.length ?? 0) > 0 && (
+            <DrawerSection title="Task calls" defaultOpen>
+              <div className="space-y-2">
+                {taskMeetingLogs!.map((log) => (
+                  <div key={log.id} className="flex items-center justify-between gap-2 py-2 border-b border-dark-border last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-sm text-text-primary">
+                        {log.user ? `${log.user.first_name} ${log.user.last_name}` : 'Someone'} started a call
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {format(new Date(log.click_time), 'MMM d, h:mm a')}
+                        {log.left_at ? ` · Left ${format(new Date(log.left_at), 'h:mm a')}` : ''}
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="gap-1 shrink-0"
+                      onClick={() => window.open(DEFAULT_MEET_URL, '_blank', 'noopener,noreferrer')}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Join
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </DrawerSection>
+          )}
 
           {task.assignees && task.assignees.length > 1 && (
             <DrawerSection title="Assignee progress" defaultOpen={false}>

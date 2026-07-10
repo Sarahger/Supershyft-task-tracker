@@ -35,6 +35,7 @@ COMMENT_TYPES = {
     NotificationType.TASK_COMMENT.value,
     NotificationType.COMMENT_REPLY.value,
     NotificationType.MENTION.value,
+    NotificationType.TASK_CALL.value,
 }
 
 

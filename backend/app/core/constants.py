@@ -86,6 +86,18 @@ class NotificationType(str, Enum):
     PROJECT_UPDATE = "project_update"
     OVERDUE_TASK = "overdue_task"
     DEPENDENCY_UPDATED = "dependency_updated"
+    TASK_CALL = "task_call"
+
+
+class MeetingLogType(str, Enum):
+    MORNING_ATTENDANCE = "Morning Attendance"
+    GENERAL = "General"
+    TASK_DISCUSSION = "Task Discussion"
+
+
+class MeetingAttendanceStatus(str, Enum):
+    ON_TIME = "On-Time"
+    LATE = "Late"
 
 
 class ActivityType(str, Enum):

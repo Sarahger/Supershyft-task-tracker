@@ -267,6 +267,33 @@ export interface APIResponse<T> {
   message: string;
 }
 
+export interface MeetingLogUserBrief {
+  id: number;
+  first_name: string;
+  last_name: string;
+}
+
+export interface MeetingLog {
+  id: number;
+  user_id: number;
+  task_id: number | null;
+  task_title?: string | null;
+  click_time: string;
+  left_at: string | null;
+  log_type: string;
+  status: string | null;
+  user?: MeetingLogUserBrief | null;
+}
+
+export interface MeetingDaySummary {
+  date: string;
+  morning_call_enabled: boolean;
+  meet_url: string;
+  my_logs: MeetingLog[];
+  late_arrivals: MeetingLog[];
+  task_calls: MeetingLog[];
+}
+
 export interface SearchResults {
   tasks: SearchResult[];
   projects: SearchResult[];

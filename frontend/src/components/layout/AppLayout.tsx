@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Bell,
+  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Bell, Video,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +27,7 @@ const navItems: {
   { to: '/', icon: LayoutList, label: 'Tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My Tasks' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
+  { to: '/meetings', icon: Video, label: 'Meetings' },
   { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },
   { to: '/users', icon: Users, label: 'Users', roles: MANAGER_ACCESS_ROLES },
   { to: '/settings', icon: Settings, label: 'Settings' },
@@ -68,6 +69,10 @@ export function AppLayout() {
     const taskMatch = link.match(/\/tasks\/(\d+)/);
     if (taskMatch) {
       openTask(Number(taskMatch[1]));
+      return;
+    }
+    if (link.startsWith('http')) {
+      window.open(link, '_blank', 'noopener,noreferrer');
       return;
     }
     if (link.startsWith('/')) {

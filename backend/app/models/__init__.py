@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -452,3 +453,30 @@ class TaskCustomFieldValue(Base):
 
     task = relationship("Task", back_populates="custom_field_values")
     field_definition = relationship("CustomFieldDefinition", back_populates="values")
+
+
+class MeetingLog(Base):
+    __tablename__ = "meeting_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    click_time = Column(DateTime(timezone=True), nullable=False)
+    left_at = Column(DateTime(timezone=True), nullable=True)
+    log_type = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    task = relationship("Task", foreign_keys=[task_id])
+
+
+class MeetingDaySetting(Base):
+    __tablename__ = "meeting_day_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    meeting_date = Column(Date, unique=True, nullable=False, index=True)
+    morning_call_enabled = Column(Boolean, default=True, nullable=False)
+    updated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
