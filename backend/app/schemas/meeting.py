@@ -43,6 +43,7 @@ class MeetingJoinResponse(BaseModel):
 class MeetingDayResponse(BaseModel):
     date: date
     morning_call_enabled: bool
+    morning_call_join_available: bool
     meet_url: str
     my_logs: list[MeetingLogResponse]
     late_arrivals: list[MeetingLogResponse]

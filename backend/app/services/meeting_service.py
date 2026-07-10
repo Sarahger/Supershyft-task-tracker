@@ -10,8 +10,8 @@ from app.models import MeetingDaySetting, MeetingLog, Task, User
 from app.repositories.base import TaskRepository, user_to_brief_dict
 from app.services.notification_service import NotificationService
 
-MORNING_START = time(9, 45)
-MORNING_END = time(10, 5)
+MORNING_START = time(9, 30)
+MORNING_END = time(10, 30)
 MORNING_ON_TIME_CUTOFF = time(10, 0)
 
 # Fallback offsets when tzdata is not installed (common on Windows dev machines)
@@ -74,8 +74,16 @@ class MeetingService:
         self.db = db
 
     def is_morning_call_enabled(self, target: date) -> bool:
+        """Manager override — allows joining outside the default 9:30–10:30 window."""
         row = self.db.query(MeetingDaySetting).filter(MeetingDaySetting.meeting_date == target).first()
-        return row.morning_call_enabled if row else True
+        return bool(row and row.morning_call_enabled)
+
+    def can_join_morning_call(self, target: date | None = None) -> bool:
+        now_local = _now_local()
+        today = target or now_local.date()
+        if today != now_local.date():
+            return False
+        return _in_morning_window(now_local) or self.is_morning_call_enabled(today)
 
     def set_morning_call_enabled(self, target: date, enabled: bool, user: User) -> dict:
         row = self.db.query(MeetingDaySetting).filter(MeetingDaySetting.meeting_date == target).first()
@@ -115,9 +123,14 @@ class MeetingService:
         meet_url = settings.GOOGLE_MEET_URL
 
         if kind == "morning":
-            if not self.is_morning_call_enabled(today):
-                raise HTTPException(status_code=400, detail="Morning call is disabled for today")
-            if _in_morning_window(now_local):
+            in_window = _in_morning_window(now_local)
+            manager_override = self.is_morning_call_enabled(today)
+            if not in_window and not manager_override:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Morning call is only available 9:30–10:30 AM unless enabled by a manager",
+                )
+            if in_window:
                 existing = self._get_morning_log_for_day(user.id, today)
                 log_type = MeetingLogType.MORNING_ATTENDANCE.value
                 status = _morning_status(now_local)
@@ -265,6 +278,7 @@ class MeetingService:
         return {
             "date": target,
             "morning_call_enabled": self.is_morning_call_enabled(target),
+            "morning_call_join_available": self.can_join_morning_call(target),
             "meet_url": settings.GOOGLE_MEET_URL,
             "my_logs": my_logs,
             "late_arrivals": late_arrivals,

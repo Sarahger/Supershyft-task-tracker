@@ -475,7 +475,7 @@ class MeetingDaySetting(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     meeting_date = Column(Date, unique=True, nullable=False, index=True)
-    morning_call_enabled = Column(Boolean, default=True, nullable=False)
+    morning_call_enabled = Column(Boolean, default=False, nullable=False)
     updated_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

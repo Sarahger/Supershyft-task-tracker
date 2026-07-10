@@ -90,7 +90,7 @@ class NotificationType(str, Enum):
 
 
 class MeetingLogType(str, Enum):
-    MORNING_ATTENDANCE = "Morning Attendance"
+    MORNING_ATTENDANCE = "Daily Morning Call"
     GENERAL = "General"
     TASK_DISCUSSION = "Task Discussion"
 

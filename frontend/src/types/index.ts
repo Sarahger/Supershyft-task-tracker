@@ -288,6 +288,7 @@ export interface MeetingLog {
 export interface MeetingDaySummary {
   date: string;
   morning_call_enabled: boolean;
+  morning_call_join_available: boolean;
   meet_url: string;
   my_logs: MeetingLog[];
   late_arrivals: MeetingLog[];

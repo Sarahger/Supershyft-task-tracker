@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { Video, Phone, Clock, Users, AlertTriangle, LogOut, ExternalLink } from 'lucide-react';
@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { meetingsApi } from '../services/endpoints';
 import { useAuth } from '../contexts/AuthContext';
 import { canAccessManagerFeatures } from '../lib/roles';
-import { joinMeetingAndRedirect, todayIsoDate } from '../lib/meetings';
+import { joinMeetingAndRedirect, isInMorningCallWindow, todayIsoDate } from '../lib/meetings';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { toast } from '../components/ui/Toast';
@@ -61,6 +61,14 @@ export default function MeetingsPage() {
   const isManager = canAccessManagerFeatures(user);
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
+  const [inMorningWindow, setInMorningWindow] = useState(isInMorningCallWindow());
+
+  useEffect(() => {
+    const tick = () => setInMorningWindow(isInMorningCallWindow());
+    tick();
+    const id = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ['meetings-day', selectedDate],
@@ -88,13 +96,15 @@ export default function MeetingsPage() {
     mutationFn: (enabled: boolean) => meetingsApi.updateDaySettings(selectedDate, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['meetings-day', selectedDate] });
-      toast.success('Morning call setting updated');
+      toast.success('Morning call availability updated');
     },
     onError: () => toast.error('Could not update setting'),
   });
 
   const meetUrl = data?.meet_url ?? 'https://meet.google.com/mvs-btmd-bby';
-  const morningEnabled = data?.morning_call_enabled ?? true;
+  const managerOverride = data?.morning_call_enabled ?? false;
+  const isToday = selectedDate === todayIsoDate();
+  const canJoinMorning = isToday && (inMorningWindow || managerOverride);
   const displayDate = (() => {
     try {
       return format(parseISO(selectedDate), 'EEEE, MMM d, yyyy');
@@ -129,14 +139,14 @@ export default function MeetingsPage() {
             <div className="flex-1 min-w-0">
               <h2 className="text-base font-semibold text-text-primary">Daily Morning Call</h2>
               <p className="text-sm text-text-muted mt-0.5">
-                Standup window 9:45–10:05 AM. On-time if joined by 10:00 AM.
+                Available 9:30–10:30 AM by default. On-time if joined by 10:00 AM.
               </p>
             </div>
           </div>
 
-          {!morningEnabled && (
+          {isToday && !canJoinMorning && (
             <div className="mb-4 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
-              Morning call is disabled for this day.
+              Morning call opens at 9:30 AM. A manager can enable it anytime using the checkbox below.
             </div>
           )}
 
@@ -144,18 +154,18 @@ export default function MeetingsPage() {
             <label className="flex items-center gap-2 mb-4 text-sm text-text-secondary cursor-pointer">
               <input
                 type="checkbox"
-                checked={morningEnabled}
+                checked={managerOverride}
                 disabled={settingsMutation.isPending}
                 onChange={(e) => settingsMutation.mutate(e.target.checked)}
                 className="rounded border-dark-border"
               />
-              Morning call enabled for this day
+              Enable morning call anytime today
             </label>
           )}
 
           <Button
             className="w-full gap-2"
-            disabled={!morningEnabled || joinMutation.isPending}
+            disabled={!canJoinMorning || joinMutation.isPending}
             onClick={() => joinMutation.mutate('morning')}
           >
             <Video className="h-4 w-4" /> Join Morning Call
