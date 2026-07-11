@@ -93,6 +93,7 @@ class NotificationPreferences(BaseModel):
     notify_task_updates: bool = True
     notify_reviews: bool = True
     notify_comments: bool = True
+    notify_meetings: bool = True
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -101,6 +102,7 @@ class NotificationPreferencesUpdate(BaseModel):
     notify_task_updates: bool | None = None
     notify_reviews: bool | None = None
     notify_comments: bool | None = None
+    notify_meetings: bool | None = None
 
 
 class SavedFilterCreate(BaseModel):

@@ -15,7 +15,7 @@ from app.services.meet_pool_service import (
     release_pool_link,
     release_stale_pool_links,
 )
-from app.services.notification_service import NotificationService
+from app.services.notification_service import NotificationService, should_send_email
 from app.utils.email import send_plain_urgent_email_sync
 
 MORNING_START = time(9, 45)
@@ -307,7 +307,7 @@ class MeetingService:
                 meet_url,
                 send_email=False,
             )
-            if invitee.email:
+            if invitee.email and should_send_email(invitee, NotificationType.TASK_CALL.value):
                 send_plain_urgent_email_sync(invitee.email, subject, body)
 
     def _notify_task_call_urgent(self, task: Task, starter: User, meet_url: str) -> None:
@@ -331,7 +331,7 @@ class MeetingService:
                 meet_url,
                 send_email=False,
             )
-            if invitee.email:
+            if invitee.email and should_send_email(invitee, NotificationType.TASK_CALL.value):
                 send_plain_urgent_email_sync(invitee.email, subject, body)
 
     def record_leave(self, user: User, log_id: int | None = None) -> dict:

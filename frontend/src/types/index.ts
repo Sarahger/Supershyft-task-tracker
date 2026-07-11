@@ -4,6 +4,7 @@ export interface NotificationPreferences {
   notify_task_updates: boolean;
   notify_reviews: boolean;
   notify_comments: boolean;
+  notify_meetings: boolean;
 }
 
 export interface UserTaskStats {
@@ -50,6 +51,7 @@ export interface User {
   notify_task_updates?: boolean;
   notify_reviews?: boolean;
   notify_comments?: boolean;
+  notify_meetings?: boolean;
 }
 
 export interface UserProfile extends User {

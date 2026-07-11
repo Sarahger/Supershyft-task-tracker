@@ -80,6 +80,12 @@ function NotificationSettingsSection() {
       description: 'New comments on tasks you are involved in',
       disabledBy: 'email_notifications_enabled',
     },
+    {
+      key: 'notify_meetings',
+      label: 'Meetings & calls',
+      description: 'Instant team calls and task sync invitations',
+      disabledBy: 'email_notifications_enabled',
+    },
   ];
 
   if (isLoading || !localPrefs) {

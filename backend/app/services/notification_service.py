@@ -35,6 +35,9 @@ COMMENT_TYPES = {
     NotificationType.TASK_COMMENT.value,
     NotificationType.COMMENT_REPLY.value,
     NotificationType.MENTION.value,
+}
+
+MEETING_TYPES = {
     NotificationType.TASK_CALL.value,
 }
 
@@ -46,6 +49,7 @@ def notification_preferences_dict(user: User) -> dict:
         "notify_task_updates": user.notify_task_updates,
         "notify_reviews": user.notify_reviews,
         "notify_comments": user.notify_comments,
+        "notify_meetings": user.notify_meetings,
     }
 
 
@@ -60,6 +64,8 @@ def should_send_email(user: User, notification_type: str) -> bool:
         return user.notify_reviews
     if notification_type in COMMENT_TYPES:
         return user.notify_comments
+    if notification_type in MEETING_TYPES:
+        return user.notify_meetings
     return True
 
 

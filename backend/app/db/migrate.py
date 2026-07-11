@@ -37,6 +37,7 @@ def run_lightweight_migrations(engine) -> None:
             ("notify_task_updates", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ("notify_reviews", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ("notify_comments", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("notify_meetings", "BOOLEAN NOT NULL DEFAULT TRUE"),
         ]
         dialect = engine.dialect.name
         for col_name, col_def in user_additions:

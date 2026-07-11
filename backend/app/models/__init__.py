@@ -62,6 +62,7 @@ class User(Base):
     notify_task_updates = Column(Boolean, default=True, nullable=False)
     notify_reviews = Column(Boolean, default=True, nullable=False)
     notify_comments = Column(Boolean, default=True, nullable=False)
+    notify_meetings = Column(Boolean, default=True, nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
