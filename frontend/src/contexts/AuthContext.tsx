@@ -5,7 +5,8 @@ import { authApi } from '../services/endpoints';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  requestOtp: (email: string) => Promise<void>;
+  verifyOtp: (email: string, code: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -49,8 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const { data } = await authApi.login(email, password);
+  const requestOtp = async (email: string) => {
+    await authApi.requestOtp(email);
+  };
+
+  const verifyOtp = async (email: string, code: string) => {
+    const { data } = await authApi.verifyOtp(email, code);
     localStorage.setItem('access_token', data.data.access_token);
     localStorage.setItem('refresh_token', data.data.refresh_token);
     setUser(data.data.user);
@@ -65,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

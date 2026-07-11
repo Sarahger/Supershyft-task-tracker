@@ -56,9 +56,6 @@ export function MobileTaskCard({ task, onClick }: MobileTaskCardProps) {
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <StatusBadge status={task.status} />
           <PriorityBadge priority={task.priority} />
-          {task.task_type?.name && (
-            <span className="chip badge-neutral text-2xs">{task.task_type.name}</span>
-          )}
         </div>
         <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
           {task.due_date && (

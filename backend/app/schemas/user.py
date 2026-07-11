@@ -9,9 +9,13 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
-class LoginRequest(BaseModel):
+class OtpRequest(BaseModel):
     email: EmailStr
-    password: str
+
+
+class OtpVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
 
 
 class RefreshRequest(BaseModel):
@@ -30,7 +34,6 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6)
     department_ids: list[int] = []
 
 
@@ -44,7 +47,6 @@ class UserUpdate(BaseModel):
     phone: str | None = None
     manager_id: int | None = None
     department_ids: list[int] | None = None
-    password: str | None = None
 
 
 class DepartmentBrief(BaseModel):

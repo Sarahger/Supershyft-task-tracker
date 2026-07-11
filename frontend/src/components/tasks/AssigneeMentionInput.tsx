@@ -8,6 +8,7 @@ interface AssigneeMentionInputProps {
   users: AssigneeUser[];
   onSelect: (userId: number) => void;
   className?: string;
+  placeholder?: string;
 }
 
 function matchUsers(users: AssigneeUser[], query: string) {
@@ -23,7 +24,7 @@ function matchUsers(users: AssigneeUser[], query: string) {
   });
 }
 
-export function AssigneeMentionInput({ users, onSelect, className }: AssigneeMentionInputProps) {
+export function AssigneeMentionInput({ users, onSelect, className, placeholder = 'Type @name to add assignee…' }: AssigneeMentionInputProps) {
   const [input, setInput] = useState('');
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -85,7 +86,7 @@ export function AssigneeMentionInput({ users, onSelect, className }: AssigneeMen
             setOpen(false);
           }
         }}
-        placeholder="Type @name to add assignee…"
+        placeholder={placeholder}
         className="input text-sm w-full"
         aria-label="Add assignee"
         aria-autocomplete="list"

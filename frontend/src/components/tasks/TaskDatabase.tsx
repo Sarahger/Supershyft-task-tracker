@@ -30,15 +30,13 @@ interface TaskDatabaseProps {
   onFocusIndexChange?: (index: number) => void;
   onStatusChange?: (id: number, status: string) => void;
   onPriorityChange?: (id: number, priority: string) => void;
-  onTaskTypeChange?: (id: number, taskTypeId: number | null) => void;
   onDeleteTask?: (task: Task) => void;
-  taskTypes?: { id: number; name: string }[];
   editable?: boolean;
   columns?: ColumnDef[];
   onColumnsChange?: React.Dispatch<React.SetStateAction<ColumnDef[]>>;
 }
 
-export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'task_type' | 'estimated_hours' | 'actual_hours' | 'indicators';
+export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'estimated_hours' | 'actual_hours' | 'indicators';
 
 export interface ColumnDef {
   id: ColumnId;
@@ -55,7 +53,6 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
   { id: 'due_date', label: 'Due date', width: 110, minWidth: 90, visible: true, sortable: true },
   { id: 'status', label: 'Status', width: 150, minWidth: 120, visible: true, sortable: true },
-  { id: 'task_type', label: 'Type', width: 120, minWidth: 90, visible: true },
   { id: 'estimated_hours', label: 'Time req', width: 90, minWidth: 70, visible: false },
   { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: false },
   { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
@@ -134,49 +131,6 @@ function InlinePrioritySelect({
   );
 }
 
-function InlineTaskTypeSelect({
-  task,
-  taskTypes,
-  onTaskTypeChange,
-  editable,
-}: {
-  task: Task;
-  taskTypes: { id: number; name: string }[];
-  onTaskTypeChange?: (id: number, taskTypeId: number | null) => void;
-  editable?: boolean;
-}) {
-  const typeName = getTaskTypeName(task);
-  const typeId = task.task_type?.id ?? '';
-
-  if (!editable || !onTaskTypeChange || !taskTypes.length) {
-    return typeName ? (
-      <span className="chip bg-surface-muted text-text-secondary">{typeName}</span>
-    ) : (
-      <span className="text-text-muted text-sm">—</span>
-    );
-  }
-
-  return (
-    <select
-      value={typeId}
-      onClick={stopRowActivation}
-      onMouseDown={stopRowActivation}
-      onChange={(e) => {
-        stopRowActivation(e);
-        const next = e.target.value ? Number(e.target.value) : null;
-        onTaskTypeChange(task.id, next);
-      }}
-      className={clsx(INLINE_SELECT_CLASS, 'bg-surface-muted text-text-secondary')}
-      aria-label={`Type for ${task.title}`}
-    >
-      <option value="">None</option>
-      {taskTypes.map((t) => (
-        <option key={t.id} value={t.id}>{t.name}</option>
-      ))}
-    </select>
-  );
-}
-
 function DueDate({ date, status }: { date?: string; status: string }) {
   if (!date) return <span className="text-text-muted text-sm">—</span>;
   const d = new Date(date);
@@ -213,12 +167,6 @@ function RowIndicators({ task }: { task: Task }) {
   );
 }
 
-function getTaskTypeName(task: Task): string | null {
-  if (task.task_type?.name) return task.task_type.name;
-  if (task.tags?.[0]?.name) return task.tags[0].name;
-  return null;
-}
-
 export function TaskDatabase({
   tasks,
   onTaskClick,
@@ -232,9 +180,7 @@ export function TaskDatabase({
   onFocusIndexChange,
   onStatusChange,
   onPriorityChange,
-  onTaskTypeChange,
   onDeleteTask,
-  taskTypes = [],
   editable = false,
   columns: columnsProp,
   onColumnsChange,
@@ -414,14 +360,6 @@ export function TaskDatabase({
                         task={task}
                         editable={editable}
                         onStatusChange={onStatusChange}
-                      />
-                    )}
-                    {col.id === 'task_type' && (
-                      <InlineTaskTypeSelect
-                        task={task}
-                        taskTypes={taskTypes}
-                        editable={editable}
-                        onTaskTypeChange={onTaskTypeChange}
                       />
                     )}
                     {col.id === 'estimated_hours' && (

@@ -2,8 +2,10 @@ import api from './api';
 import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, User, UserProfile } from '../types';
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post<APIResponse<{ access_token: string; refresh_token: string; user: User }>>('/auth/login', { email, password }),
+  requestOtp: (email: string) =>
+    api.post<APIResponse<unknown>>('/auth/request-otp', { email }),
+  verifyOtp: (email: string, code: string) =>
+    api.post<APIResponse<{ access_token: string; refresh_token: string; user: User }>>('/auth/verify-otp', { email, code }),
   logout: (refresh_token: string) => api.post('/auth/logout', { refresh_token }),
   me: () => api.get<APIResponse<User>>('/auth/me'),
 };
@@ -80,12 +82,11 @@ export const usersApi = {
     first_name: string;
     last_name: string;
     email: string;
-    password: string;
     role?: string;
     job_title?: string;
     department_ids?: number[];
   }) => api.post<APIResponse<User>>('/users', data),
-  update: (id: number, data: Partial<User> & { password?: string }) =>
+  update: (id: number, data: Partial<User>) =>
     api.put<APIResponse<User>>(`/users/${id}`, data),
   deactivate: (id: number) => api.delete(`/users/${id}`),
 };
@@ -116,36 +117,7 @@ export const notificationsApi = {
 };
 
 export const miscApi = {
-  taskTypes: () => api.get('/task-types'),
   tags: () => api.get('/tags'),
-};
-
-export interface CustomFieldDefinition {
-  id: number;
-  name: string;
-  field_key: string;
-  field_type: 'text' | 'number' | 'select' | 'date' | 'checkbox';
-  applies_to: string;
-  options: string[];
-  sort_order: number;
-  is_active: boolean;
-}
-
-export const customFieldsApi = {
-  list: (appliesTo = 'task') =>
-    api.get<APIResponse<CustomFieldDefinition[]>>('/custom-fields', { params: { applies_to: appliesTo } }),
-  create: (data: {
-    name: string;
-    field_type?: string;
-    applies_to?: string;
-    options?: string[];
-    field_key?: string;
-  }) => api.post<APIResponse<CustomFieldDefinition>>('/custom-fields', data),
-  update: (id: number, data: Partial<CustomFieldDefinition>) =>
-    api.put<APIResponse<CustomFieldDefinition>>(`/custom-fields/${id}`, data),
-  remove: (id: number) => api.delete(`/custom-fields/${id}`),
-  updateTaskValues: (taskId: number, values: Record<string, string | null>) =>
-    api.put(`/custom-fields/tasks/${taskId}/values`, { values }),
 };
 
 export const meetingsApi = {

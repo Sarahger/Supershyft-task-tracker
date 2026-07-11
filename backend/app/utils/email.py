@@ -78,6 +78,16 @@ def send_notification_email(to: str, title: str, message: str, link: str | None 
     return send_email_sync(to, title, html)
 
 
+def send_otp_email(to: str, code: str) -> bool:
+    subject = f"Your {settings.APP_NAME} login code"
+    message = (
+        f"Your one-time login code is:\n\n{code}\n\n"
+        f"This code expires in 10 minutes. If you did not request this, you can ignore this email."
+    )
+    html = _build_html("Your login code", message)
+    return send_email_sync(to, subject, html)
+
+
 def send_plain_urgent_email_sync(to: str, subject: str, body: str) -> bool:
     """Urgent meeting invite with plain-text body and external Meet URL."""
     if not settings.EMAIL_ENABLED or not settings.SMTP_USER:

@@ -5,19 +5,29 @@ from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.repositories.base import user_to_dict
 from app.schemas.common import APIResponse
-from app.schemas.user import LoginRequest, RefreshRequest, TokenResponse, UserResponse
+from app.schemas.user import OtpRequest, OtpVerify, RefreshRequest, TokenResponse, UserResponse
 from app.services.auth_service import AuthService
 from app.services.notification_service import notification_preferences_dict
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/login")
-def login(data: LoginRequest, db: Session = Depends(get_db)):
+@router.post("/request-otp")
+def request_otp(data: OtpRequest, db: Session = Depends(get_db)):
     service = AuthService(db)
-    result = service.login(data.email, data.password)
+    try:
+        service.request_otp(data.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return APIResponse(message="If an account exists, a login code has been sent to your email")
+
+
+@router.post("/verify-otp")
+def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
+    service = AuthService(db)
+    result = service.verify_otp(data.email, data.code)
     if not result:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired code")
     return APIResponse(
         data={
             "access_token": result["access_token"],

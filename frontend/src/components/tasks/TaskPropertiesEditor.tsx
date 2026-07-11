@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
-import { tasksApi, projectsApi, usersApi, miscApi, customFieldsApi } from '../../services/endpoints';
+import { tasksApi, projectsApi, usersApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
 import { Modal } from '../ui/Modal';
@@ -19,7 +19,6 @@ interface TaskFormState {
   status: string;
   due_date: string;
   project_id: string;
-  task_type_id: string;
   reviewer_id: string;
   assignee_ids: number[];
   review_required: boolean;
@@ -43,7 +42,6 @@ function taskToForm(task: Task): TaskFormState {
     status: task.status,
     due_date: toDateInputValue(task.due_date),
     project_id: task.project_id ? String(task.project_id) : '',
-    task_type_id: task.task_type?.id ? String(task.task_type.id) : '',
     reviewer_id: task.reviewer_id ? String(task.reviewer_id) : '',
     assignee_ids: task.assignees?.map((a) => a.user_id) ?? [],
     review_required: task.review_required,
@@ -81,37 +79,9 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
   });
 
-  const { data: taskTypes } = useQuery({
-    queryKey: ['task-types'],
-    queryFn: () => miscApi.taskTypes().then((r) => r.data.data),
-  });
-
-  const { data: customFields } = useQuery({
-    queryKey: ['custom-fields'],
-    queryFn: () => customFieldsApi.list('task').then((r) => r.data.data),
-  });
-
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
-  const [savedCustomValues, setSavedCustomValues] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const vals = task.custom_field_values ?? {};
-    const normalized: Record<string, string> = {};
-    for (const [k, v] of Object.entries(vals)) {
-      if (v != null) normalized[k] = v;
-    }
-    setCustomValues(normalized);
-    setSavedCustomValues(normalized);
-  }, [task.custom_field_values, taskId]);
-
-  const customDirty = useMemo(
-    () => JSON.stringify(customValues) !== JSON.stringify(savedCustomValues),
-    [customValues, savedCustomValues],
-  );
-
   const isDirty = useMemo(
-    () => JSON.stringify(form) !== JSON.stringify(savedForm) || customDirty,
-    [form, savedForm, customDirty]
+    () => JSON.stringify(form) !== JSON.stringify(savedForm),
+    [form, savedForm],
   );
 
   const saveMutation = useMutation({
@@ -123,7 +93,6 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         status: form.status,
         due_date: form.due_date ? new Date(`${form.due_date}T12:00:00`).toISOString() : null,
         project_id: form.project_id ? Number(form.project_id) : null,
-        task_type_id: form.task_type_id ? Number(form.task_type_id) : null,
         reviewer_id: form.reviewer_id ? Number(form.reviewer_id) : null,
         assignee_ids: form.assignee_ids,
         review_required: form.review_required,
@@ -131,20 +100,12 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
         actual_hours: form.actual_hours ? Number(form.actual_hours) : null,
       });
-      if (customDirty) {
-        const values: Record<string, string | null> = {};
-        for (const field of customFields ?? []) {
-          values[field.field_key] = customValues[field.field_key]?.trim() || null;
-        }
-        await customFieldsApi.updateTaskValues(taskId, values);
-      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
       setSavedForm(form);
-      setSavedCustomValues(customValues);
       toast.success('Task updated');
     },
     onError: () => toast.error('Failed to save task'),
@@ -190,6 +151,14 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     }));
   };
 
+  const setReviewer = (userId: number) => {
+    setForm((prev) => ({ ...prev, reviewer_id: String(userId) }));
+  };
+
+  const removeReviewer = () => {
+    setForm((prev) => ({ ...prev, reviewer_id: '' }));
+  };
+
   const assigneeOptions = users ?? [];
   const reviewerOptions = assigneeOptions.filter((u: { id: number }) => !form.assignee_ids.includes(u.id));
 
@@ -206,8 +175,21 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       .filter(Boolean) as UserOption[];
   }, [form.assignee_ids, assigneeOptions, task.assignees]);
 
+  const reviewerUser = useMemo(() => {
+    if (!form.reviewer_id) return null;
+    const id = Number(form.reviewer_id);
+    const fromList = assigneeOptions.find((u: UserOption) => u.id === id);
+    if (fromList) return fromList;
+    if (task.reviewer) return { id, first_name: task.reviewer.first_name, last_name: task.reviewer.last_name };
+    return null;
+  }, [form.reviewer_id, assigneeOptions, task.reviewer]);
+
   const availableAssignees = assigneeOptions.filter(
     (u: UserOption) => !form.assignee_ids.includes(u.id),
+  );
+
+  const availableReviewers = reviewerOptions.filter(
+    (u: UserOption) => String(u.id) !== form.reviewer_id,
   );
 
   return (
@@ -295,29 +277,6 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
             ...(projects ?? []).map((p: { id: number; name: string }) => ({ value: String(p.id), label: p.name })),
           ]}
         />
-        {taskTypes && (
-          <Select
-            label="Task type"
-            value={form.task_type_id}
-            onChange={(e) => setForm({ ...form, task_type_id: e.target.value })}
-            options={[
-              { value: '', label: 'None' },
-              ...taskTypes.map((t: { id: number; name: string }) => ({ value: String(t.id), label: t.name })),
-            ]}
-          />
-        )}
-        <Select
-          label="Reviewer"
-          value={form.reviewer_id}
-          onChange={(e) => setForm({ ...form, reviewer_id: e.target.value })}
-          options={[
-            { value: '', label: 'No reviewer' },
-            ...reviewerOptions.map((u: { id: number; first_name: string; last_name: string }) => ({
-              value: String(u.id),
-              label: `${u.first_name} ${u.last_name}`,
-            })),
-          ]}
-        />
       </div>
 
       <div>
@@ -400,7 +359,14 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           <input
             type="checkbox"
             checked={form.review_required}
-            onChange={(e) => setForm({ ...form, review_required: e.target.checked })}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setForm({
+                ...form,
+                review_required: checked,
+                reviewer_id: checked ? form.reviewer_id : '',
+              });
+            }}
             className="rounded border-dark-border"
           />
           <span className="text-text-secondary">Review required</span>
@@ -416,59 +382,41 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         </label>
       </div>
 
-      {customFields && customFields.length > 0 && (
+      {form.review_required && (
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-3">Custom fields</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {customFields.map((field) => {
-              const value = customValues[field.field_key] ?? '';
-              if (field.field_type === 'select') {
-                return (
-                  <Select
-                    key={field.id}
-                    label={field.name}
-                    value={value}
-                    onChange={(e) =>
-                      setCustomValues((prev) => ({ ...prev, [field.field_key]: e.target.value }))
-                    }
-                    options={[
-                      { value: '', label: '—' },
-                      ...field.options.map((o) => ({ value: o, label: o })),
-                    ]}
-                  />
-                );
-              }
-              if (field.field_type === 'checkbox') {
-                return (
-                  <label key={field.id} className="flex items-center gap-2 cursor-pointer pt-6">
-                    <input
-                      type="checkbox"
-                      checked={value === 'true'}
-                      onChange={(e) =>
-                        setCustomValues((prev) => ({
-                          ...prev,
-                          [field.field_key]: e.target.checked ? 'true' : '',
-                        }))
-                      }
-                      className="rounded border-dark-border"
-                    />
-                    <span className="text-sm text-text-secondary">{field.name}</span>
-                  </label>
-                );
-              }
-              return (
-                <Input
-                  key={field.id}
-                  label={field.name}
-                  type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
-                  value={value}
-                  onChange={(e) =>
-                    setCustomValues((prev) => ({ ...prev, [field.field_key]: e.target.value }))
-                  }
-                />
-              );
-            })}
-          </div>
+          <label className="block text-xs font-medium text-text-secondary mb-2">Reviewer</label>
+          {reviewerUser ? (
+            <div className="flex flex-wrap gap-2">
+              <span
+                className={clsx(
+                  'chip badge-todo inline-flex items-center gap-1.5 pl-1 pr-1.5 py-1 border border-dark-border',
+                )}
+              >
+                <Avatar name={`${reviewerUser.first_name} ${reviewerUser.last_name}`} size="sm" />
+                <span className="text-sm text-text-primary max-w-[8rem] truncate">
+                  {reviewerUser.first_name} {reviewerUser.last_name}
+                </span>
+                <button
+                  type="button"
+                  onClick={removeReviewer}
+                  className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
+                  aria-label={`Remove reviewer ${reviewerUser.first_name} ${reviewerUser.last_name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </div>
+          ) : availableReviewers.length > 0 ? (
+            <AssigneeMentionInput
+              users={availableReviewers}
+              onSelect={setReviewer}
+              placeholder="Type @name to assign reviewer…"
+            />
+          ) : (
+            <p className="text-sm text-text-muted">
+              Add a team member who is not already an assignee, or remove an assignee to pick them as reviewer.
+            </p>
+          )}
         </div>
       )}
     </div>

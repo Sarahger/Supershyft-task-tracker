@@ -42,13 +42,17 @@ npm run dev
 
 Open http://localhost:5173
 
+## Sign in
+
+Users sign in with a **one-time email code** (OTP). SMTP must be configured in `backend/.env` (`EMAIL_ENABLED=true` and Gmail/SMTP credentials).
+
 ## Demo Accounts
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@company.com | admin123 |
-| Manager | james@company.com | manager123 |
-| Employee | alex@company.com | employee123 |
+| Role | Email |
+|------|-------|
+| Admin | `admin@company.com` |
+
+(Only when `AUTO_SEED=true` — demo seed is disabled for production.)
 
 ## Key Pages
 

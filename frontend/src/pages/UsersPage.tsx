@@ -69,7 +69,6 @@ const emptyCreateForm = {
   first_name: '',
   last_name: '',
   email: '',
-  password: '',
   role: 'employee',
   job_title: '',
   department_ids: [] as number[],
@@ -131,7 +130,6 @@ export default function UsersPage() {
         first_name: createForm.first_name.trim(),
         last_name: createForm.last_name.trim(),
         email: createForm.email.trim(),
-        password: createForm.password,
         role: createForm.role,
         job_title: createForm.job_title.trim() || undefined,
         department_ids: department_ids.length ? department_ids : undefined,
@@ -340,12 +338,9 @@ export default function UsersPage() {
             value={createForm.email}
             onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
           />
-          <Input
-            label="Password"
-            type="password"
-            value={createForm.password}
-            onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-          />
+          <p className="text-xs text-text-muted -mt-2">
+            New users sign in with a one-time email code — no password needed.
+          </p>
           <Select
             label="Role"
             value={createForm.role}
@@ -448,8 +443,7 @@ export default function UsersPage() {
               disabled={
                 !createForm.first_name.trim() ||
                 !createForm.last_name.trim() ||
-                !createForm.email.trim() ||
-                createForm.password.length < 6
+                !createForm.email.trim()
               }
             >
               Create user

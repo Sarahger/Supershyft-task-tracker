@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
-import { tasksApi, miscApi, usersApi } from '../../services/endpoints';
+import { tasksApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
@@ -238,12 +238,6 @@ export function TasksWorkspace({
     staleTime: REFERENCE_STALE_MS,
   });
 
-  const { data: taskTypes } = useQuery({
-    queryKey: ['task-types'],
-    queryFn: () => miscApi.taskTypes().then((r) => r.data.data as { id: number; name: string }[]),
-    staleTime: REFERENCE_STALE_MS,
-  });
-
   const bulkMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
       await Promise.all(ids.map((id) => tasksApi.updateStatus(id, status)));
@@ -287,16 +281,6 @@ export function TasksWorkspace({
       toast.success('Priority updated');
     },
     onError: () => toast.error('Failed to update priority'),
-  });
-
-  const taskTypeMutation = useMutation({
-    mutationFn: ({ id, taskTypeId }: { id: number; taskTypeId: number | null }) =>
-      tasksApi.update(id, { task_type_id: taskTypeId }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey });
-      toast.success('Task type updated');
-    },
-    onError: () => toast.error('Failed to update task type'),
   });
 
   // Keyboard navigation
@@ -533,10 +517,8 @@ export function TasksWorkspace({
                 focusedIndex={focusedIndex}
                 onFocusIndexChange={setFocusedIndex}
                 editable
-                taskTypes={taskTypes ?? []}
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
-                onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
                 onDeleteTask={allowDelete && !isDeletedView ? requestDeleteTask : undefined}
               />
             </div>
