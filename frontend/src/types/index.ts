@@ -282,17 +282,36 @@ export interface MeetingLog {
   left_at: string | null;
   log_type: string;
   status: string | null;
+  meet_url?: string | null;
+  pool_id?: number | null;
   user?: MeetingLogUserBrief | null;
+}
+
+export interface MeetPoolLink {
+  id: number;
+  meet_url: string;
+  is_occupied: boolean;
+  current_context_id: string | null;
+  meeting_type: string | null;
+  last_occupied_at: string | null;
 }
 
 export interface MeetingDaySummary {
   date: string;
-  morning_call_enabled: boolean;
   morning_call_join_available: boolean;
-  meet_url: string;
+  morning_meet_url: string;
   my_logs: MeetingLog[];
-  late_arrivals: MeetingLog[];
+  morning_attendance: MeetingLog[];
   task_calls: MeetingLog[];
+  general_calls: MeetingLog[];
+  active_instant_call: MeetPoolLink | null;
+  pool_available_count: number;
+}
+
+export interface MeetingActionResult {
+  redirect_url?: string | null;
+  log?: MeetingLog | null;
+  pool?: MeetPoolLink | null;
 }
 
 export interface SearchResults {

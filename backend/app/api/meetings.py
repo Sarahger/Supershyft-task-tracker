@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.constants import UserRole
@@ -8,7 +8,15 @@ from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import User
 from app.schemas.common import APIResponse
-from app.schemas.meeting import MeetingDayResponse, MeetingDaySettingUpdate, MeetingJoinRequest, MeetingJoinResponse, MeetingLeaveRequest, MeetingLogResponse
+from app.schemas.meeting import (
+    EndCallRequest,
+    InstantCallStartRequest,
+    MeetingActionResponse,
+    MeetingDayResponse,
+    MeetingLeaveRequest,
+    MeetingLogResponse,
+    MeetPoolResponse,
+)
 from app.services.meeting_service import MeetingService
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
@@ -18,14 +26,63 @@ def _is_manager(user: User) -> bool:
     return user.role in (UserRole.ADMIN.value, UserRole.MANAGER.value)
 
 
-@router.post("/join")
-def join_meeting(
-    data: MeetingJoinRequest,
+@router.post("/morning/join")
+def join_morning_call(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = MeetingService(db).join_meeting(current_user, data.kind, data.task_id)
-    return APIResponse(data=MeetingJoinResponse(**result))
+    result = MeetingService(db).join_morning_call(current_user)
+    return APIResponse(data=MeetingActionResponse(**result))
+
+
+@router.post("/instant/start")
+def start_instant_general_call(
+    data: InstantCallStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = MeetingService(db).start_instant_general_call(current_user, data.invite_user_ids)
+    return APIResponse(data=MeetingActionResponse(**result))
+
+
+@router.post("/instant/end")
+def end_instant_call(
+    data: EndCallRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = MeetingService(db).end_instant_call(current_user, data.pool_id)
+    return APIResponse(data=result)
+
+
+@router.post("/task/{task_id}/start")
+def start_task_call(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = MeetingService(db).start_task_call(current_user, task_id)
+    return APIResponse(data=MeetingActionResponse(**result))
+
+
+@router.post("/task/{task_id}/join")
+def join_task_call(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = MeetingService(db).join_task_call(current_user, task_id)
+    return APIResponse(data=MeetingActionResponse(**result))
+
+
+@router.post("/task/{task_id}/end")
+def end_task_call(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = MeetingService(db).end_task_call(current_user, task_id)
+    return APIResponse(data=result)
 
 
 @router.post("/leave")
@@ -48,18 +105,6 @@ def get_meeting_day(
     return APIResponse(data=MeetingDayResponse(**summary))
 
 
-@router.put("/day-settings", dependencies=[Depends(require_manager)])
-def update_day_settings(
-    data: MeetingDaySettingUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    result = MeetingService(db).set_morning_call_enabled(
-        data.meeting_date, data.morning_call_enabled, current_user
-    )
-    return APIResponse(data=result)
-
-
 @router.get("/task/{task_id}")
 def get_task_meeting_logs(
     task_id: int,
@@ -68,3 +113,13 @@ def get_task_meeting_logs(
 ):
     logs = MeetingService(db).get_task_logs(task_id)
     return APIResponse(data=[MeetingLogResponse(**l) for l in logs])
+
+
+@router.get("/task/{task_id}/active")
+def get_active_task_call(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    pool = MeetingService(db).get_active_task_call(task_id)
+    return APIResponse(data=MeetPoolResponse(**pool) if pool else None)

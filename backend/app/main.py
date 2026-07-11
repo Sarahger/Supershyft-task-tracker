@@ -22,6 +22,17 @@ async def lifespan(app: FastAPI):
     if os.getenv("VERCEL") != "1":
         Base.metadata.create_all(bind=engine)
         run_lightweight_migrations(engine)
+        try:
+            from app.db.database import SessionLocal
+            from app.services.meet_pool_service import seed_meet_pool
+
+            db = SessionLocal()
+            try:
+                seed_meet_pool(db)
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning("Meet pool seed skipped or failed: %s", exc)
     if os.getenv("VERCEL") != "1":
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     if settings.AUTO_SEED and os.getenv("VERCEL") != "1":

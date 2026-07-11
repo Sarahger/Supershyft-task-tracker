@@ -461,13 +461,29 @@ class MeetingLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    pool_id = Column(Integer, ForeignKey("google_meet_pool.id", ondelete="SET NULL"), nullable=True)
     click_time = Column(DateTime(timezone=True), nullable=False)
     left_at = Column(DateTime(timezone=True), nullable=True)
     log_type = Column(String(50), nullable=False)
     status = Column(String(20), nullable=True)
+    meet_url = Column(String(500), nullable=True)
 
     user = relationship("User", foreign_keys=[user_id])
     task = relationship("Task", foreign_keys=[task_id])
+    pool = relationship("GoogleMeetPool", back_populates="logs")
+
+
+class GoogleMeetPool(Base):
+    __tablename__ = "google_meet_pool"
+
+    id = Column(Integer, primary_key=True, index=True)
+    meet_url = Column(String(500), unique=True, nullable=False)
+    is_occupied = Column(Boolean, default=False, nullable=False)
+    current_context_id = Column(String(64), nullable=True)
+    meeting_type = Column(String(20), nullable=True)
+    last_occupied_at = Column(DateTime(timezone=True), nullable=True)
+
+    logs = relationship("MeetingLog", back_populates="pool")
 
 
 class MeetingDaySetting(Base):

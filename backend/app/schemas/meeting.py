@@ -3,24 +3,31 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 
-class MeetingJoinRequest(BaseModel):
-    kind: str = Field(..., pattern="^(morning|quick|task)$")
-    task_id: int | None = None
-
-
 class MeetingLeaveRequest(BaseModel):
     log_id: int | None = None
 
 
-class MeetingDaySettingUpdate(BaseModel):
-    meeting_date: date
-    morning_call_enabled: bool
+class InstantCallStartRequest(BaseModel):
+    invite_user_ids: list[int] = Field(default_factory=list)
+
+
+class EndCallRequest(BaseModel):
+    pool_id: int
 
 
 class MeetingLogUserBrief(BaseModel):
     id: int
     first_name: str
     last_name: str
+
+
+class MeetPoolResponse(BaseModel):
+    id: int
+    meet_url: str
+    is_occupied: bool
+    current_context_id: str | None
+    meeting_type: str | None
+    last_occupied_at: datetime | None
 
 
 class MeetingLogResponse(BaseModel):
@@ -32,19 +39,24 @@ class MeetingLogResponse(BaseModel):
     left_at: datetime | None
     log_type: str
     status: str | None
+    meet_url: str | None = None
+    pool_id: int | None = None
     user: MeetingLogUserBrief | None = None
 
 
-class MeetingJoinResponse(BaseModel):
-    redirect_url: str
-    log: MeetingLogResponse
+class MeetingActionResponse(BaseModel):
+    redirect_url: str | None = None
+    log: MeetingLogResponse | None = None
+    pool: MeetPoolResponse | None = None
 
 
 class MeetingDayResponse(BaseModel):
     date: date
-    morning_call_enabled: bool
     morning_call_join_available: bool
-    meet_url: str
+    morning_meet_url: str
     my_logs: list[MeetingLogResponse]
-    late_arrivals: list[MeetingLogResponse]
+    morning_attendance: list[MeetingLogResponse]
     task_calls: list[MeetingLogResponse]
+    general_calls: list[MeetingLogResponse]
+    active_instant_call: MeetPoolResponse | None = None
+    pool_available_count: int = 0

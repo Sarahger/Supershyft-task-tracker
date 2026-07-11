@@ -75,3 +75,20 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added tasks.%s column", col_name)
+
+    if "meeting_logs" in tables:
+        log_cols = {c["name"] for c in inspector.get_columns("meeting_logs")}
+        dialect = engine.dialect.name
+        log_additions = [
+            ("meet_url", "VARCHAR(500)"),
+            ("pool_id", "INTEGER"),
+        ]
+        for col_name, col_def in log_additions:
+            if col_name not in log_cols:
+                if dialect == "postgresql":
+                    sql = f"ALTER TABLE meeting_logs ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                else:
+                    sql = f"ALTER TABLE meeting_logs ADD COLUMN {col_name} {col_def}"
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                logger.info("Added meeting_logs.%s column", col_name)

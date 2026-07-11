@@ -31,6 +31,14 @@ def _bootstrap_database() -> None:
 
         Base.metadata.create_all(bind=engine)
         run_lightweight_migrations(engine)
+        from app.db.database import SessionLocal
+        from app.services.meet_pool_service import seed_meet_pool
+
+        db = SessionLocal()
+        try:
+            seed_meet_pool(db)
+        finally:
+            db.close()
         if settings.AUTO_SEED:
             from app.db.seed import seed
 

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
 
     GOOGLE_MEET_URL: str = "https://meet.google.com/mvs-btmd-bby"
     MEETING_TIMEZONE: str = "Asia/Kolkata"
+    MEET_POOL_AUTO_RELEASE_MINUTES: int = 60
+    TASK_CALL_BUFFER_MINUTES: int = 5
 
     @property
     def cors_origins_list(self) -> list[str]:

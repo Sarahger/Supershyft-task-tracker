@@ -149,17 +149,29 @@ export const customFieldsApi = {
 };
 
 export const meetingsApi = {
-  join: (data: { kind: 'morning' | 'quick' | 'task'; task_id?: number }) =>
-    api.post<APIResponse<{ redirect_url: string; log: import('../types').MeetingLog }>>('/meetings/join', data),
+  joinMorning: () =>
+    api.post<APIResponse<MeetingActionResult>>('/meetings/morning/join'),
+  startInstant: (data: { invite_user_ids: number[] }) =>
+    api.post<APIResponse<MeetingActionResult>>('/meetings/instant/start', data),
+  endInstant: (pool_id: number) =>
+    api.post<APIResponse<{ pool: import('../types').MeetPoolLink }>>('/meetings/instant/end', { pool_id }),
+  startTaskCall: (taskId: number) =>
+    api.post<APIResponse<MeetingActionResult>>(`/meetings/task/${taskId}/start`),
+  joinTaskCall: (taskId: number) =>
+    api.post<APIResponse<MeetingActionResult>>(`/meetings/task/${taskId}/join`),
+  endTaskCall: (taskId: number) =>
+    api.post<APIResponse<{ pool: import('../types').MeetPoolLink }>>(`/meetings/task/${taskId}/end`),
   leave: (log_id?: number) =>
     api.post<APIResponse<import('../types').MeetingLog>>('/meetings/leave', { log_id: log_id ?? null }),
   getDay: (date: string) =>
     api.get<APIResponse<import('../types').MeetingDaySummary>>('/meetings/day', { params: { date } }),
-  updateDaySettings: (meeting_date: string, morning_call_enabled: boolean) =>
-    api.put('/meetings/day-settings', { meeting_date, morning_call_enabled }),
   getTaskLogs: (taskId: number) =>
     api.get<APIResponse<import('../types').MeetingLog[]>>(`/meetings/task/${taskId}`),
+  getActiveTaskCall: (taskId: number) =>
+    api.get<APIResponse<import('../types').MeetPoolLink | null>>(`/meetings/task/${taskId}/active`),
 };
+
+type MeetingActionResult = import('../types').MeetingActionResult;
 
 export const reportsApi = {
   tasks: (filters: Record<string, unknown>) =>

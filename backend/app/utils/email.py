@@ -76,3 +76,19 @@ def send_email_sync(to: str, subject: str, html_body: str) -> bool:
 def send_notification_email(to: str, title: str, message: str, link: str | None = None) -> bool:
     html = _build_html(title, message, link)
     return send_email_sync(to, title, html)
+
+
+def send_plain_urgent_email_sync(to: str, subject: str, body: str) -> bool:
+    """Urgent meeting invite with plain-text body and external Meet URL."""
+    if not settings.EMAIL_ENABLED or not settings.SMTP_USER:
+        logger.info("Email disabled. Would send urgent email to %s: %s", to, subject)
+        return False
+    html = f"""
+    <html><body style="font-family:Arial,sans-serif;padding:24px;">
+      <div style="border:2px solid #dc2626;border-radius:8px;padding:20px;max-width:560px;">
+        <p style="color:#dc2626;font-weight:bold;margin:0 0 12px;">URGENT</p>
+        <p style="white-space:pre-wrap;line-height:1.6;">{escape(body)}</p>
+      </div>
+    </body></html>
+    """
+    return send_email_sync(to, subject, html)

@@ -90,7 +90,7 @@ class NotificationType(str, Enum):
 
 
 class MeetingLogType(str, Enum):
-    MORNING_ATTENDANCE = "Daily Morning Call"
+    MORNING_ATTENDANCE = "Morning Attendance"
     GENERAL = "General"
     TASK_DISCUSSION = "Task Discussion"
 
@@ -98,6 +98,12 @@ class MeetingLogType(str, Enum):
 class MeetingAttendanceStatus(str, Enum):
     ON_TIME = "On-Time"
     LATE = "Late"
+    DELAYED_RESPONSE = "Delayed Response"
+
+
+class MeetingPoolType(str, Enum):
+    TASK = "Task"
+    INSTANT = "Instant"
 
 
 class ActivityType(str, Enum):
