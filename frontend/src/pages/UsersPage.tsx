@@ -12,7 +12,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
-import { canAccessManagerFeatures } from '../lib/roles';
+import { canAccessManagerFeatures, canDeactivateUser, canManageUsers } from '../lib/roles';
 import { USER_STATUSES, USER_STATUS_LABELS } from '../types';
 import type { User } from '../types';
 
@@ -81,6 +81,17 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const isAdmin = currentUser?.role === 'administrator';
   const canManageStatus = canAccessManagerFeatures(currentUser);
+  const canAddOrRemoveUsers = canManageUsers(currentUser);
+  const roleOptions = isAdmin
+    ? [
+        { value: 'employee', label: 'Employee' },
+        { value: 'manager', label: 'Manager' },
+        { value: 'administrator', label: 'Administrator' },
+      ]
+    : [
+        { value: 'employee', label: 'Employee' },
+        { value: 'manager', label: 'Manager' },
+      ];
 
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
@@ -240,7 +251,7 @@ export default function UsersPage() {
               : `${data?.length ?? 0} people · click a row for details`
           }
         />
-        {isAdmin && (
+        {canAddOrRemoveUsers && (
           <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5 shrink-0">
             <Plus className="h-3.5 w-3.5" /> Add user
           </Button>
@@ -259,7 +270,7 @@ export default function UsersPage() {
                 <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Departments</th>
                 <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Status</th>
                 <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Job Title</th>
-                {isAdmin && (
+                {canAddOrRemoveUsers && (
                   <th className="text-right px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Actions</th>
                 )}
               </tr>
@@ -295,9 +306,9 @@ export default function UsersPage() {
                     />
                   </td>
                   <td className="px-4 py-3 text-sm text-text-secondary">{u.job_title || '—'}</td>
-                  {isAdmin && (
+                  {canAddOrRemoveUsers && (
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      {u.status !== 'inactive' && u.id !== currentUser?.id && (
+                      {canDeactivateUser(currentUser, u) && (
                         <button
                           type="button"
                           onClick={() => handleDeactivate(u)}
@@ -345,11 +356,7 @@ export default function UsersPage() {
             label="Role"
             value={createForm.role}
             onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
-            options={[
-              { value: 'employee', label: 'Employee' },
-              { value: 'manager', label: 'Manager' },
-              { value: 'administrator', label: 'Administrator' },
-            ]}
+            options={roleOptions}
           />
           <Input
             label="Job title"

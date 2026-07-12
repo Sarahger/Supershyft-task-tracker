@@ -3,7 +3,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.dependencies import get_current_user, require_admin, require_manager
+from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import User
 from app.repositories.base import UserRepository
@@ -45,8 +45,17 @@ def get_user(user_id: int, db: Session = Depends(get_db), current_user: User = D
     return APIResponse(data=_format_user(user, db, include_stats=True))
 
 
-@router.post("", dependencies=[Depends(require_admin)])
-def create_user(data: UserCreate, db: Session = Depends(get_db)):
+@router.post("")
+def create_user(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager),
+):
+    if current_user.role == "manager" and data.role == "administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Managers cannot create administrator accounts",
+        )
     try:
         user = UserService(db).create_user(data.model_dump())
         return APIResponse(data=_format_user(user, db), message="User created")
@@ -77,17 +86,22 @@ def update_user(
     return APIResponse(data=_format_user(user, db), message="User updated")
 
 
-@router.delete("/{user_id}", dependencies=[Depends(require_admin)])
+@router.delete("/{user_id}")
 def deactivate_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager),
 ):
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
     user = UserRepository(db).get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if current_user.role == "manager" and user.role == "administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Managers cannot deactivate administrator accounts",
+        )
     user.status = "inactive"
     db.commit()
     return APIResponse(message="User deactivated")
