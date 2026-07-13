@@ -1,12 +1,19 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { CheckCircle2, ClipboardList, Clock, TrendingUp } from 'lucide-react';
-import { usersApi } from '../../services/endpoints';
+import { CheckCircle2, ClipboardList, Clock, Pencil, Trash2, TrendingUp } from 'lucide-react';
+import { departmentsApi, usersApi } from '../../services/endpoints';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
+import { canDeleteUser, canEditUser } from '../../lib/roles';
+import { resolveUserDepartmentIds } from '../../lib/userForm';
 import { Drawer } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
+import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/Skeleton';
+import { toast } from '../ui/Toast';
+import { UserFormModal, emptyUserForm, userToForm, type UserFormState } from './UserFormModal';
 import { STATUS_LABELS, USER_STATUS_LABELS, type UserProfile } from '../../types';
 
 interface UserDrawerProps {
@@ -48,7 +55,21 @@ function performanceLabel(utilization: number | null) {
   return { text: 'Over estimate', tone: 'metric-red' };
 }
 
-function UserProfileContent({ profile }: { profile: UserProfile }) {
+function UserProfileContent({
+  profile,
+  canEdit,
+  canDelete,
+  onEdit,
+  onDelete,
+  isDeleting,
+}: {
+  profile: UserProfile;
+  canEdit: boolean;
+  canDelete: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+  isDeleting: boolean;
+}) {
   const { openTask } = useTaskDrawer();
   const stats = profile.task_stats;
   const perf = performanceLabel(stats.time_utilization_percent);
@@ -79,6 +100,26 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
             )}
           </div>
         </div>
+        {(canEdit || canDelete) && (
+          <div className="flex flex-wrap gap-2 mt-4">
+            {canEdit && (
+              <Button variant="secondary" size="sm" onClick={onEdit} className="gap-1.5">
+                <Pencil className="h-3.5 w-3.5" /> Edit user
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onDelete}
+                disabled={isDeleting}
+                className="gap-1.5 text-accent-danger hover:text-accent-danger hover:bg-red-500/10 border-red-500/20"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete user
+              </Button>
+            )}
+          </div>
+        )}
       </header>
 
       <section>
@@ -224,27 +265,155 @@ function UserProfileContent({ profile }: { profile: UserProfile }) {
 }
 
 export function UserDrawer({ userId, onClose }: UserDrawerProps) {
+  const { user: currentUser } = useAuth();
+  const queryClient = useQueryClient();
+  const isAdmin = currentUser?.role === 'administrator';
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState<UserFormState>(emptyUserForm());
+  const [newDeptInput, setNewDeptInput] = useState('');
+
+  const roleOptions = isAdmin
+    ? [
+        { value: 'employee', label: 'Employee' },
+        { value: 'manager', label: 'Manager' },
+        { value: 'administrator', label: 'Administrator' },
+      ]
+    : [
+        { value: 'employee', label: 'Employee' },
+        { value: 'manager', label: 'Manager' },
+      ];
+
+  useEffect(() => {
+    setShowEdit(false);
+    setEditForm(emptyUserForm());
+    setNewDeptInput('');
+  }, [userId]);
+
   const { data: profile, isLoading, isError } = useQuery({
     queryKey: ['user', userId],
     queryFn: () => usersApi.get(userId!).then((r) => r.data.data),
     enabled: !!userId,
   });
 
+  const { data: departments } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.list().then((r) => r.data.data),
+    enabled: showEdit,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!profile) return;
+      const department_ids = await resolveUserDepartmentIds(editForm, departments);
+      return usersApi.update(profile.id, {
+        first_name: editForm.first_name.trim(),
+        last_name: editForm.last_name.trim(),
+        email: editForm.email.trim(),
+        role: editForm.role,
+        status: editForm.status,
+        job_title: editForm.job_title.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        department_ids,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      queryClient.invalidateQueries({ queryKey: ['departments'] });
+      if (profile) queryClient.invalidateQueries({ queryKey: ['user', profile.id] });
+      setShowEdit(false);
+      setEditForm(emptyUserForm());
+      setNewDeptInput('');
+      toast.success('User updated');
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      toast.error(axiosErr.response?.data?.detail || 'Could not update user');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (targetUserId: number) => usersApi.remove(targetUserId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      toast.success('User deleted permanently');
+      onClose();
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      toast.error(axiosErr.response?.data?.detail || 'Could not delete user');
+    },
+  });
+
+  const openEdit = () => {
+    if (!profile) return;
+    setEditForm(userToForm(profile));
+    setNewDeptInput('');
+    setShowEdit(true);
+  };
+
+  const closeEdit = () => {
+    setShowEdit(false);
+    setEditForm(emptyUserForm());
+    setNewDeptInput('');
+  };
+
+  const handleDelete = () => {
+    if (!profile) return;
+    const message =
+      `Permanently delete ${profile.first_name} ${profile.last_name}?\n\n` +
+      'This removes their account from the database. ' +
+      'If they created tasks or comments, deletion may be blocked — use status "inactive" instead.';
+    if (!window.confirm(message)) return;
+    deleteMutation.mutate(profile.id);
+  };
+
+  const canEdit = profile ? canEditUser(currentUser, profile) : false;
+  const canDelete = profile ? canDeleteUser(currentUser, profile) : false;
+
   return (
-    <Drawer isOpen={!!userId} onClose={onClose}>
-      {isLoading && (
-        <div className="px-6 pt-14 pb-8 space-y-4">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      )}
-      {isError && !isLoading && (
-        <div className="px-6 pt-14 pb-8">
-          <EmptyState title="User not found" description="This person may have been removed." />
-        </div>
-      )}
-      {profile && !isLoading && <UserProfileContent profile={profile} />}
-    </Drawer>
+    <>
+      <Drawer isOpen={!!userId} onClose={onClose}>
+        {isLoading && (
+          <div className="px-6 pt-14 pb-8 space-y-4">
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-40 w-full" />
+          </div>
+        )}
+        {isError && !isLoading && (
+          <div className="px-6 pt-14 pb-8">
+            <EmptyState title="User not found" description="This person may have been removed." />
+          </div>
+        )}
+        {profile && !isLoading && (
+          <UserProfileContent
+            profile={profile}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onEdit={openEdit}
+            onDelete={handleDelete}
+            isDeleting={deleteMutation.isPending}
+          />
+        )}
+      </Drawer>
+
+      <UserFormModal
+        isOpen={showEdit}
+        title={profile ? `Edit ${profile.first_name} ${profile.last_name}` : 'Edit user'}
+        submitLabel="Save changes"
+        form={editForm}
+        setForm={setEditForm}
+        roleOptions={roleOptions}
+        departments={departments}
+        newDeptInput={newDeptInput}
+        setNewDeptInput={setNewDeptInput}
+        onClose={closeEdit}
+        onSubmit={() => updateMutation.mutate()}
+        isSubmitting={updateMutation.isPending}
+        showStatus
+      />
+    </>
   );
 }

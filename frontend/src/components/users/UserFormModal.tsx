@@ -16,6 +16,32 @@ export interface UserFormState {
   new_department_names: string[];
 }
 
+export const emptyUserForm = (): UserFormState => ({
+  first_name: '',
+  last_name: '',
+  email: '',
+  role: 'employee',
+  status: 'active',
+  job_title: '',
+  phone: '',
+  department_ids: [],
+  new_department_names: [],
+});
+
+export function userToForm(user: User): UserFormState {
+  return {
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    job_title: user.job_title || '',
+    phone: user.phone || '',
+    department_ids: user.departments?.map((d) => d.id) ?? [],
+    new_department_names: [],
+  };
+}
+
 interface UserFormModalProps {
   isOpen: boolean;
   title: string;

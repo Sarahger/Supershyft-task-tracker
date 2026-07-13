@@ -112,7 +112,6 @@ function UserInvitePicker({
               className="rounded border-dark-border"
             />
             <span className="text-text-primary">{u.first_name} {u.last_name}</span>
-            <span className="text-text-muted text-xs ml-auto">{u.email}</span>
           </label>
         ))}
         {!filtered.length && (

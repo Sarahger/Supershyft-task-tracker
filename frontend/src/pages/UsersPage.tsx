@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { usersApi, departmentsApi } from '../services/endpoints';
 import { useUserDrawer } from '../contexts/UserDrawerContext';
-import { UserFormModal, type UserFormState } from '../components/users/UserFormModal';
+import { UserFormModal, emptyUserForm, userToForm, type UserFormState } from '../components/users/UserFormModal';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -18,7 +18,7 @@ import {
   canManageUsers,
 } from '../lib/roles';
 import { USER_STATUSES, USER_STATUS_LABELS } from '../types';
-import type { User } from '../types';
+import { resolveUserDepartmentIds } from '../lib/userForm';
 
 const STATUS_CHIP: Record<string, string> = {
   active: 'status-chip-active',
@@ -69,50 +69,7 @@ function UserStatusControl({
   );
 }
 
-const emptyForm = (): UserFormState => ({
-  first_name: '',
-  last_name: '',
-  email: '',
-  role: 'employee',
-  status: 'active',
-  job_title: '',
-  phone: '',
-  department_ids: [],
-  new_department_names: [],
-});
-
-function userToForm(user: User): UserFormState {
-  return {
-    first_name: user.first_name,
-    last_name: user.last_name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    job_title: user.job_title || '',
-    phone: user.phone || '',
-    department_ids: user.departments?.map((d) => d.id) ?? [],
-    new_department_names: [],
-  };
-}
-
-async function resolveDepartmentIds(
-  form: UserFormState,
-  departments: { id: number; name: string }[] | undefined,
-) {
-  const department_ids = [...form.department_ids];
-  for (const name of form.new_department_names) {
-    const trimmed = name.trim();
-    if (!trimmed) continue;
-    const existing = departments?.find((d) => d.name.toLowerCase() === trimmed.toLowerCase());
-    if (existing) {
-      if (!department_ids.includes(existing.id)) department_ids.push(existing.id);
-    } else {
-      const created = await departmentsApi.create({ name: trimmed });
-      department_ids.push(created.data.data.id);
-    }
-  }
-  return department_ids;
-}
+import type { User } from '../types';
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -134,8 +91,8 @@ export default function UsersPage() {
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [createForm, setCreateForm] = useState<UserFormState>(emptyForm);
-  const [editForm, setEditForm] = useState<UserFormState>(emptyForm);
+  const [createForm, setCreateForm] = useState<UserFormState>(emptyUserForm);
+  const [editForm, setEditForm] = useState<UserFormState>(emptyUserForm);
   const [newDeptInput, setNewDeptInput] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -162,7 +119,7 @@ export default function UsersPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const department_ids = await resolveDepartmentIds(createForm, departments);
+      const department_ids = await resolveUserDepartmentIds(createForm, departments);
       return usersApi.create({
         first_name: createForm.first_name.trim(),
         last_name: createForm.last_name.trim(),
@@ -177,7 +134,7 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ['users-list'] });
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       setShowCreate(false);
-      setCreateForm(emptyForm());
+      setCreateForm(emptyUserForm());
       setNewDeptInput('');
       toast.success('User created');
     },
@@ -187,7 +144,7 @@ export default function UsersPage() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editingUser) return;
-      const department_ids = await resolveDepartmentIds(editForm, departments);
+      const department_ids = await resolveUserDepartmentIds(editForm, departments);
       return usersApi.update(editingUser.id, {
         first_name: editForm.first_name.trim(),
         last_name: editForm.last_name.trim(),
@@ -205,7 +162,7 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       if (editingUser) queryClient.invalidateQueries({ queryKey: ['user', editingUser.id] });
       setEditingUser(null);
-      setEditForm(emptyForm());
+      setEditForm(emptyUserForm());
       setNewDeptInput('');
       toast.success('User updated');
     },
@@ -251,13 +208,13 @@ export default function UsersPage() {
 
   const closeCreateModal = () => {
     setShowCreate(false);
-    setCreateForm(emptyForm());
+    setCreateForm(emptyUserForm());
     setNewDeptInput('');
   };
 
   const closeEditModal = () => {
     setEditingUser(null);
-    setEditForm(emptyForm());
+    setEditForm(emptyUserForm());
     setNewDeptInput('');
   };
 
