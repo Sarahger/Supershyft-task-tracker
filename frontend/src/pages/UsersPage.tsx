@@ -1,18 +1,22 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Plus, UserMinus, X } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { usersApi, departmentsApi } from '../services/endpoints';
 import { useUserDrawer } from '../contexts/UserDrawerContext';
+import { UserFormModal, type UserFormState } from '../components/users/UserFormModal';
 import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
 import { useAuth } from '../contexts/AuthContext';
-import { canAccessManagerFeatures, canDeactivateUser, canManageUsers } from '../lib/roles';
+import {
+  canAccessManagerFeatures,
+  canDeleteUser,
+  canEditUser,
+  canManageUsers,
+} from '../lib/roles';
 import { USER_STATUSES, USER_STATUS_LABELS } from '../types';
 import type { User } from '../types';
 
@@ -65,15 +69,50 @@ function UserStatusControl({
   );
 }
 
-const emptyCreateForm = {
+const emptyForm = (): UserFormState => ({
   first_name: '',
   last_name: '',
   email: '',
   role: 'employee',
+  status: 'active',
   job_title: '',
-  department_ids: [] as number[],
-  new_department_names: [] as string[],
-};
+  phone: '',
+  department_ids: [],
+  new_department_names: [],
+});
+
+function userToForm(user: User): UserFormState {
+  return {
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    job_title: user.job_title || '',
+    phone: user.phone || '',
+    department_ids: user.departments?.map((d) => d.id) ?? [],
+    new_department_names: [],
+  };
+}
+
+async function resolveDepartmentIds(
+  form: UserFormState,
+  departments: { id: number; name: string }[] | undefined,
+) {
+  const department_ids = [...form.department_ids];
+  for (const name of form.new_department_names) {
+    const trimmed = name.trim();
+    if (!trimmed) continue;
+    const existing = departments?.find((d) => d.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      if (!department_ids.includes(existing.id)) department_ids.push(existing.id);
+    } else {
+      const created = await departmentsApi.create({ name: trimmed });
+      department_ids.push(created.data.data.id);
+    }
+  }
+  return department_ids;
+}
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -94,7 +133,9 @@ export default function UsersPage() {
       ];
 
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [createForm, setCreateForm] = useState<UserFormState>(emptyForm);
+  const [editForm, setEditForm] = useState<UserFormState>(emptyForm);
   const [newDeptInput, setNewDeptInput] = useState('');
 
   const { data, isLoading } = useQuery({
@@ -105,7 +146,7 @@ export default function UsersPage() {
   const { data: departments } = useQuery({
     queryKey: ['departments'],
     queryFn: () => departmentsApi.list().then((r) => r.data.data),
-    enabled: showCreate,
+    enabled: showCreate || !!editingUser,
   });
 
   const statusMutation = useMutation({
@@ -116,27 +157,12 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ['users-list'] });
       toast.success(`Status updated to ${USER_STATUS_LABELS[status] || status}`);
     },
-    onError: () => {
-      toast.error('Could not update user status');
-    },
+    onError: () => toast.error('Could not update user status'),
   });
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const department_ids = [...createForm.department_ids];
-
-      for (const name of createForm.new_department_names) {
-        const trimmed = name.trim();
-        if (!trimmed) continue;
-        const existing = departments?.find((d) => d.name.toLowerCase() === trimmed.toLowerCase());
-        if (existing) {
-          if (!department_ids.includes(existing.id)) department_ids.push(existing.id);
-        } else {
-          const created = await departmentsApi.create({ name: trimmed });
-          department_ids.push(created.data.data.id);
-        }
-      }
-
+      const department_ids = await resolveDepartmentIds(createForm, departments);
       return usersApi.create({
         first_name: createForm.first_name.trim(),
         last_name: createForm.last_name.trim(),
@@ -151,21 +177,55 @@ export default function UsersPage() {
       queryClient.invalidateQueries({ queryKey: ['users-list'] });
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       setShowCreate(false);
-      setCreateForm(emptyCreateForm);
+      setCreateForm(emptyForm());
       setNewDeptInput('');
       toast.success('User created');
     },
     onError: () => toast.error('Could not create user'),
   });
 
-  const deactivateMutation = useMutation({
-    mutationFn: (userId: number) => usersApi.deactivate(userId),
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingUser) return;
+      const department_ids = await resolveDepartmentIds(editForm, departments);
+      return usersApi.update(editingUser.id, {
+        first_name: editForm.first_name.trim(),
+        last_name: editForm.last_name.trim(),
+        email: editForm.email.trim(),
+        role: editForm.role,
+        status: editForm.status,
+        job_title: editForm.job_title.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        department_ids,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['users-list'] });
-      toast.success('User deactivated');
+      queryClient.invalidateQueries({ queryKey: ['departments'] });
+      if (editingUser) queryClient.invalidateQueries({ queryKey: ['user', editingUser.id] });
+      setEditingUser(null);
+      setEditForm(emptyForm());
+      setNewDeptInput('');
+      toast.success('User updated');
     },
-    onError: () => toast.error('Could not deactivate user'),
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      toast.error(axiosErr.response?.data?.detail || 'Could not update user');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: number) => usersApi.remove(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      toast.success('User deleted permanently');
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as { response?: { data?: { detail?: string } } };
+      toast.error(axiosErr.response?.data?.detail || 'Could not delete user');
+    },
   });
 
   const handleStatusChange = (userId: number, status: string) => {
@@ -174,67 +234,30 @@ export default function UsersPage() {
     statusMutation.mutate({ userId, status });
   };
 
-  const handleDeactivate = (user: User) => {
-    if (user.id === currentUser?.id) {
-      toast.error('You cannot deactivate your own account');
-      return;
-    }
-    if (!window.confirm(`Deactivate ${user.first_name} ${user.last_name}? They will no longer be able to sign in.`)) {
-      return;
-    }
-    deactivateMutation.mutate(user.id);
-  };
-
-  const selectedDepartments = createForm.department_ids
-    .map((id) => departments?.find((d) => d.id === id))
-    .filter(Boolean) as { id: number; name: string }[];
-
-  const availableDepartments = (departments ?? []).filter(
-    (d) => !createForm.department_ids.includes(d.id),
-  );
-
-  const addExistingDepartment = (deptId: number) => {
-    if (!deptId || createForm.department_ids.includes(deptId)) return;
-    setCreateForm((prev) => ({
-      ...prev,
-      department_ids: [...prev.department_ids, deptId],
-    }));
-  };
-
-  const removeDepartment = (deptId: number) => {
-    setCreateForm((prev) => ({
-      ...prev,
-      department_ids: prev.department_ids.filter((id) => id !== deptId),
-    }));
-  };
-
-  const addNewDepartmentName = () => {
-    const name = newDeptInput.trim();
-    if (!name) return;
-    const existing = departments?.find((d) => d.name.toLowerCase() === name.toLowerCase());
-    if (existing) {
-      addExistingDepartment(existing.id);
-    } else if (
-      !createForm.new_department_names.some((n) => n.toLowerCase() === name.toLowerCase())
-    ) {
-      setCreateForm((prev) => ({
-        ...prev,
-        new_department_names: [...prev.new_department_names, name],
-      }));
-    }
+  const openEdit = (user: User) => {
+    setEditingUser(user);
+    setEditForm(userToForm(user));
     setNewDeptInput('');
   };
 
-  const removeNewDepartmentName = (name: string) => {
-    setCreateForm((prev) => ({
-      ...prev,
-      new_department_names: prev.new_department_names.filter((n) => n !== name),
-    }));
+  const handleDelete = (user: User) => {
+    const message =
+      `Permanently delete ${user.first_name} ${user.last_name}?\n\n` +
+      'This removes their account from the database. ' +
+      'If they created tasks or comments, deletion may be blocked — use status "inactive" instead.';
+    if (!window.confirm(message)) return;
+    deleteMutation.mutate(user.id);
   };
 
   const closeCreateModal = () => {
     setShowCreate(false);
-    setCreateForm(emptyCreateForm);
+    setCreateForm(emptyForm());
+    setNewDeptInput('');
+  };
+
+  const closeEditModal = () => {
+    setEditingUser(null);
+    setEditForm(emptyForm());
     setNewDeptInput('');
   };
 
@@ -245,11 +268,7 @@ export default function UsersPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <PageHeader
           title="Users"
-          subtitle={
-            canManageStatus
-              ? `${data?.length ?? 0} people · click a row for details`
-              : `${data?.length ?? 0} people · click a row for details`
-          }
+          subtitle={`${data?.length ?? 0} people · click a row for details`}
         />
         {canAddOrRemoveUsers && (
           <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5 shrink-0">
@@ -308,18 +327,29 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-sm text-text-secondary">{u.job_title || '—'}</td>
                   {canAddOrRemoveUsers && (
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      {canDeactivateUser(currentUser, u) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeactivate(u)}
-                          disabled={deactivateMutation.isPending}
-                          className="toolbar-btn text-text-muted hover:text-red-400 gap-1"
-                          title="Deactivate user"
-                        >
-                          <UserMinus className="h-3.5 w-3.5" />
-                          Remove
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {canEditUser(currentUser, u) && (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(u)}
+                            className="toolbar-btn text-text-muted hover:text-text-primary"
+                            title="Edit user"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {canDeleteUser(currentUser, u) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(u)}
+                            disabled={deleteMutation.isPending}
+                            className="toolbar-btn text-text-muted hover:text-red-400"
+                            title="Delete user permanently"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   )}
                 </tr>
@@ -329,135 +359,36 @@ export default function UsersPage() {
         </div>
       )}
 
-      <Modal isOpen={showCreate} onClose={closeCreateModal} title="Add user">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="First name"
-              value={createForm.first_name}
-              onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })}
-            />
-            <Input
-              label="Last name"
-              value={createForm.last_name}
-              onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })}
-            />
-          </div>
-          <Input
-            label="Email"
-            type="email"
-            value={createForm.email}
-            onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-          />
-          <p className="text-xs text-text-muted -mt-2">
-            New users sign in with a one-time email code — no password needed.
-          </p>
-          <Select
-            label="Role"
-            value={createForm.role}
-            onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
-            options={roleOptions}
-          />
-          <Input
-            label="Job title"
-            value={createForm.job_title}
-            onChange={(e) => setCreateForm({ ...createForm, job_title: e.target.value })}
-          />
+      <UserFormModal
+        isOpen={showCreate}
+        title="Add user"
+        submitLabel="Create user"
+        form={createForm}
+        setForm={setCreateForm}
+        roleOptions={roleOptions}
+        departments={departments}
+        newDeptInput={newDeptInput}
+        setNewDeptInput={setNewDeptInput}
+        onClose={closeCreateModal}
+        onSubmit={() => createMutation.mutate()}
+        isSubmitting={createMutation.isPending}
+      />
 
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-2">Departments</label>
-            <div className="flex flex-wrap gap-2 min-h-[2rem] mb-2">
-              {selectedDepartments.map((d) => (
-                <span
-                  key={`existing-${d.id}`}
-                  className="dept-chip-existing"
-                >
-                  <span className="text-sm text-text-primary">{d.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeDepartment(d.id)}
-                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
-                    aria-label={`Remove ${d.name}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              ))}
-              {createForm.new_department_names.map((name) => (
-                <span
-                  key={`new-${name}`}
-                  className="dept-chip-new"
-                >
-                  <span className="text-sm text-text-primary">{name}</span>
-                  <span className="dept-chip-new-label">new</span>
-                  <button
-                    type="button"
-                    onClick={() => removeNewDepartmentName(name)}
-                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
-                    aria-label={`Remove ${name}`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              ))}
-              {!selectedDepartments.length && !createForm.new_department_names.length && (
-                <p className="text-sm text-text-muted py-1">No departments selected</p>
-              )}
-            </div>
-            {availableDepartments.length > 0 && (
-              <select
-                value=""
-                onChange={(e) => addExistingDepartment(Number(e.target.value))}
-                className="input text-sm mb-2"
-                aria-label="Add existing department"
-              >
-                <option value="">Add existing department…</option>
-                {availableDepartments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            )}
-            <div className="flex gap-2">
-              <Input
-                value={newDeptInput}
-                onChange={(e) => setNewDeptInput(e.target.value)}
-                placeholder="Or type a new department name"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addNewDepartmentName();
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={addNewDepartmentName}
-                disabled={!newDeptInput.trim()}
-                className="shrink-0 mt-auto"
-              >
-                Add
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={closeCreateModal}>Cancel</Button>
-            <Button
-              onClick={() => createMutation.mutate()}
-              loading={createMutation.isPending}
-              disabled={
-                !createForm.first_name.trim() ||
-                !createForm.last_name.trim() ||
-                !createForm.email.trim()
-              }
-            >
-              Create user
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      <UserFormModal
+        isOpen={!!editingUser}
+        title={editingUser ? `Edit ${editingUser.first_name} ${editingUser.last_name}` : 'Edit user'}
+        submitLabel="Save changes"
+        form={editForm}
+        setForm={setEditForm}
+        roleOptions={roleOptions}
+        departments={departments}
+        newDeptInput={newDeptInput}
+        setNewDeptInput={setNewDeptInput}
+        onClose={closeEditModal}
+        onSubmit={() => updateMutation.mutate()}
+        isSubmitting={updateMutation.isPending}
+        showStatus
+      />
     </div>
   );
 }

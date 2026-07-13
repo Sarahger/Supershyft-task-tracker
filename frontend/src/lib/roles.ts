@@ -23,3 +23,22 @@ export function canDeactivateUser(
   if (currentUser.role === 'manager' && targetUser.role === 'administrator') return false;
   return true;
 }
+
+export function canEditUser(
+  currentUser: User | null | undefined,
+  targetUser: User,
+): boolean {
+  if (!canManageUsers(currentUser) || !currentUser) return false;
+  if (currentUser.role === 'manager' && targetUser.role === 'administrator') return false;
+  return true;
+}
+
+export function canDeleteUser(
+  currentUser: User | null | undefined,
+  targetUser: User,
+): boolean {
+  if (!canManageUsers(currentUser) || !currentUser) return false;
+  if (targetUser.id === currentUser.id) return false;
+  if (currentUser.role === 'manager' && targetUser.role === 'administrator') return false;
+  return true;
+}

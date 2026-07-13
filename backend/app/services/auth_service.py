@@ -151,6 +151,10 @@ class UserService:
     def update_user(self, user: User, data: dict) -> User:
         if "password" in data:
             del data["password"]
+        if "email" in data and data["email"] and data["email"] != user.email:
+            existing = self.repo.get_by_email(data["email"])
+            if existing:
+                raise ValueError("Email already registered")
         if "department_ids" in data and data["department_ids"] is not None:
             from app.models import Department
             depts = self.db.query(Department).filter(Department.id.in_(data["department_ids"])).all()
@@ -160,6 +164,55 @@ class UserService:
             if value is not None and hasattr(user, key):
                 setattr(user, key, value)
         return self.repo.update(user)
+
+    def delete_user(self, user: User) -> None:
+        from app.models import (
+            ActivityLog,
+            Attachment,
+            Comment,
+            Department,
+            LoginOtp,
+            MeetingLog,
+            Project,
+            Task,
+            TaskVersion,
+            VersionComment,
+        )
+
+        uid = user.id
+
+        blockers: list[str] = []
+        if self.db.query(Task).filter(Task.created_by_id == uid).count():
+            blockers.append("created tasks")
+        if self.db.query(Comment).filter(Comment.author_id == uid).count():
+            blockers.append("task comments")
+        if self.db.query(VersionComment).filter(VersionComment.author_id == uid).count():
+            blockers.append("review comments")
+        if self.db.query(Attachment).filter(Attachment.uploaded_by_id == uid).count():
+            blockers.append("attachments")
+        if self.db.query(TaskVersion).filter(TaskVersion.created_by_id == uid).count():
+            blockers.append("task submissions")
+        if blockers:
+            raise ValueError(
+                f"Cannot delete user: linked to {', '.join(blockers)}. "
+                "Reassign or remove that work first, or set status to inactive instead."
+            )
+
+        self.db.query(User).filter(User.manager_id == uid).update({User.manager_id: None})
+        self.db.query(Department).filter(Department.manager_id == uid).update({Department.manager_id: None})
+        self.db.query(Project).filter(Project.created_by_id == uid).update({Project.created_by_id: None})
+        self.db.query(Task).filter(Task.reviewer_id == uid).update({Task.reviewer_id: None})
+        self.db.query(Task).filter(Task.updated_by_id == uid).update({Task.updated_by_id: None})
+        self.db.query(Task).filter(Task.deleted_by_id == uid).update({Task.deleted_by_id: None})
+        self.db.query(Task).filter(Task.blocked_by_id == uid).update({Task.blocked_by_id: None})
+        self.db.query(Task).filter(Task.bug_reported_by_id == uid).update({Task.bug_reported_by_id: None})
+        self.db.query(TaskVersion).filter(TaskVersion.reviewer_id == uid).update({TaskVersion.reviewer_id: None})
+        self.db.query(ActivityLog).filter(ActivityLog.user_id == uid).delete()
+        self.db.query(LoginOtp).filter(LoginOtp.email == user.email).delete()
+        self.db.query(MeetingLog).filter(MeetingLog.user_id == uid).delete()
+
+        self.db.delete(user)
+        self.db.commit()
 
 
 # NotificationService lives in notification_service.py

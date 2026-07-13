@@ -86,9 +86,9 @@ export const usersApi = {
     job_title?: string;
     department_ids?: number[];
   }) => api.post<APIResponse<User>>('/users', data),
-  update: (id: number, data: Partial<User>) =>
+  update: (id: number, data: Partial<User> & { department_ids?: number[] }) =>
     api.put<APIResponse<User>>(`/users/${id}`, data),
-  deactivate: (id: number) => api.delete(`/users/${id}`),
+  remove: (id: number) => api.delete(`/users/${id}`),
 };
 
 export const departmentsApi = {

@@ -63,6 +63,19 @@ def create_user(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+MANAGER_EDITABLE_FIELDS = {
+    "first_name",
+    "last_name",
+    "email",
+    "role",
+    "status",
+    "job_title",
+    "phone",
+    "department_ids",
+    "manager_id",
+}
+
+
 @router.put("/{user_id}")
 def update_user(
     user_id: int,
@@ -76,35 +89,49 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     update_data = data.model_dump(exclude_unset=True)
-    if current_user.role == "manager" and current_user.id != user_id:
-        update_data = {k: v for k, v in update_data.items() if k == "status"}
-        if not update_data:
-            raise HTTPException(status_code=403, detail="Managers can only update user status")
-    elif current_user.role != "administrator":
-        update_data = {k: v for k, v in update_data.items() if k in ("first_name", "last_name", "phone", "job_title", "password")}
-    user = UserService(db).update_user(user, update_data)
+    if current_user.role == "manager":
+        if current_user.id == user_id:
+            update_data = {k: v for k, v in update_data.items() if k in ("first_name", "last_name", "phone", "job_title")}
+        elif user.role == "administrator":
+            raise HTTPException(status_code=403, detail="Managers cannot edit administrator accounts")
+        else:
+            if update_data.get("role") == "administrator":
+                raise HTTPException(status_code=403, detail="Managers cannot assign administrator role")
+            update_data = {k: v for k, v in update_data.items() if k in MANAGER_EDITABLE_FIELDS}
+            if not update_data:
+                raise HTTPException(status_code=403, detail="Insufficient permissions to update this user")
+    elif current_user.role == "employee":
+        if current_user.id != user_id:
+            raise HTTPException(status_code=403, detail="Cannot update other users")
+        update_data = {k: v for k, v in update_data.items() if k in ("first_name", "last_name", "phone", "job_title")}
+    try:
+        user = UserService(db).update_user(user, update_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return APIResponse(data=_format_user(user, db), message="User updated")
 
 
 @router.delete("/{user_id}")
-def deactivate_user(
+def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
     if user_id == current_user.id:
-        raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
     user = UserRepository(db).get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if current_user.role == "manager" and user.role == "administrator":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Managers cannot deactivate administrator accounts",
+            detail="Managers cannot delete administrator accounts",
         )
-    user.status = "inactive"
-    db.commit()
-    return APIResponse(message="User deactivated")
+    try:
+        UserService(db).delete_user(user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return APIResponse(message="User deleted permanently")
 
 
 def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
