@@ -2,13 +2,13 @@ import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
 import { Modal } from '../ui/Modal';
-import { USER_STATUSES, USER_STATUS_LABELS } from '../../types';
+import { USER_STATUSES, USER_STATUS_LABELS, type User } from '../../types';
 
 export interface UserFormState {
   first_name: string;
   last_name: string;
   email: string;
-  role: string;
+  role: User['role'];
   status: string;
   job_title: string;
   phone: string;
@@ -122,7 +122,7 @@ export function UserFormModal({
           <Select
             label="Role"
             value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
+            onChange={(e) => setForm({ ...form, role: e.target.value as User['role'] })}
             options={roleOptions}
           />
           {showStatus && (

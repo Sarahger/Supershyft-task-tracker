@@ -86,8 +86,12 @@ export const usersApi = {
     job_title?: string;
     department_ids?: number[];
   }) => api.post<APIResponse<User>>('/users', data),
-  update: (id: number, data: Partial<User> & { department_ids?: number[] }) =>
-    api.put<APIResponse<User>>(`/users/${id}`, data),
+  update: (
+    id: number,
+    data: Partial<Pick<User, 'first_name' | 'last_name' | 'email' | 'role' | 'status' | 'job_title' | 'phone'>> & {
+      department_ids?: number[];
+    },
+  ) => api.put<APIResponse<User>>(`/users/${id}`, data),
   remove: (id: number) => api.delete(`/users/${id}`),
 };
 
