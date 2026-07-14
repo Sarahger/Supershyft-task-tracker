@@ -20,9 +20,11 @@ import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { useAuth } from '../../contexts/AuthContext';
 import { canDeleteTasks } from '../../lib/roles';
+import { getChecklistProgress } from '../../lib/checklist';
 import { startTaskCall, joinTaskCall, endTaskCall, openMeetUrl } from '../../lib/meetings';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
+import clsx from 'clsx';
 
 interface TaskDrawerProps {
   taskId: number | null;
@@ -316,6 +318,33 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           {/* Header */}
           <div className="pr-10 mb-6">
             <h1 className="text-2xl font-semibold text-text-primary leading-snug tracking-tight">{task.title}</h1>
+            {(() => {
+              const checklistProgress = getChecklistProgress(task.checklists);
+              if (!checklistProgress) return null;
+              return (
+                <div className="mt-3 max-w-md">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-xs text-text-muted">Subtask progress</span>
+                    <span className="text-xs font-medium text-text-secondary tabular-nums">
+                      {checklistProgress.done}/{checklistProgress.total} · {checklistProgress.percent}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-dark-muted overflow-hidden">
+                    <div
+                      className={clsx(
+                        'h-full rounded-full transition-all duration-300',
+                        checklistProgress.percent === 100
+                          ? 'bg-emerald-500'
+                          : checklistProgress.percent > 0
+                            ? 'bg-amber-500'
+                            : 'bg-dark-border',
+                      )}
+                      style={{ width: `${checklistProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <StatusBadge status={task.status} />
               <PriorityBadge priority={task.priority} />
