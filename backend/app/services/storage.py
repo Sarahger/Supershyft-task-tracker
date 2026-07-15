@@ -192,6 +192,46 @@ async def store_file(
     return filepath, None
 
 
+async def delete_stored_file(
+    file_path: str | None,
+    url: str | None = None,
+    *,
+    oidc_token: str | None = None,
+) -> None:
+    """Best-effort removal of a stored attachment from blob or local disk."""
+    if not file_path:
+        return
+
+    is_blob = bool(url) or file_path.startswith("attachments/")
+    if is_blob:
+        auth = _resolve_blob_auth(oidc_token)
+        if not auth:
+            logger.warning("Blob auth unavailable; skipping blob delete for %s", file_path)
+            return
+        token, store_id = auth
+        pathname = file_path.lstrip("/")
+        headers = _blob_headers(token, store_id)
+        if store_id:
+            delete_url = f"{BLOB_API}/?pathname={quote(pathname, safe='')}"
+        else:
+            delete_url = f"{LEGACY_BLOB_API}/{pathname}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(delete_url, headers=headers)
+            if response.status_code >= 400:
+                logger.warning(
+                    "Blob delete failed for %s: %s",
+                    pathname,
+                    response.text[:200] if response.text else response.status_code,
+                )
+        return
+
+    if os.path.isfile(file_path):
+        try:
+            os.remove(file_path)
+        except OSError as exc:
+            logger.warning("Failed to delete local file %s: %s", file_path, exc)
+
+
 async def fetch_blob_bytes(
     pathname: str,
     *,

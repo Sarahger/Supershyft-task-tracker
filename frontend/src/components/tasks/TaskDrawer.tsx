@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2, Video, ExternalLink, PhoneOff } from 'lucide-react';
+import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2, Video, ExternalLink, PhoneOff, Pencil } from 'lucide-react';
 import { Drawer, DrawerSection } from '../ui/Modal';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
@@ -40,7 +40,11 @@ function formatFileSize(bytes?: number) {
 
 export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const [comment, setComment] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentContent, setEditingCommentContent] = useState('');
   const [checklistInput, setChecklistInput] = useState('');
+  const [editingChecklistId, setEditingChecklistId] = useState<number | null>(null);
+  const [editingChecklistTitle, setEditingChecklistTitle] = useState('');
   const [dependencyPersonPick, setDependencyPersonPick] = useState('');
   const [dependencyPick, setDependencyPick] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState<TaskAttachment | null>(null);
@@ -58,9 +62,13 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
 
   useEffect(() => {
     setChecklistInput('');
+    setEditingChecklistId(null);
+    setEditingChecklistTitle('');
     setDependencyPersonPick('');
     setDependencyPick('');
     setComment('');
+    setEditingCommentId(null);
+    setEditingCommentContent('');
     setPreviewAttachment(null);
     setShowDeleteModal(false);
   }, [taskId]);
@@ -152,7 +160,35 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const commentMutation = useMutation({
     mutationFn: (payload: { content: string; mentioned_user_ids: number[] }) =>
       tasksApi.addComment(taskId!, payload.content, undefined, payload.mentioned_user_ids),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['task-comments', taskId] }); setComment(''); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      setComment('');
+    },
+  });
+
+  const editCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }: { commentId: number; content: string }) =>
+      tasksApi.updateComment(commentId, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      setEditingCommentId(null);
+      setEditingCommentContent('');
+      toast.success('Comment updated');
+    },
+    onError: () => toast.error('Failed to update comment'),
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: number) => tasksApi.deleteComment(commentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Comment deleted');
+    },
+    onError: () => toast.error('Failed to delete comment'),
   });
 
   const completeMutation = useMutation({
@@ -168,6 +204,31 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
+  });
+
+  const editChecklistMutation = useMutation({
+    mutationFn: ({ itemId, title }: { itemId: number; title: string }) =>
+      tasksApi.updateChecklistItem(itemId, { title }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      setEditingChecklistId(null);
+      setEditingChecklistTitle('');
+      toast.success('Subtask updated');
+    },
+    onError: () => toast.error('Failed to update subtask'),
+  });
+
+  const deleteChecklistMutation = useMutation({
+    mutationFn: (itemId: number) => tasksApi.deleteChecklistItem(itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      toast.success('Subtask deleted');
+    },
+    onError: () => toast.error('Failed to delete subtask'),
   });
 
   const addChecklistMutation = useMutation({
@@ -243,6 +304,18 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     },
   });
 
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: number) => tasksApi.deleteAttachment(attachmentId),
+    onSuccess: (_res, attachmentId) => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.removeQueries({ queryKey: ['attachment-inline', attachmentId] });
+      if (previewAttachment?.id === attachmentId) setPreviewAttachment(null);
+      toast.success('Attachment removed');
+    },
+    onError: () => toast.error('Failed to remove attachment'),
+  });
+
   const handleDownloadAttachment = async (attachmentId: number, filename: string) => {
     try {
       await tasksApi.downloadAttachment(attachmentId, filename);
@@ -253,6 +326,29 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
 
   const openAttachmentPreview = (file: TaskAttachment) => {
     setPreviewAttachment(file);
+  };
+
+  const startChecklistEdit = (itemId: number, title: string) => {
+    setEditingChecklistId(itemId);
+    setEditingChecklistTitle(title);
+  };
+
+  const cancelChecklistEdit = () => {
+    setEditingChecklistId(null);
+    setEditingChecklistTitle('');
+  };
+
+  const saveChecklistEdit = (itemId: number, originalTitle: string) => {
+    const title = editingChecklistTitle.trim();
+    if (!title) {
+      cancelChecklistEdit();
+      return;
+    }
+    if (title === originalTitle) {
+      cancelChecklistEdit();
+      return;
+    }
+    editChecklistMutation.mutate({ itemId, title });
   };
 
   const existingDependencyIds = new Set(task?.dependencies?.map((d) => d.depends_on_id) ?? []);
@@ -272,6 +368,29 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     if (!trimmed) return;
     const mentioned_user_ids = extractMentionedUserIds(trimmed, usersList ?? []);
     commentMutation.mutate({ content: trimmed, mentioned_user_ids });
+  };
+
+  const startCommentEdit = (commentId: number, content: string) => {
+    setEditingCommentId(commentId);
+    setEditingCommentContent(content);
+  };
+
+  const cancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setEditingCommentContent('');
+  };
+
+  const saveCommentEdit = (commentId: number, originalContent: string) => {
+    const trimmed = editingCommentContent.trim();
+    if (!trimmed) {
+      toast.error('Comment cannot be empty');
+      return;
+    }
+    if (trimmed === originalContent.trim()) {
+      cancelCommentEdit();
+      return;
+    }
+    editCommentMutation.mutate({ commentId, content: trimmed });
   };
 
   return (
@@ -478,21 +597,74 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           <DrawerSection title={`Comments${comments?.length ? ` · ${comments.length}` : ''}`}>
             <div className="space-y-4">
               {comments?.length ? comments.map((c: {
-                id: number; content: string;
+                id: number;
+                author_id: number;
+                content: string;
+                is_edited?: boolean;
                 author?: { first_name: string; last_name: string };
-                created_at: string; replies?: unknown[];
-              }) => (
-                <div key={c.id} className="flex gap-3">
+                created_at: string;
+                replies?: unknown[];
+              }) => {
+                const isOwnComment = c.author_id === user?.id;
+                return (
+                <div key={c.id} className="flex gap-3 group">
                   {c.author && <Avatar name={`${c.author.first_name} ${c.author.last_name}`} size="sm" />}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-sm font-medium text-text-primary">{c.author?.first_name} {c.author?.last_name}</span>
-                      <span className="text-2xs text-text-muted">{format(new Date(c.created_at), 'MMM d, h:mm a')}</span>
+                      <span className="text-2xs text-text-muted">
+                        {format(new Date(c.created_at), 'MMM d, h:mm a')}
+                        {c.is_edited ? ' · edited' : ''}
+                      </span>
+                      {isOwnComment && editingCommentId !== c.id && (
+                        <div className="flex items-center gap-0.5 ml-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => startCommentEdit(c.id, c.content)}
+                            className="toolbar-btn text-text-muted hover:text-text-primary"
+                            title="Edit comment"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteCommentMutation.mutate(c.id)}
+                            disabled={deleteCommentMutation.isPending}
+                            className="toolbar-btn text-text-muted hover:text-red-400"
+                            title="Delete comment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <CommentMentionText content={c.content} />
+                    {editingCommentId === c.id ? (
+                      <div className="mt-2 space-y-2">
+                        <CommentMentionTextarea
+                          value={editingCommentContent}
+                          onChange={setEditingCommentContent}
+                          users={usersList ?? []}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button variant="secondary" size="sm" onClick={cancelCommentEdit}>
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => saveCommentEdit(c.id, c.content)}
+                            disabled={!editingCommentContent.trim() || editCommentMutation.isPending}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <CommentMentionText content={c.content} />
+                    )}
                   </div>
                 </div>
-              )) : (
+              );
+              }) : (
                 <p className="text-sm text-text-muted">No comments yet</p>
               )}
               <div className="flex gap-2 pt-2">
@@ -525,17 +697,70 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             {task.checklists?.flatMap((cl) => cl.items).length ? (
               <div className="space-y-1">
                 {task.checklists.flatMap((cl) => cl.items).map((item) => (
-                  <label key={item.id} className="flex items-center gap-3 py-1.5 px-1 rounded-md hover:bg-dark-hover cursor-pointer">
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 py-1.5 px-1 rounded-md hover:bg-dark-hover group"
+                  >
                     <input
                       type="checkbox"
                       checked={item.is_completed}
                       onChange={(e) => checklistMutation.mutate({ itemId: item.id, done: e.target.checked })}
-                      className="rounded border-dark-border text-text-primary focus:ring-[var(--focus-ring)]"
+                      className="rounded border-dark-border text-text-primary focus:ring-[var(--focus-ring)] shrink-0"
                     />
-                    <span className={`text-sm ${item.is_completed ? 'line-through text-text-muted' : 'text-text-primary'}`}>
-                      {item.title}
-                    </span>
-                  </label>
+                    <div className="flex-1 min-w-0">
+                      {editingChecklistId === item.id ? (
+                        <Input
+                          value={editingChecklistTitle}
+                          onChange={(e) => setEditingChecklistTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              saveChecklistEdit(item.id, item.title);
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelChecklistEdit();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (editingChecklistId === item.id) saveChecklistEdit(item.id, item.title);
+                          }}
+                          autoFocus
+                          className="text-sm h-8"
+                        />
+                      ) : (
+                        <span
+                          className={clsx(
+                            'text-sm block truncate',
+                            item.is_completed ? 'line-through text-text-muted' : 'text-text-primary',
+                          )}
+                        >
+                          {item.title}
+                        </span>
+                      )}
+                    </div>
+                    {editingChecklistId !== item.id && (
+                      <div className="flex items-center gap-0.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => startChecklistEdit(item.id, item.title)}
+                          className="toolbar-btn text-text-muted hover:text-text-primary"
+                          title="Edit subtask"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteChecklistMutation.mutate(item.id)}
+                          disabled={deleteChecklistMutation.isPending}
+                          className="toolbar-btn text-text-muted hover:text-red-400"
+                          title="Delete subtask"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -613,6 +838,16 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                         title="Download"
                       >
                         <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => deleteAttachmentMutation.mutate(file.id)}
+                        disabled={deleteAttachmentMutation.isPending}
+                        className="gap-1.5 shrink-0 text-accent-danger hover:text-accent-danger hover:bg-red-500/10 border-red-500/20"
+                        title="Remove attachment"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                     <AttachmentInlinePreview

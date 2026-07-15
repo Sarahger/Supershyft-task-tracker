@@ -31,6 +31,9 @@ export const tasksApi = {
   getComments: (id: number) => api.get(`/tasks/${id}/comments`),
   addComment: (id: number, content: string, parent_id?: number, mentioned_user_ids?: number[]) =>
     api.post(`/tasks/${id}/comments`, { content, parent_id, mentioned_user_ids }),
+  updateComment: (commentId: number, content: string) =>
+    api.put(`/comments/${commentId}`, { content }),
+  deleteComment: (commentId: number) => api.delete(`/comments/${commentId}`),
   getActivity: (id: number) => api.get(`/tasks/${id}/activity`),
   uploadAttachment: (id: number, file: File) => {
     const form = new FormData();
@@ -48,8 +51,10 @@ export const tasksApi = {
     link.click();
     window.URL.revokeObjectURL(url);
   },
+  deleteAttachment: (attachmentId: number) => api.delete(`/attachments/${attachmentId}`),
   updateChecklistItem: (itemId: number, data: { is_completed?: boolean; title?: string }) =>
     api.patch(`/checklist-items/${itemId}`, data),
+  deleteChecklistItem: (itemId: number) => api.delete(`/checklist-items/${itemId}`),
   addChecklistItem: (taskId: number, title: string) =>
     api.post<APIResponse<{ id: number; title: string; is_completed: boolean; sort_order: number }>>(
       `/tasks/${taskId}/checklist-items`,

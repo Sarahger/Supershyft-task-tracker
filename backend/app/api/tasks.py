@@ -43,7 +43,7 @@ from app.schemas.task import (
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
 from app.utils.mentions import resolve_mentioned_user_ids
-from app.services.storage import StorageError, fetch_url_bytes, is_private_blob_url, store_file
+from app.services.storage import StorageError, delete_stored_file, fetch_url_bytes, is_private_blob_url, store_file
 
 logger = logging.getLogger(__name__)
 
@@ -362,10 +362,40 @@ def edit_comment(
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment or comment.author_id != current_user.id:
         raise HTTPException(status_code=404, detail="Comment not found")
-    comment.content = data.content
+    content = data.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    comment.content = content
     comment.is_edited = True
     db.commit()
+    db.refresh(comment)
     return APIResponse(data=_format_comment(comment))
+
+
+@router.delete("/comments/{comment_id}")
+def delete_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment or comment.author_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    task_id = comment.task_id
+
+    def delete_with_replies(cid: int) -> None:
+        for reply in db.query(Comment).filter(Comment.parent_id == cid).all():
+            delete_with_replies(reply.id)
+        row = db.query(Comment).filter(Comment.id == cid).first()
+        if row:
+            db.delete(row)
+
+    delete_with_replies(comment_id)
+    db.commit()
+    if task_id:
+        ActivityRepository(db).log(current_user.id, "comment_deleted", "Deleted comment", task_id)
+    return APIResponse(data=None, message="Comment deleted")
 
 
 @router.get("/tasks/{task_id}/activity")
@@ -447,10 +477,38 @@ def update_checklist_item(
     item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    if data.title is not None and not data.title.strip():
+        raise HTTPException(status_code=400, detail="Title is required")
     for key, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, key, value)
+        if key == "title" and value is not None:
+            setattr(item, key, value.strip())
+        else:
+            setattr(item, key, value)
     db.commit()
-    return APIResponse(data={"id": item.id, "is_completed": item.is_completed})
+    db.refresh(item)
+    return APIResponse(
+        data={
+            "id": item.id,
+            "title": item.title,
+            "is_completed": item.is_completed,
+            "sort_order": item.sort_order,
+        },
+        message="Checklist item updated",
+    )
+
+
+@router.delete("/checklist-items/{item_id}")
+def delete_checklist_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(item)
+    db.commit()
+    return APIResponse(data=None, message="Checklist item deleted")
 
 
 @router.post("/tasks/{task_id}/attachments")
@@ -568,6 +626,36 @@ async def download_attachment(
             media_type=attachment.mime_type or "application/octet-stream",
         )
     raise HTTPException(status_code=404, detail="File not found")
+
+
+@router.delete("/attachments/{attachment_id}")
+async def delete_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    task_id = attachment.task_id
+    filename = attachment.filename or "file"
+    await delete_stored_file(
+        attachment.file_path,
+        attachment.url,
+        oidc_token=request.headers.get("x-vercel-oidc-token"),
+    )
+    db.delete(attachment)
+    db.commit()
+    if task_id:
+        ActivityRepository(db).log(
+            current_user.id,
+            "attachment_deleted",
+            f"Removed {filename}",
+            task_id,
+        )
+    return APIResponse(data=None, message="Attachment deleted")
 
 
 @router.get("/task-types")
