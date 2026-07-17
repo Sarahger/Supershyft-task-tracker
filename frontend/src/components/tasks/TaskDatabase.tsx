@@ -203,10 +203,17 @@ export function TaskDatabase({
     onSelectionChange(next);
   };
 
+  const allVisibleSelected = tasks.length > 0 && tasks.every((t) => selectedIds.has(t.id));
+
   const toggleSelectAll = () => {
     if (!onSelectionChange) return;
-    if (selectedIds.size === tasks.length) onSelectionChange(new Set());
-    else onSelectionChange(new Set(tasks.map((t) => t.id)));
+    const next = new Set(selectedIds);
+    if (allVisibleSelected) {
+      tasks.forEach((t) => next.delete(t.id));
+    } else {
+      tasks.forEach((t) => next.add(t.id));
+    }
+    onSelectionChange(next);
   };
 
   const handleContextMenu = (e: React.MouseEvent, taskId: number) => {
@@ -261,7 +268,7 @@ export function TaskDatabase({
             <div className="db-header-cell w-10 shrink-0 flex items-center justify-center">
               <input
                 type="checkbox"
-                checked={tasks.length > 0 && selectedIds.size === tasks.length}
+                checked={allVisibleSelected}
                 onChange={toggleSelectAll}
                 className="rounded border-dark-border bg-dark-card text-text-primary focus:ring-[var(--focus-ring)]"
               />
