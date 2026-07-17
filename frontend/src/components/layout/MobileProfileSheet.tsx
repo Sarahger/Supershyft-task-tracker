@@ -37,7 +37,7 @@ export function MobileProfileSheet({ isOpen, onClose }: MobileProfileSheetProps)
     <BottomSheet isOpen={isOpen} onClose={onClose} title="Account">
       {user && (
         <div className="flex items-center gap-3 pb-4 mb-4 border-b border-dark-border">
-          <Avatar name={`${user.first_name} ${user.last_name}`} size="lg" />
+          <Avatar name={`${user.first_name} ${user.last_name}`} src={user.profile_picture} size="lg" />
           <div className="min-w-0">
             <p className="text-base font-semibold text-text-primary truncate">
               {user.first_name} {user.last_name}

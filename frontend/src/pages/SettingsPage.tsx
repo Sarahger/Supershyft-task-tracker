@@ -1,17 +1,137 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
+import { Camera, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTaskViewPreferences } from '../contexts/TaskViewPreferencesContext';
 import { OPTIONAL_TASK_VIEWS } from '../lib/taskViewPreferences';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
+import { Avatar } from '../components/ui/Avatar';
 import { toast } from '../components/ui/Toast';
-import { notificationsApi } from '../services/endpoints';
+import { authApi, notificationsApi } from '../services/endpoints';
 import type { NotificationPreferences } from '../types';
+
+function ProfilePhotoSection() {
+  const { user, updateUser } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => authApi.uploadProfilePicture(file),
+    onSuccess: (res) => {
+      updateUser(res.data.data);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      toast.success('Profile photo updated');
+    },
+    onError: (error: { response?: { data?: { detail?: string; message?: string } } }) => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      const data = error.response?.data;
+      const detail = typeof data?.detail === 'string' ? data.detail : data?.message;
+      toast.error(detail || 'Could not upload photo');
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: () => authApi.removeProfilePicture(),
+    onSuccess: (res) => {
+      updateUser(res.data.data);
+      toast.success('Profile photo removed');
+    },
+    onError: () => toast.error('Could not remove photo'),
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be 5MB or smaller');
+      return;
+    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    uploadMutation.mutate(file);
+  };
+
+  if (!user) return null;
+
+  const displaySrc = previewUrl || user.profile_picture;
+  const busy = uploadMutation.isPending || removeMutation.isPending;
+
+  return (
+    <div className="flex items-center gap-4 mb-5 pb-5 border-b border-dark-border">
+      <div className="relative shrink-0">
+        <Avatar
+          name={`${user.first_name} ${user.last_name}`}
+          src={displaySrc}
+          size="lg"
+          className="!h-16 !w-16 !text-lg"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy}
+          className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full border border-dark-border bg-dark-card text-text-secondary hover:text-text-primary hover:bg-dark-hover flex items-center justify-center disabled:opacity-50"
+          title="Upload photo"
+          aria-label="Upload profile photo"
+        >
+          <Camera className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-text-primary">Profile photo</p>
+        <p className="text-xs text-text-muted mt-0.5">
+          JPEG, PNG, WebP, or GIF · up to 5MB
+        </p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+            loading={uploadMutation.isPending}
+            disabled={busy}
+          >
+            {user.profile_picture ? 'Change photo' : 'Upload photo'}
+          </Button>
+          {user.profile_picture && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => removeMutation.mutate()}
+              loading={removeMutation.isPending}
+              disabled={busy}
+              className="text-accent-danger hover:text-accent-danger"
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+}
 
 function NotificationSettingsSection() {
   const qc = useQueryClient();
@@ -223,12 +343,13 @@ export default function SettingsPage() {
 
       <div className="card p-6">
         <h2 className="text-sm font-medium text-text-primary mb-4">Profile</h2>
+        <ProfilePhotoSection />
         <div className="space-y-0 text-sm">
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Name</span><span className="text-text-primary">{user?.first_name} {user?.last_name}</span></div>
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Email</span><span className="text-text-primary">{user?.email}</span></div>
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Role</span><span className="text-text-primary capitalize">{user?.role}</span></div>
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Job Title</span><span className="text-text-primary">{user?.job_title || '—'}</span></div>
-          <div className="flex justify-between py-3"><span className="text-text-muted">Departments</span><span className="text-text-primary">{user?.departments?.map((d) => d.name).join(', ')}</span></div>
+          <div className="flex justify-between py-3"><span className="text-text-muted">Departments</span><span className="text-text-primary">{user?.departments?.map((d) => d.name).join(', ') || '—'}</span></div>
         </div>
       </div>
 

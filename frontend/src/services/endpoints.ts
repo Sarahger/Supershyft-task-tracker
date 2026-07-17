@@ -8,6 +8,12 @@ export const authApi = {
     api.post<APIResponse<{ access_token: string; refresh_token: string; user: User }>>('/auth/verify-otp', { email, code }),
   logout: (refresh_token: string) => api.post('/auth/logout', { refresh_token }),
   me: () => api.get<APIResponse<User>>('/auth/me'),
+  uploadProfilePicture: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<APIResponse<User>>('/auth/me/profile-picture', form);
+  },
+  removeProfilePicture: () => api.delete<APIResponse<User>>('/auth/me/profile-picture'),
 };
 
 export const tasksApi = {

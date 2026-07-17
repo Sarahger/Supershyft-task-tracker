@@ -78,7 +78,7 @@ function UserProfileContent({
     <div className="px-6 pt-14 pb-8 space-y-6">
       <header>
         <div className="flex items-start gap-4">
-          <Avatar name={`${profile.first_name} ${profile.last_name}`} size="lg" />
+          <Avatar name={`${profile.first_name} ${profile.last_name}`} src={profile.profile_picture} size="lg" />
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold text-text-primary tracking-tight">
               {profile.first_name} {profile.last_name}

@@ -8,6 +8,7 @@ interface AuthContextType {
   requestOtp: (email: string) => Promise<void>;
   verifyOtp: (email: string, code: string) => Promise<void>;
   logout: () => void;
+  updateUser: (user: User) => void;
   isAuthenticated: boolean;
 }
 
@@ -69,8 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const updateUser = (next: User) => {
+    setUser(next);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ user, isLoading, requestOtp, verifyOtp, logout, updateUser, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

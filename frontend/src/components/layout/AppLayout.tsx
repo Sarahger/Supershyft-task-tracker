@@ -120,7 +120,7 @@ export function AppLayout() {
 
         <div className="p-3 border-t border-dark-border shrink-0">
           <div className="flex items-center gap-2 px-1">
-            {user && <Avatar name={`${user.first_name} ${user.last_name}`} size="sm" />}
+            {user && <Avatar name={`${user.first_name} ${user.last_name}`} src={user.profile_picture} size="sm" />}
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-text-primary truncate">{user?.first_name}</p>
               <p className="text-2xs text-text-muted truncate capitalize">{user?.role}</p>
@@ -210,7 +210,7 @@ export function AppLayout() {
                 className="md:hidden p-1 rounded-full hover:ring-2 hover:ring-accent-primary/30 transition-all min-h-[44px] min-w-[44px] flex items-center justify-center"
                 aria-label="Open account menu"
               >
-                <Avatar name={`${user.first_name} ${user.last_name}`} size="sm" />
+                <Avatar name={`${user.first_name} ${user.last_name}`} src={user.profile_picture} size="sm" />
               </button>
             )}
           </div>

@@ -260,7 +260,7 @@ export default function UsersPage() {
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <Avatar name={`${u.first_name} ${u.last_name}`} size="sm" />
+                      <Avatar name={`${u.first_name} ${u.last_name}`} src={u.profile_picture} size="sm" />
                       <div>
                         <p className="text-sm font-medium text-text-primary">{u.first_name} {u.last_name}</p>
                         <p className="text-xs text-text-muted">{u.email}</p>
