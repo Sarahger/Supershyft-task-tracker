@@ -1,4 +1,10 @@
-export type MentionUser = { id: number; first_name: string; last_name: string; email?: string };
+export type MentionUser = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  profile_picture?: string;
+};
 
 export function mentionDisplayName(user: MentionUser): string {
   return `${user.first_name} ${user.last_name}`;
