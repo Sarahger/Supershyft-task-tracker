@@ -11,6 +11,7 @@ import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
+import { DailyUpdatesPanel } from '../components/daily-updates/DailyUpdatesPanel';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
 import { STATUS_LABELS, type Task } from '../types';
@@ -128,7 +129,17 @@ export default function MyTasksPage() {
     return { overdue, today, thisWeek, blocked, review, completed, later };
   }, [tasks]);
 
-  if (isLoading) return <TaskDatabaseSkeleton />;
+  if (isLoading && !tasks) {
+    return (
+      <div className="w-full pb-12">
+        <header className="mb-8">
+          <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
+        </header>
+        <DailyUpdatesPanel />
+        <TaskDatabaseSkeleton />
+      </div>
+    );
+  }
 
   const openCount = (tasks || []).filter((t) => !['completed', 'cancelled'].includes(t.status)).length;
 
@@ -145,6 +156,8 @@ export default function MyTasksPage() {
         <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
         <p className="text-sm text-text-muted mt-0.5">{openCount} open</p>
       </header>
+
+      <DailyUpdatesPanel />
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-3 py-2 mb-4 rounded-md bg-surface-subtle border border-dark-border max-md:hidden">

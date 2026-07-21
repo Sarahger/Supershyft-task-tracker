@@ -508,3 +508,47 @@ class MeetingDaySetting(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     updated_by = relationship("User", foreign_keys=[updated_by_id])
+
+
+daily_update_tasks = Table(
+    "daily_update_tasks",
+    Base.metadata,
+    Column("daily_update_id", Integer, ForeignKey("daily_updates.id", ondelete="CASCADE"), primary_key=True),
+    Column("task_id", Integer, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class DailyUpdate(Base):
+    __tablename__ = "daily_updates"
+    __table_args__ = (UniqueConstraint("user_id", "update_date", name="uq_daily_update_user_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    update_date = Column(Date, nullable=False, index=True)
+    content = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+    tasks = relationship("Task", secondary=daily_update_tasks)
+    mentions = relationship(
+        "DailyUpdateMention",
+        back_populates="daily_update",
+        cascade="all, delete-orphan",
+    )
+
+
+class DailyUpdateMention(Base):
+    __tablename__ = "daily_update_mentions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    daily_update_id = Column(
+        Integer, ForeignKey("daily_updates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    mentioned_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    line_text = Column(Text, nullable=False)
+
+    daily_update = relationship("DailyUpdate", back_populates="mentions")
+    mentioned_user = relationship("User", foreign_keys=[mentioned_user_id])

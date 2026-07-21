@@ -376,3 +376,59 @@ export const USER_STATUS_LABELS: Record<string, string> = {
   on_leave: 'On Leave',
   inactive: 'Inactive',
 };
+
+export interface DailyUpdateAuthor {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+}
+
+export interface DailyUpdateTaskBrief {
+  id: number;
+  title: string;
+}
+
+export interface DailyUpdate {
+  id: number;
+  user_id: number;
+  update_date: string;
+  content: string;
+  editable: boolean;
+  editable_until: string;
+  author: DailyUpdateAuthor;
+  tasks: DailyUpdateTaskBrief[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyUpdateMentionedLine {
+  id: number;
+  line_text: string;
+  update_date: string;
+  author: DailyUpdateAuthor;
+  tasks: DailyUpdateTaskBrief[];
+  read_only: boolean;
+}
+
+export interface DailyUpdateDay {
+  date: string;
+  editable: boolean;
+  editable_until?: string | null;
+  own_update: DailyUpdate | null;
+  mentioned_lines: DailyUpdateMentionedLine[];
+  team_updates: DailyUpdate[];
+}
+
+export interface DailyUpdateCalendarDay {
+  date: string;
+  has_own: boolean;
+  mention_count: number;
+  team_count: number;
+}
+
+export interface DailyUpdateCalendar {
+  year: number;
+  month: number;
+  days: DailyUpdateCalendarDay[];
+}

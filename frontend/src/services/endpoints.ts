@@ -160,6 +160,23 @@ export const meetingsApi = {
 
 type MeetingActionResult = import('../types').MeetingActionResult;
 
+export const dailyUpdatesApi = {
+  getDay: (date: string, userId?: number) =>
+    api.get<APIResponse<import('../types').DailyUpdateDay>>('/daily-updates/day', {
+      params: { date, ...(userId != null ? { user_id: userId } : {}) },
+    }),
+  getCalendar: (year: number, month: number) =>
+    api.get<APIResponse<import('../types').DailyUpdateCalendar>>('/daily-updates/calendar', {
+      params: { year, month },
+    }),
+  upsert: (data: {
+    update_date: string;
+    content: string;
+    task_ids?: number[];
+    mentioned_user_ids?: number[];
+  }) => api.put<APIResponse<import('../types').DailyUpdate>>('/daily-updates', data),
+};
+
 export const reportsApi = {
   tasks: (filters: Record<string, unknown>) =>
     api.post<APIResponse<TaskReportData>>('/reports/tasks', filters),
