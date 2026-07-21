@@ -7,6 +7,7 @@ import {
   mentionToken,
   type MentionUser,
 } from '../../lib/mentions';
+import { matchEmojis, type EmojiItem } from '../../lib/emojiShortcodes';
 
 interface DailyUpdateEditorProps {
   value: string;
@@ -27,6 +28,21 @@ function getActiveMention(text: string, cursor: number): { query: string; start:
   return {
     query: match[1],
     start: lineStart + match.index!,
+  };
+}
+
+/** Slack-style `:fire` — only when `:` starts a token (not `10:30`). */
+function getActiveEmoji(text: string, cursor: number): { query: string; start: number } | null {
+  const before = text.slice(0, cursor);
+  const lineStart = before.lastIndexOf('\n') + 1;
+  const lineBefore = before.slice(lineStart);
+  const match = lineBefore.match(/(?:^|[\s([{]):([\w+-]*)$/);
+  if (!match) return null;
+  const full = match[0];
+  const colonOffset = full.lastIndexOf(':');
+  return {
+    query: match[1],
+    start: lineStart + match.index! + colonOffset,
   };
 }
 
@@ -78,7 +94,7 @@ export function DailyUpdateEditor({
   users,
   usersLoading = false,
   disabled,
-  placeholder = 'What did you get done today? Use @name to mention someone…',
+  placeholder = 'What did you get done today? Use @name or :emoji…',
   className,
 }: DailyUpdateEditorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -87,24 +103,35 @@ export function DailyUpdateEditor({
   const [cursor, setCursor] = useState(0);
 
   const activeMention = useMemo(() => getActiveMention(value, cursor), [value, cursor]);
+  const activeEmoji = useMemo(() => {
+    if (activeMention) return null;
+    return getActiveEmoji(value, cursor);
+  }, [value, cursor, activeMention]);
 
-  const suggestions = useMemo(() => {
+  const mentionSuggestions = useMemo(() => {
     if (!activeMention) return [];
     return matchMentionUsers(users, activeMention.query).slice(0, 8);
   }, [users, activeMention]);
 
-  const showMenu = !disabled && menuOpen && activeMention !== null;
-  const canPick = suggestions.length > 0;
+  const emojiSuggestions = useMemo(() => {
+    if (!activeEmoji) return [];
+    return matchEmojis(activeEmoji.query, 24);
+  }, [activeEmoji]);
+
+  const showMentionMenu = !disabled && menuOpen && activeMention !== null;
+  const showEmojiMenu = !disabled && menuOpen && activeEmoji !== null;
+  const showMenu = showMentionMenu || showEmojiMenu;
+  const canPickMention = mentionSuggestions.length > 0;
+  const canPickEmoji = emojiSuggestions.length > 0;
+  const canPick = showMentionMenu ? canPickMention : canPickEmoji;
 
   const syncCursor = (el: HTMLTextAreaElement) => {
     setCursor(el.selectionStart);
   };
 
-  const pickUser = (user: MentionUser) => {
-    if (!activeMention) return;
-    const before = value.slice(0, activeMention.start);
+  const insertAtActive = (start: number, inserted: string) => {
+    const before = value.slice(0, start);
     const after = value.slice(cursor);
-    const inserted = `${mentionToken(user)} `;
     const next = before + inserted + after;
     onChange(next);
     setMenuOpen(false);
@@ -118,6 +145,26 @@ export function DailyUpdateEditor({
       setCursor(nextCursor);
     });
   };
+
+  const pickUser = (user: MentionUser) => {
+    if (!activeMention) return;
+    insertAtActive(activeMention.start, `${mentionToken(user)} `);
+  };
+
+  const pickEmoji = (item: EmojiItem) => {
+    if (!activeEmoji) return;
+    insertAtActive(activeEmoji.start, `${item.emoji} `);
+  };
+
+  const pickHighlighted = () => {
+    if (showMentionMenu && canPickMention) {
+      pickUser(mentionSuggestions[highlight] ?? mentionSuggestions[0]);
+    } else if (showEmojiMenu && canPickEmoji) {
+      pickEmoji(emojiSuggestions[highlight] ?? emojiSuggestions[0]);
+    }
+  };
+
+  const optionCount = showMentionMenu ? mentionSuggestions.length : emojiSuggestions.length;
 
   return (
     <div className={clsx('relative', className)}>
@@ -147,7 +194,7 @@ export function DailyUpdateEditor({
           if (showMenu && canPick) {
             if (e.key === 'ArrowDown') {
               e.preventDefault();
-              setHighlight((i) => Math.min(i + 1, suggestions.length - 1));
+              setHighlight((i) => Math.min(i + 1, optionCount - 1));
               return;
             }
             if (e.key === 'ArrowUp') {
@@ -157,12 +204,12 @@ export function DailyUpdateEditor({
             }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              pickUser(suggestions[highlight]);
+              pickHighlighted();
               return;
             }
             if (e.key === 'Tab' && !e.shiftKey) {
               e.preventDefault();
-              pickUser(suggestions[highlight]);
+              pickHighlighted();
               return;
             }
             if (e.key === 'Escape') {
@@ -231,7 +278,7 @@ export function DailyUpdateEditor({
         )}
       />
 
-      {showMenu && (
+      {showMentionMenu && (
         <ul
           className="absolute z-50 left-0 right-0 bottom-full mb-2 max-h-56 overflow-y-auto rounded-xl dropdown-panel border border-dark-border py-1 shadow-lg bg-dark-card"
           role="listbox"
@@ -239,8 +286,8 @@ export function DailyUpdateEditor({
           {usersLoading && (
             <li className="px-3 py-2.5 text-sm text-text-muted">Loading people…</li>
           )}
-          {!usersLoading && canPick &&
-            suggestions.map((u, idx) => {
+          {!usersLoading && canPickMention &&
+            mentionSuggestions.map((u, idx) => {
               const name = mentionDisplayName(u);
               return (
                 <li key={u.id} role="option" aria-selected={idx === highlight}>
@@ -262,15 +309,47 @@ export function DailyUpdateEditor({
                 </li>
               );
             })}
-          {!usersLoading && !canPick && (
+          {!usersLoading && !canPickMention && (
             <li className="px-3 py-2.5 text-sm text-text-muted">No matching people</li>
           )}
         </ul>
       )}
 
+      {showEmojiMenu && (
+        <div
+          className="absolute z-50 left-0 right-0 bottom-full mb-2 max-h-56 overflow-y-auto rounded-xl dropdown-panel border border-dark-border p-2 shadow-lg bg-dark-card"
+          role="listbox"
+        >
+          {canPickEmoji ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-0.5">
+              {emojiSuggestions.map((item, idx) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={idx === highlight}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickEmoji(item)}
+                  onMouseEnter={() => setHighlight(idx)}
+                  className={clsx(
+                    'flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-sm transition-colors min-h-[40px]',
+                    idx === highlight ? 'bg-dark-hover text-text-primary' : 'text-text-secondary hover:bg-dark-hover',
+                  )}
+                >
+                  <span className="text-lg leading-none w-7 text-center shrink-0">{item.emoji}</span>
+                  <span className="truncate text-text-muted">:{item.id}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="px-2 py-2 text-sm text-text-muted">No matching emoji</p>
+          )}
+        </div>
+      )}
+
       {!disabled && (
         <p className="mt-2 text-2xs text-text-muted">
-          Type @ to mention someone · Enter continues lists · Tab indents · ⌘/Ctrl+B bold
+          Type @ to mention · : for emoji (e.g. :fire) · Enter continues lists · Tab indents
         </p>
       )}
     </div>
