@@ -145,6 +145,12 @@ class DailyUpdateService:
                 q = q.filter(DailyUpdate.user_id != user.id)
             team_updates = [_format_update(u, editable=False) for u in q.order_by(DailyUpdate.user_id).all()]
 
+        filtered_user = None
+        if _is_manager(user) and filter_user_id:
+            person = self.db.query(User).filter(User.id == filter_user_id).first()
+            if person:
+                filtered_user = user_to_brief_dict(person)
+
         return {
             "date": day,
             "editable": editable,
@@ -152,6 +158,7 @@ class DailyUpdateService:
             "own_update": _format_update(own) if own else None,
             "mentioned_lines": mentioned_lines,
             "team_updates": team_updates,
+            "filtered_user": filtered_user,
         }
 
     def get_calendar(self, user: User, year: int, month: int) -> dict:

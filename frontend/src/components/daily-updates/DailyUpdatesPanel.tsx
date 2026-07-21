@@ -64,10 +64,32 @@ export function DailyUpdatesPanel() {
         .then((r) => r.data.data),
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['users-brief'],
-    queryFn: () => usersApi.list({ page_size: 200 }).then((r) => r.data.data?.items ?? []),
+  const { data: usersList, isLoading: usersLoading, isError: usersError } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: async () => {
+      const r = await usersApi.list({ page_size: 100 });
+      const items = r.data?.data?.items;
+      return Array.isArray(items) ? items : [];
+    },
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: 'always',
   });
+
+  const users = useMemo(
+    () =>
+      (usersList ?? [])
+        .filter((u) => u.status !== 'inactive')
+        .slice()
+        .sort((a, b) =>
+          `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`),
+        ),
+    [usersList],
+  );
+
+  const filterPeople = useMemo(
+    () => users.filter((u) => u.id !== user?.id),
+    [users, user?.id],
+  );
 
   const { data: myTasks = [] } = useQuery({
     queryKey: ['my-tasks'],
@@ -146,23 +168,31 @@ export function DailyUpdatesPanel() {
               </label>
               <select
                 className="input text-sm"
-                value={filterUserId}
+                value={filterUserId === '' ? '' : String(filterUserId)}
                 onChange={(e) => setFilterUserId(e.target.value ? Number(e.target.value) : '')}
+                disabled={usersLoading}
               >
                 <option value="">All teammates</option>
-                {users
-                  .filter((u) => u.id !== user?.id)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.first_name} {u.last_name}
-                    </option>
-                  ))}
+                {filterPeople.map((u) => (
+                  <option key={u.id} value={String(u.id)}>
+                    {u.first_name} {u.last_name}
+                  </option>
+                ))}
               </select>
+              {usersLoading && (
+                <p className="text-2xs text-text-muted mt-1.5">Loading people…</p>
+              )}
+              {usersError && (
+                <p className="text-2xs text-accent-danger mt-1.5">Could not load people list.</p>
+              )}
+              {!usersLoading && !usersError && filterPeople.length === 0 && (
+                <p className="text-2xs text-text-muted mt-1.5">No other users found.</p>
+              )}
             </div>
           )}
         </div>
 
-        <div className="rounded-2xl border border-dark-border bg-dark-card p-5 sm:p-6 min-h-[280px]">
+        <div className="rounded-2xl border border-dark-border bg-dark-card p-5 sm:p-6 min-h-[280px] overflow-visible">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
               <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
@@ -189,7 +219,12 @@ export function DailyUpdatesPanel() {
             <>
               {showEditor ? (
                 <div className="space-y-4">
-                  <DailyUpdateEditor value={draft} onChange={setDraft} users={users} />
+                  <DailyUpdateEditor
+                    value={draft}
+                    onChange={setDraft}
+                    users={users}
+                    usersLoading={usersLoading}
+                  />
 
                   <div>
                     <p className="text-2xs uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1.5">
@@ -295,42 +330,52 @@ export function DailyUpdatesPanel() {
                 </div>
               )}
 
-              {isManager && (dayData?.team_updates.length ?? 0) > 0 && (
+              {isManager && (
                 <div className="mt-8 pt-5 border-t border-dark-border">
                   <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted mb-3">
-                    Team updates
+                    {filterUserId
+                      ? `Update from ${dayData?.filtered_user?.first_name ?? 'teammate'} ${dayData?.filtered_user?.last_name ?? ''}`.trim()
+                      : 'Team updates'}
                   </p>
-                  <div className="space-y-5">
-                    {dayData!.team_updates.map((u) => (
-                      <article key={u.id}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <Avatar
-                            name={`${u.author.first_name} ${u.author.last_name}`}
-                            size="sm"
-                            src={u.author.profile_picture ?? undefined}
-                          />
-                          <p className="text-sm font-medium text-text-primary">
-                            {u.author.first_name} {u.author.last_name}
-                          </p>
-                        </div>
-                        <DailyUpdateContent content={u.content} />
-                        {u.tasks.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-2">
-                            {u.tasks.map((t) => (
-                              <button
-                                key={t.id}
-                                type="button"
-                                onClick={() => openTask(t.id)}
-                                className="chip border border-dark-border text-text-secondary"
-                              >
-                                {t.title}
-                              </button>
-                            ))}
+                  {(dayData?.team_updates.length ?? 0) > 0 ? (
+                    <div className="space-y-5">
+                      {dayData!.team_updates.map((u) => (
+                        <article key={u.id}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Avatar
+                              name={`${u.author.first_name} ${u.author.last_name}`}
+                              size="sm"
+                              src={u.author.profile_picture ?? undefined}
+                            />
+                            <p className="text-sm font-medium text-text-primary">
+                              {u.author.first_name} {u.author.last_name}
+                            </p>
                           </div>
-                        )}
-                      </article>
-                    ))}
-                  </div>
+                          <DailyUpdateContent content={u.content} />
+                          {u.tasks.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {u.tasks.map((t) => (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  onClick={() => openTask(t.id)}
+                                  className="chip border border-dark-border text-text-secondary"
+                                >
+                                  {t.title}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-text-muted">
+                      {filterUserId
+                        ? 'No update from this person for this day yet.'
+                        : 'No teammate updates for this day yet.'}
+                    </p>
+                  )}
                 </div>
               )}
             </>

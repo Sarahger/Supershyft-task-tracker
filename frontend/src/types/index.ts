@@ -418,6 +418,7 @@ export interface DailyUpdateDay {
   own_update: DailyUpdate | null;
   mentioned_lines: DailyUpdateMentionedLine[];
   team_updates: DailyUpdate[];
+  filtered_user?: DailyUpdateAuthor | null;
 }
 
 export interface DailyUpdateCalendarDay {

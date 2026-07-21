@@ -57,6 +57,7 @@ class DailyUpdateDayResponse(BaseModel):
     own_update: DailyUpdateResponse | None = None
     mentioned_lines: list[MentionedLine] = []
     team_updates: list[DailyUpdateResponse] = []
+    filtered_user: DailyUpdateAuthor | None = None
 
 
 class CalendarDayMarker(BaseModel):
