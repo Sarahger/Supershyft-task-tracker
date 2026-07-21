@@ -51,7 +51,7 @@ class TaskService:
             for uid in assignee_ids:
                 task.assignees.append(TaskAssignee(user_id=uid))
             if task.status == "unassigned":
-                task.status = TaskStatus.BACKLOG.value
+                task.status = TaskStatus.TODO.value
 
         if dept_ids := data.get("department_ids"):
             depts = self.db.query(Department).filter(Department.id.in_(dept_ids)).all()

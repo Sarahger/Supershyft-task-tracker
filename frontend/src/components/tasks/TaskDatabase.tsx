@@ -50,9 +50,9 @@ export interface ColumnDef {
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'title', label: 'Task name', width: 320, minWidth: 200, visible: true, sortable: true },
   { id: 'assignees', label: 'Assignee', width: 130, minWidth: 100, visible: true },
-  { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
   { id: 'due_date', label: 'Due date', width: 110, minWidth: 90, visible: true, sortable: true },
   { id: 'status', label: 'Status', width: 150, minWidth: 120, visible: true, sortable: true },
+  { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
   { id: 'estimated_hours', label: 'Time req', width: 90, minWidth: 70, visible: false },
   { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: false },
   { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
