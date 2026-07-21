@@ -212,7 +212,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
         <div
           className={clsx(
             'rounded-2xl border bg-surface-subtle overflow-hidden transition-colors',
-            'border-purple-500/35 focus-within:border-purple-500/55 focus-within:ring-1 focus-within:ring-purple-500/25',
+            'border-blue-500/40 focus-within:border-blue-500/60 focus-within:ring-1 focus-within:ring-blue-500/25',
           )}
         >
           <div className="relative">
@@ -328,7 +328,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
               onClick={ship}
               loading={mutation.isPending}
               disabled={!parsed.title.trim()}
-              className="gap-2 rounded-xl bg-[var(--accent-purple)] hover:opacity-90 border-transparent text-white"
+              className="gap-2 rounded-xl bg-[var(--accent-primary)] hover:opacity-90 border-transparent text-white"
             >
               Ship it
               <CornerDownLeft className="h-3.5 w-3.5 opacity-80" />
