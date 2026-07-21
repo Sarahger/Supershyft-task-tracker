@@ -302,32 +302,47 @@ export function TasksWorkspace({
     onError: () => toast.error('Failed to update priority'),
   });
 
-  // Keyboard navigation
+  // Clear keyboard row focus when the visible list changes
   useEffect(() => {
+    setFocusedIndex(-1);
+  }, [displayTasks, groupBy, viewMode, page]);
+
+  // Keyboard navigation — only after arrow keys, not from mouse hover
+  useEffect(() => {
+    if (viewMode !== 'table' || groupBy !== 'none' || isMobile) return;
+
     const handler = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'SELECT') return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setFocusedIndex((i) => Math.min(i + 1, tasks.length - 1));
+        setFocusedIndex((i) => {
+          if (!displayTasks.length) return -1;
+          return i < 0 ? 0 : Math.min(i + 1, displayTasks.length - 1);
+        });
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setFocusedIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter' && focusedIndex >= 0 && tasks[focusedIndex]) {
-        openTask(tasks[focusedIndex].id);
-      } else if (e.key === ' ' && focusedIndex >= 0 && tasks[focusedIndex]) {
+        setFocusedIndex((i) => {
+          if (!displayTasks.length || i < 0) return -1;
+          return i <= 0 ? -1 : i - 1;
+        });
+      } else if (e.key === 'Enter' && focusedIndex >= 0 && displayTasks[focusedIndex]) {
+        openTask(displayTasks[focusedIndex].id);
+      } else if (e.key === ' ' && focusedIndex >= 0 && displayTasks[focusedIndex]) {
         e.preventDefault();
         setSelectedIds((prev) => {
           const next = new Set(prev);
-          const id = tasks[focusedIndex].id;
+          const id = displayTasks[focusedIndex].id;
           if (next.has(id)) next.delete(id);
           else next.add(id);
           return next;
         });
+      } else if (e.key === 'Escape') {
+        setFocusedIndex(-1);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [tasks, focusedIndex, openTask]);
+  }, [displayTasks, focusedIndex, openTask, viewMode, groupBy, isMobile]);
 
   const applySavedFilter = (json: string) => {
     try {
@@ -533,8 +548,7 @@ export function TasksWorkspace({
                 }}
                 selectedIds={selectedIds}
                 onSelectionChange={setSelectedIds}
-                focusedIndex={focusedIndex}
-                onFocusIndexChange={setFocusedIndex}
+                focusedIndex={groupBy === 'none' ? focusedIndex : -1}
                 editable
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}

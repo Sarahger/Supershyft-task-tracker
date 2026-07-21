@@ -27,7 +27,6 @@ interface TaskDatabaseProps {
   selectedIds?: Set<number>;
   onSelectionChange?: (ids: Set<number>) => void;
   focusedIndex?: number;
-  onFocusIndexChange?: (index: number) => void;
   onStatusChange?: (id: number, status: string) => void;
   onPriorityChange?: (id: number, priority: string) => void;
   onDeleteTask?: (task: Task) => void;
@@ -177,7 +176,6 @@ export function TaskDatabase({
   selectedIds = new Set(),
   onSelectionChange,
   focusedIndex = -1,
-  onFocusIndexChange,
   onStatusChange,
   onPriorityChange,
   onDeleteTask,
@@ -315,7 +313,6 @@ export function TaskDatabase({
                 key={task.id}
                 onClick={() => onTaskClick(task.id)}
                 onContextMenu={(e) => handleContextMenu(e, task.id)}
-                onMouseEnter={() => onFocusIndexChange?.(index)}
                 className={clsx(
                   'db-row group',
                   isSelected && 'db-row-selected',
