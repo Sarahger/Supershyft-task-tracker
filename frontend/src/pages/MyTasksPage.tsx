@@ -129,17 +129,7 @@ export default function MyTasksPage() {
     return { overdue, today, thisWeek, blocked, review, completed, later };
   }, [tasks]);
 
-  if (isLoading && !tasks) {
-    return (
-      <div className="w-full pb-12">
-        <header className="mb-8">
-          <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
-        </header>
-        <DailyUpdatesPanel />
-        <TaskDatabaseSkeleton />
-      </div>
-    );
-  }
+  if (isLoading) return <TaskDatabaseSkeleton />;
 
   const openCount = (tasks || []).filter((t) => !['completed', 'cancelled'].includes(t.status)).length;
 
@@ -156,8 +146,6 @@ export default function MyTasksPage() {
         <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
         <p className="text-sm text-text-muted mt-0.5">{openCount} open</p>
       </header>
-
-      <DailyUpdatesPanel />
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-3 py-2 mb-4 rounded-md bg-surface-subtle border border-dark-border max-md:hidden">
@@ -199,6 +187,10 @@ export default function MyTasksPage() {
           {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} {...listProps} /></Section>}
         </>
       )}
+
+      <div className="mt-12 pt-8 border-t border-dark-border">
+        <DailyUpdatesPanel />
+      </div>
 
       {allowDelete && (
       <DeleteTaskModal
