@@ -22,18 +22,24 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="fixed inset-0 bg-[var(--overlay-backdrop)]" onClick={onClose} />
-      <div className={clsx('relative w-full rounded-2xl bg-dark-card border border-dark-border modal-panel', sizes[size])}>
+      <div
+        className={clsx(
+          'relative w-full rounded-2xl bg-dark-card border border-dark-border modal-panel',
+          'max-h-[min(90vh,calc(100dvh-2rem))] flex flex-col my-auto',
+          sizes[size],
+        )}
+      >
         {title && (
-          <div className="flex items-center justify-between px-5 py-4 border-b border-dark-border">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-dark-border shrink-0">
             <h2 className="text-base font-semibold text-text-primary">{title}</h2>
             <button onClick={onClose} className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary transition-colors duration-hover">
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
-        <div className="p-5">{children}</div>
+        <div className="p-5 overflow-y-auto overscroll-contain min-h-0">{children}</div>
       </div>
     </div>
   );

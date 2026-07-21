@@ -87,20 +87,7 @@ export function TaskToolbar({
   const [showColumns, setShowColumns] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setShowFilter(false);
-        setShowSort(false);
-        setShowGroup(false);
-        setShowColumns(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const activeFilters = [statusFilter, priorityFilter, assigneeFilter].filter(Boolean).length;
+  const anyMenuOpen = showFilter || showSort || showGroup || showColumns;
 
   const closeMenus = () => {
     setShowFilter(false);
@@ -108,6 +95,33 @@ export function TaskToolbar({
     setShowGroup(false);
     setShowColumns(false);
   };
+
+  useEffect(() => {
+    if (!anyMenuOpen) return;
+
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node | null;
+      if (filterRef.current && target && !filterRef.current.contains(target)) {
+        closeMenus();
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMenus();
+    };
+
+    // Capture phase so menus still close even if a child stops bubbling
+    document.addEventListener('mousedown', onPointerDown, true);
+    document.addEventListener('touchstart', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown, true);
+      document.removeEventListener('touchstart', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [anyMenuOpen]);
+
+  const activeFilters = [statusFilter, priorityFilter, assigneeFilter].filter(Boolean).length;
 
   return (
     <div className="space-y-3 mb-4">
@@ -162,7 +176,17 @@ export function TaskToolbar({
         </div>
 
         {/* Filters, sort, group, columns + view switcher */}
-        <div ref={filterRef} className="flex items-center gap-1 min-w-0 w-full">
+        {anyMenuOpen && (
+          <div
+            className="fixed inset-0 z-20"
+            aria-hidden
+            onMouseDown={closeMenus}
+          />
+        )}
+        <div
+          ref={filterRef}
+          className={clsx('flex items-center gap-1 min-w-0 w-full', anyMenuOpen && 'relative z-30')}
+        >
           <div className="flex items-center gap-1 min-w-0 flex-1">
           {/* Filter */}
           <div className="relative shrink-0">

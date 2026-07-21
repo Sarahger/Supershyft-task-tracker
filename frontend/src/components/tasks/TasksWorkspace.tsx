@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { tasksApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
@@ -75,11 +76,12 @@ export function TasksWorkspace({
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState(() => searchParams.get('assignee') ?? '');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -92,6 +94,23 @@ export function TasksWorkspace({
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const { columns, toggleColumn, setColumns } = useColumnVisibility();
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('assignee') ?? '';
+    setAssigneeFilter((prev) => (prev === fromUrl ? prev : fromUrl));
+    if (fromUrl) setPage(1);
+  }, [searchParams]);
+
+  const updateAssigneeFilter = useCallback((v: string) => {
+    setAssigneeFilter(v);
+    setPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('assignee', v);
+      else next.delete('assignee');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const deleteMutation = useDeleteTaskMutation((taskId) => {
     setDeleteTarget(null);
@@ -315,7 +334,7 @@ export function TasksWorkspace({
       const f = JSON.parse(json);
       if (f.status) setStatusFilter(f.status);
       if (f.priority) setPriorityFilter(f.priority);
-      if (f.assignee_id) setAssigneeFilter(String(f.assignee_id));
+      if (f.assignee_id) updateAssigneeFilter(String(f.assignee_id));
       if (f.search) setSearch(f.search);
       setPage(1);
     } catch { /* ignore */ }
@@ -372,7 +391,7 @@ export function TasksWorkspace({
           priorityFilter={priorityFilter}
           onPriorityFilterChange={(v) => { setPriorityFilter(v); setPage(1); }}
           assigneeFilter={assigneeFilter}
-          onAssigneeFilterChange={(v) => { setAssigneeFilter(v); setPage(1); }}
+          onAssigneeFilterChange={updateAssigneeFilter}
           assigneeOptions={usersList ?? []}
           sortField={sortField}
           sortDir={sortDir}
@@ -399,7 +418,7 @@ export function TasksWorkspace({
         priorityFilter={priorityFilter}
         onPriorityFilterChange={(v) => { setPriorityFilter(v); setPage(1); }}
         assigneeFilter={assigneeFilter}
-        onAssigneeFilterChange={(v) => { setAssigneeFilter(v); setPage(1); }}
+        onAssigneeFilterChange={updateAssigneeFilter}
         assigneeOptions={usersList ?? []}
         sortField={sortField}
         sortDir={sortDir}
