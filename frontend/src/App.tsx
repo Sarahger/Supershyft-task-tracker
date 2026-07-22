@@ -19,6 +19,7 @@ import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
 
 const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
+const DailyUpdatesPage = lazy(() => import('./pages/DailyUpdatesPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -108,6 +109,14 @@ export default function App() {
                     element={
                       <Suspense fallback={<PageLoader />}>
                         <MyTasksPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="daily-updates"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <DailyUpdatesPage />
                       </Suspense>
                     }
                   />

@@ -22,7 +22,7 @@ function parseDateParam(value: string | null): Date {
   return isValid(d) ? d : new Date();
 }
 
-export function DailyUpdatesPanel() {
+export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }) {
   const { user } = useAuth();
   const isManager = canAccessManagerFeatures(user);
   const { openTask } = useTaskDrawer();
@@ -142,7 +142,8 @@ export function DailyUpdatesPanel() {
     : null;
 
   return (
-    <section className="mb-10">
+    <section className={hideIntro ? undefined : 'mb-10'}>
+      {!hideIntro && (
       <div className="mb-3 px-1">
         <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Daily update</p>
         <h2 className="text-lg font-semibold text-text-primary mt-0.5">What got done</h2>
@@ -151,6 +152,12 @@ export function DailyUpdatesPanel() {
           {untilLabel && editable ? ` Open until ${untilLabel}.` : ''}
         </p>
       </div>
+      )}
+      {hideIntro && untilLabel && editable && (
+        <p className="text-sm text-text-muted mb-3 px-1">
+          Open until {untilLabel}.
+        </p>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="space-y-3">

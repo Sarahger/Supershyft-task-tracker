@@ -11,7 +11,6 @@ import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
-import { DailyUpdatesPanel } from '../components/daily-updates/DailyUpdatesPanel';
 import { FloatingActionButton } from '../components/layout/FloatingActionButton';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
@@ -210,10 +209,6 @@ export default function MyTasksPage() {
           {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} {...listProps} /></Section>}
         </>
       )}
-
-      <div className="mt-12 pt-8 border-t border-dark-border">
-        <DailyUpdatesPanel />
-      </div>
 
       {isMobile && <FloatingActionButton onClick={openCreate} />}
 

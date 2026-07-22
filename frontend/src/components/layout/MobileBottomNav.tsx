@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutList, CheckSquare, FolderKanban, BarChart3, Users, Video } from 'lucide-react';
+import { LayoutList, CheckSquare, FolderKanban, BarChart3, Users, Video, NotebookPen } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
@@ -14,6 +14,7 @@ const items: {
 }[] = [
   { to: '/', icon: LayoutList, label: 'All tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My tasks', end: true },
+  { to: '/daily-updates', icon: NotebookPen, label: 'Updates', end: true },
   { to: '/meetings', icon: Video, label: 'Meetings', end: true },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },

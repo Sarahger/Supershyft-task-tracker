@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Bell, Video,
+  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Bell, Video, NotebookPen,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +26,7 @@ const navItems: {
 }[] = [
   { to: '/', icon: LayoutList, label: 'Tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My Tasks' },
+  { to: '/daily-updates', icon: NotebookPen, label: 'Daily Updates' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/meetings', icon: Video, label: 'Meetings' },
   { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },

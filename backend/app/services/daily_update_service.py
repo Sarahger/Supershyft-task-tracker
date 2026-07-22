@@ -301,7 +301,7 @@ class DailyUpdateService:
                 NotificationType.MENTION.value,
                 f"Mentioned in {user.full_name}'s daily update",
                 f'{user.full_name}: "{preview}"',
-                f"/my-tasks?date={update_date.isoformat()}",
+                f"/daily-updates?date={update_date.isoformat()}",
             )
 
         return _format_update(update)
