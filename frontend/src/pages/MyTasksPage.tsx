@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isPast, isToday, isThisWeek } from 'date-fns';
-import { X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { tasksApi } from '../services/endpoints';
 import { useTaskDrawer } from '../contexts/TaskDrawerContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,8 @@ import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskData
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
 import { DailyUpdatesPanel } from '../components/daily-updates/DailyUpdatesPanel';
+import { FloatingActionButton } from '../components/layout/FloatingActionButton';
+import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
 import { STATUS_LABELS, type Task } from '../types';
@@ -67,9 +69,10 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 }
 
 export default function MyTasksPage() {
-  const { openTask, closeTask, selectedTaskId } = useTaskDrawer();
+  const { openTask, closeTask, selectedTaskId, openCreate } = useTaskDrawer();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
   const allowDelete = canDeleteTasks(user);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
@@ -142,9 +145,20 @@ export default function MyTasksPage() {
 
   return (
     <div className="w-full pb-12">
-      <header className="mb-8">
-        <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
-        <p className="text-sm text-text-muted mt-0.5">{openCount} open</p>
+      <header className="mb-8 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
+          <p className="text-sm text-text-muted mt-0.5">{openCount} open</p>
+        </div>
+        <Button
+          onClick={openCreate}
+          size="sm"
+          className="h-9 px-2.5 py-0 shrink-0 gap-1.5"
+          aria-label="New task"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">New task</span>
+        </Button>
       </header>
 
       {selectedIds.size > 0 && (
@@ -175,7 +189,16 @@ export default function MyTasksPage() {
       )}
 
       {!tasks?.length ? (
-        <EmptyState title="Nothing assigned yet" description="Tasks assigned to you will show up here." />
+        <EmptyState
+          title="Nothing assigned yet"
+          description="Create a task or wait for one to be assigned to you."
+          action={
+            <Button onClick={openCreate} className="mt-2 gap-1.5">
+              <Plus className="h-4 w-4" />
+              New task
+            </Button>
+          }
+        />
       ) : (
         <>
           {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} {...listProps} /></Section>}
@@ -191,6 +214,8 @@ export default function MyTasksPage() {
       <div className="mt-12 pt-8 border-t border-dark-border">
         <DailyUpdatesPanel />
       </div>
+
+      {isMobile && <FloatingActionButton onClick={openCreate} />}
 
       {allowDelete && (
       <DeleteTaskModal
