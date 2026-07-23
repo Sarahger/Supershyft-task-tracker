@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
-from app.core.constants import NotificationType, UserRole
+from app.core.constants import NotificationType
 from app.models import DailyUpdate, DailyUpdateMention, Task, User
 from app.repositories.base import user_to_brief_dict
 from app.services.notification_service import NotificationService
@@ -45,10 +45,6 @@ def is_editable(update_date: date, now: datetime | None = None) -> bool:
     start = datetime.combine(update_date, time.min, tzinfo=tz)
     end = editable_until_for(update_date)
     return start <= now < end
-
-
-def _is_manager(user: User) -> bool:
-    return user.role in (UserRole.ADMIN.value, UserRole.MANAGER.value)
 
 
 def _task_briefs(tasks: list[Task]) -> list[dict]:
@@ -133,20 +129,19 @@ class DailyUpdateService:
         ]
 
         team_updates: list[dict] = []
-        if _is_manager(user):
-            q = (
-                self.db.query(DailyUpdate)
-                .options(joinedload(DailyUpdate.user), joinedload(DailyUpdate.tasks))
-                .filter(DailyUpdate.update_date == day)
-            )
-            if filter_user_id:
-                q = q.filter(DailyUpdate.user_id == filter_user_id)
-            else:
-                q = q.filter(DailyUpdate.user_id != user.id)
-            team_updates = [_format_update(u, editable=False) for u in q.order_by(DailyUpdate.user_id).all()]
+        q = (
+            self.db.query(DailyUpdate)
+            .options(joinedload(DailyUpdate.user), joinedload(DailyUpdate.tasks))
+            .filter(DailyUpdate.update_date == day)
+        )
+        if filter_user_id:
+            q = q.filter(DailyUpdate.user_id == filter_user_id)
+        else:
+            q = q.filter(DailyUpdate.user_id != user.id)
+        team_updates = [_format_update(u, editable=False) for u in q.order_by(DailyUpdate.user_id).all()]
 
         filtered_user = None
-        if _is_manager(user) and filter_user_id:
+        if filter_user_id:
             person = self.db.query(User).filter(User.id == filter_user_id).first()
             if person:
                 filtered_user = user_to_brief_dict(person)
@@ -197,18 +192,17 @@ class DailyUpdateService:
             mention_counts[d] = mention_counts.get(d, 0) + 1
 
         team_counts: dict[date, int] = {}
-        if _is_manager(user):
-            team_rows = (
-                self.db.query(DailyUpdate.update_date)
-                .filter(
-                    DailyUpdate.update_date >= start,
-                    DailyUpdate.update_date < end,
-                    DailyUpdate.user_id != user.id,
-                )
-                .all()
+        team_rows = (
+            self.db.query(DailyUpdate.update_date)
+            .filter(
+                DailyUpdate.update_date >= start,
+                DailyUpdate.update_date < end,
+                DailyUpdate.user_id != user.id,
             )
-            for (d,) in team_rows:
-                team_counts[d] = team_counts.get(d, 0) + 1
+            .all()
+        )
+        for (d,) in team_rows:
+            team_counts[d] = team_counts.get(d, 0) + 1
 
         all_dates = set(own_dates) | set(mention_counts) | set(team_counts)
         days = [

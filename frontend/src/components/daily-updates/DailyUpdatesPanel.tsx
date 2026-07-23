@@ -5,7 +5,6 @@ import { Link2, Save } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { dailyUpdatesApi, tasksApi, usersApi } from '../../services/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
-import { canAccessManagerFeatures } from '../../lib/roles';
 import { extractMentionedUserIds } from '../../lib/mentions';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { toast } from '../ui/Toast';
@@ -24,7 +23,6 @@ function parseDateParam(value: string | null): Date {
 
 export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }) {
   const { user } = useAuth();
-  const isManager = canAccessManagerFeatures(user);
   const { openTask } = useTaskDrawer();
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -168,8 +166,7 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
             onMonthChange={setCalendarMonth}
             onSelect={setSelectedDate}
           />
-          {isManager && (
-            <div className="rounded-2xl border border-dark-border bg-dark-card p-3">
+          <div className="rounded-2xl border border-dark-border bg-dark-card p-3">
               <label className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">
                 Filter by person
               </label>
@@ -196,7 +193,6 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                 <p className="text-2xs text-text-muted mt-1.5">No other users found.</p>
               )}
             </div>
-          )}
         </div>
 
         <div className="rounded-2xl border border-dark-border bg-dark-card p-5 sm:p-6 min-h-[280px] overflow-visible">
@@ -337,8 +333,7 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                 </div>
               )}
 
-              {isManager && (
-                <div className="mt-8 pt-5 border-t border-dark-border">
+              <div className="mt-8 pt-5 border-t border-dark-border">
                   <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted mb-3">
                     {filterUserId
                       ? `Update from ${dayData?.filtered_user?.first_name ?? 'teammate'} ${dayData?.filtered_user?.last_name ?? ''}`.trim()
@@ -384,7 +379,6 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                     </p>
                   )}
                 </div>
-              )}
             </>
           )}
         </div>
