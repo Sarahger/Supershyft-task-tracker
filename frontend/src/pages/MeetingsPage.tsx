@@ -12,6 +12,7 @@ import {
   endInstantCall,
   isInMorningCallWindow,
   joinMorningCall,
+  openBlankMeetWindow,
   openMeetUrl,
   startInstantCall,
   statusBadgeClass,
@@ -153,12 +154,12 @@ export default function MeetingsPage() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['meetings-day', selectedDate] });
 
   const morningMutation = useMutation({
-    mutationFn: joinMorningCall,
+    mutationFn: (pendingWindow: Window | null) => joinMorningCall(pendingWindow),
     onSuccess: () => { invalidate(); toast.success('Opening morning call…'); },
   });
 
   const instantMutation = useMutation({
-    mutationFn: () => startInstantCall(inviteUserIds),
+    mutationFn: (pendingWindow: Window | null) => startInstantCall(inviteUserIds, pendingWindow),
     onSuccess: () => {
       invalidate();
       setInviteUserIds([]);
@@ -226,7 +227,7 @@ export default function MeetingsPage() {
           <Button
             className="w-full gap-2"
             disabled={!canJoinMorning || morningMutation.isPending}
-            onClick={() => morningMutation.mutate()}
+            onClick={() => morningMutation.mutate(openBlankMeetWindow())}
           >
             <Video className="h-4 w-4" /> Join Morning Call
           </Button>
@@ -255,7 +256,7 @@ export default function MeetingsPage() {
               <Button
                 className="w-full gap-2 mt-4"
                 disabled={instantMutation.isPending}
-                onClick={() => instantMutation.mutate()}
+                onClick={() => instantMutation.mutate(openBlankMeetWindow())}
               >
                 <Phone className="h-4 w-4" /> Start Instant General Call
               </Button>

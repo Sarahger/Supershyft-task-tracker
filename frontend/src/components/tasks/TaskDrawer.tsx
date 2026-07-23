@@ -21,7 +21,7 @@ import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { useAuth } from '../../contexts/AuthContext';
 import { canDeleteTasks } from '../../lib/roles';
 import { getChecklistProgress } from '../../lib/checklist';
-import { startTaskCall, joinTaskCall, endTaskCall, openMeetUrl } from '../../lib/meetings';
+import { startTaskCall, joinTaskCall, endTaskCall, openBlankMeetWindow, openMeetUrl } from '../../lib/meetings';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
 import clsx from 'clsx';
@@ -104,7 +104,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   );
 
   const taskCallMutation = useMutation({
-    mutationFn: () => startTaskCall(taskId!),
+    mutationFn: (pendingWindow: Window | null) => startTaskCall(taskId!, pendingWindow),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
       qc.invalidateQueries({ queryKey: ['task-active-call', taskId] });
@@ -115,7 +115,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   });
 
   const joinTaskCallMutation = useMutation({
-    mutationFn: () => joinTaskCall(taskId!),
+    mutationFn: (pendingWindow: Window | null) => joinTaskCall(taskId!, pendingWindow),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
       qc.invalidateQueries({ queryKey: ['meetings-day'] });
@@ -488,7 +488,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => taskCallMutation.mutate()}
+                  onClick={() => taskCallMutation.mutate(openBlankMeetWindow())}
                   disabled={taskCallMutation.isPending}
                   className="gap-1.5"
                 >
@@ -500,7 +500,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => joinTaskCallMutation.mutate()}
+                    onClick={() => joinTaskCallMutation.mutate(openBlankMeetWindow())}
                     disabled={joinTaskCallMutation.isPending}
                     className="gap-1.5 border-emerald-500/30 text-emerald-400"
                   >

@@ -21,8 +21,59 @@ export function isInMorningCallWindow(now = new Date()) {
   return mins >= MORNING_START_MINUTES && mins <= MORNING_END_MINUTES;
 }
 
-export function openMeetUrl(url: string) {
-  window.open(url, '_blank', 'noopener,noreferrer');
+/**
+ * Open a blank tab synchronously inside a click handler.
+ * Required on iOS Safari — async window.open after await is blocked.
+ */
+export function openBlankMeetWindow(): Window | null {
+  try {
+    return window.open('about:blank', '_blank');
+  } catch {
+    return null;
+  }
+}
+
+function closeMeetWindow(win?: Window | null) {
+  if (!win || win.closed) return;
+  try {
+    win.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Navigate to a Meet URL. Prefer a window opened during the user gesture.
+ * Falls back to a new tab, then same-tab navigation if popups are blocked.
+ */
+export function openMeetUrl(url: string, pendingWindow?: Window | null) {
+  if (!url) return;
+
+  if (pendingWindow && !pendingWindow.closed) {
+    try {
+      pendingWindow.location.href = url;
+      pendingWindow.focus();
+      return;
+    } catch {
+      closeMeetWindow(pendingWindow);
+    }
+  }
+
+  try {
+    const opened = window.open(url, '_blank');
+    if (opened) {
+      try {
+        opened.focus();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  window.location.assign(url);
 }
 
 function toastApiError(err: unknown, fallback: string) {
@@ -33,28 +84,47 @@ function toastApiError(err: unknown, fallback: string) {
   toast.error(typeof msg === 'string' ? msg : fallback);
 }
 
-export async function joinMorningCall() {
+async function withMeetRedirect<T>(
+  pendingWindow: Window | null | undefined,
+  run: () => Promise<{ redirect_url?: string | null } & T>,
+  errorFallback: string,
+): Promise<T> {
   try {
-    const res = await meetingsApi.joinMorning();
-    const { redirect_url } = res.data.data;
-    if (redirect_url) openMeetUrl(redirect_url);
-    return res.data.data.log;
+    const data = await run();
+    if (data.redirect_url) {
+      openMeetUrl(data.redirect_url, pendingWindow);
+    } else {
+      closeMeetWindow(pendingWindow);
+    }
+    return data;
   } catch (err: unknown) {
-    toastApiError(err, 'Could not join morning call');
+    closeMeetWindow(pendingWindow);
+    toastApiError(err, errorFallback);
     throw err;
   }
 }
 
-export async function startInstantCall(inviteUserIds: number[]) {
-  try {
-    const res = await meetingsApi.startInstant({ invite_user_ids: inviteUserIds });
-    const { redirect_url } = res.data.data;
-    if (redirect_url) openMeetUrl(redirect_url);
-    return res.data.data;
-  } catch (err: unknown) {
-    toastApiError(err, 'Could not start instant call');
-    throw err;
-  }
+export async function joinMorningCall(pendingWindow?: Window | null) {
+  const data = await withMeetRedirect(
+    pendingWindow,
+    async () => {
+      const res = await meetingsApi.joinMorning();
+      return res.data.data;
+    },
+    'Could not join morning call',
+  );
+  return data.log;
+}
+
+export async function startInstantCall(inviteUserIds: number[], pendingWindow?: Window | null) {
+  return withMeetRedirect(
+    pendingWindow,
+    async () => {
+      const res = await meetingsApi.startInstant({ invite_user_ids: inviteUserIds });
+      return res.data.data;
+    },
+    'Could not start instant call',
+  );
 }
 
 export async function endInstantCall(poolId: number) {
@@ -67,28 +137,26 @@ export async function endInstantCall(poolId: number) {
   }
 }
 
-export async function startTaskCall(taskId: number) {
-  try {
-    const res = await meetingsApi.startTaskCall(taskId);
-    const { redirect_url } = res.data.data;
-    if (redirect_url) openMeetUrl(redirect_url);
-    return res.data.data;
-  } catch (err: unknown) {
-    toastApiError(err, 'Could not start task call');
-    throw err;
-  }
+export async function startTaskCall(taskId: number, pendingWindow?: Window | null) {
+  return withMeetRedirect(
+    pendingWindow,
+    async () => {
+      const res = await meetingsApi.startTaskCall(taskId);
+      return res.data.data;
+    },
+    'Could not start task call',
+  );
 }
 
-export async function joinTaskCall(taskId: number) {
-  try {
-    const res = await meetingsApi.joinTaskCall(taskId);
-    const { redirect_url } = res.data.data;
-    if (redirect_url) openMeetUrl(redirect_url);
-    return res.data.data;
-  } catch (err: unknown) {
-    toastApiError(err, 'Could not join task call');
-    throw err;
-  }
+export async function joinTaskCall(taskId: number, pendingWindow?: Window | null) {
+  return withMeetRedirect(
+    pendingWindow,
+    async () => {
+      const res = await meetingsApi.joinTaskCall(taskId);
+      return res.data.data;
+    },
+    'Could not join task call',
+  );
 }
 
 export async function endTaskCall(taskId: number) {
