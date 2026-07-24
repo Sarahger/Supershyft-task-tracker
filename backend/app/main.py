@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, clients, custom_fields, daily_updates, dashboard, departments, meetings, projects, tasks, users
+from app.api import auth, clients, cron, custom_fields, daily_updates, dashboard, departments, meetings, projects, tasks, users
 from app.core.config import settings
 from app.db.base import Base
 from app.db.database import engine
@@ -25,14 +25,16 @@ async def lifespan(app: FastAPI):
         try:
             from app.db.database import SessionLocal
             from app.services.meet_pool_service import seed_meet_pool
+            from app.services.task_cleanup import maybe_run_task_retention_cleanup
 
             db = SessionLocal()
             try:
                 seed_meet_pool(db)
+                maybe_run_task_retention_cleanup(db, force=True)
             finally:
                 db.close()
         except Exception as exc:
-            logger.warning("Meet pool seed skipped or failed: %s", exc)
+            logger.warning("Meet pool seed / task cleanup skipped or failed: %s", exc)
     if os.getenv("VERCEL") != "1":
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     if settings.AUTO_SEED and os.getenv("VERCEL") != "1":
@@ -82,6 +84,7 @@ app.include_router(custom_fields.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(meetings.router, prefix="/api")
 app.include_router(daily_updates.router, prefix="/api")
+app.include_router(cron.router, prefix="/api")
 
 if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
@@ -90,4 +93,15 @@ if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
 @app.get("/api/health")
 @app.get("/health")
 def health():
+    try:
+        from app.db.database import SessionLocal
+        from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+        db = SessionLocal()
+        try:
+            maybe_run_task_retention_cleanup(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Health cleanup skipped: %s", exc)
     return {"success": True, "data": {"status": "healthy"}, "message": "OK"}

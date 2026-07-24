@@ -73,6 +73,10 @@ def list_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+    maybe_run_task_retention_cleanup(db)
+
     repo = TaskRepository(db)
     service = TaskService(db)
     filters = {

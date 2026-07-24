@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     MEET_POOL_AUTO_RELEASE_MINUTES: int = 60
     TASK_CALL_BUFFER_MINUTES: int = 5
 
+    COMPLETED_RETENTION_DAYS: int = 7
+    DELETED_RETENTION_DAYS: int = 30
+    CRON_SECRET: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

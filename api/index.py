@@ -37,6 +37,9 @@ def _bootstrap_database() -> None:
         db = SessionLocal()
         try:
             seed_meet_pool(db)
+            from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+            maybe_run_task_retention_cleanup(db, force=True)
         finally:
             db.close()
         if settings.AUTO_SEED:
