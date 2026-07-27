@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.constants import MeetingAttendanceStatus, MeetingLogType, MeetingPoolType, NotificationType
-from app.models import GoogleMeetPool, MeetingLog, Task, User
+from app.models import GoogleMeetPool, InstantCallInvite, MeetingLog, Task, User
 from app.repositories.base import TaskRepository, user_to_brief_dict
 from app.services.meet_pool_service import (
     acquire_pool_link,
@@ -166,10 +166,26 @@ class MeetingService:
             meet_url=pool.meet_url,
         )
         self.db.add(log)
+        self.db.flush()
+
+        unique_ids = {uid for uid in invite_user_ids if uid != user.id}
+        for invitee_id in unique_ids:
+            invitee = self.db.query(User).filter(User.id == invitee_id, User.status == "active").first()
+            if not invitee:
+                continue
+            self.db.add(
+                InstantCallInvite(
+                    pool_id=pool.id,
+                    starter_user_id=user.id,
+                    invitee_user_id=invitee.id,
+                    meet_url=pool.meet_url,
+                )
+            )
+
         self.db.commit()
         self.db.refresh(log)
 
-        self._notify_instant_invites(user, pool.meet_url, invite_user_ids)
+        self._notify_instant_invites(user, pool.meet_url, list(unique_ids))
 
         return {
             "redirect_url": pool.meet_url,
@@ -290,6 +306,42 @@ class MeetingService:
         pool = get_active_instant_pool_for_user(self.db, user_id)
         return _pool_to_dict(pool) if pool else None
 
+    def get_invited_active_instant_calls(self, invitee_user_id: int) -> list[dict]:
+        """Active instant calls this user was invited to (pool still occupied)."""
+        release_stale_pool_links(self.db)
+        rows = (
+            self.db.query(InstantCallInvite)
+            .options(joinedload(InstantCallInvite.starter), joinedload(InstantCallInvite.pool))
+            .join(GoogleMeetPool, InstantCallInvite.pool_id == GoogleMeetPool.id)
+            .filter(
+                InstantCallInvite.invitee_user_id == invitee_user_id,
+                GoogleMeetPool.is_occupied.is_(True),
+                GoogleMeetPool.meeting_type == MeetingPoolType.INSTANT.value,
+            )
+            .order_by(InstantCallInvite.created_at.asc())
+            .all()
+        )
+        results: list[dict] = []
+        for invite in rows:
+            starter = invite.starter
+            results.append(
+                {
+                    "id": invite.id,
+                    "pool_id": invite.pool_id,
+                    "meet_url": invite.meet_url or (invite.pool.meet_url if invite.pool else ""),
+                    "created_at": invite.created_at,
+                    "starter": {
+                        "id": starter.id,
+                        "first_name": starter.first_name,
+                        "last_name": starter.last_name,
+                        "profile_picture": starter.profile_picture,
+                    }
+                    if starter
+                    else None,
+                }
+            )
+        return results
+
     def _notify_instant_invites(self, starter: User, meet_url: str, invite_user_ids: list[int]) -> None:
         notifications = NotificationService(self.db)
         subject = "🚨 Urgent Invitation to Instant Meeting"
@@ -390,6 +442,9 @@ class MeetingService:
             if l.log_type == MeetingLogType.GENERAL.value
         ]
         active_instant = self.get_active_instant_call(user.id) if target == _now_local().date() else None
+        invited_active = (
+            self.get_invited_active_instant_calls(user.id) if target == _now_local().date() else []
+        )
 
         return {
             "date": target,
@@ -400,6 +455,7 @@ class MeetingService:
             "task_calls": task_calls,
             "general_calls": general_calls,
             "active_instant_call": active_instant,
+            "invited_active_instant_calls": invited_active,
             "pool_available_count": self.db.query(GoogleMeetPool).filter(GoogleMeetPool.is_occupied.is_(False)).count(),
         }
 

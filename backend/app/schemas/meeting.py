@@ -30,6 +30,21 @@ class MeetPoolResponse(BaseModel):
     last_occupied_at: datetime | None
 
 
+class InstantCallInviteStarter(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    profile_picture: str | None = None
+
+
+class InstantCallInviteResponse(BaseModel):
+    id: int
+    pool_id: int
+    meet_url: str
+    created_at: datetime
+    starter: InstantCallInviteStarter | None = None
+
+
 class MeetingLogResponse(BaseModel):
     id: int
     user_id: int
@@ -59,4 +74,5 @@ class MeetingDayResponse(BaseModel):
     task_calls: list[MeetingLogResponse]
     general_calls: list[MeetingLogResponse]
     active_instant_call: MeetPoolResponse | None = None
+    invited_active_instant_calls: list[InstantCallInviteResponse] = []
     pool_available_count: int = 0

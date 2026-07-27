@@ -22,8 +22,9 @@ import {
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { Avatar } from '../components/ui/Avatar';
 import { toast } from '../components/ui/Toast';
-import type { MeetingLog, User } from '../types';
+import type { InstantCallInvite, MeetingLog, User } from '../types';
 
 function userName(user?: { first_name: string; last_name: string } | null) {
   return user ? `${user.first_name} ${user.last_name}` : 'Unknown';
@@ -133,6 +134,7 @@ export default function MeetingsPage() {
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
   const [inMorningWindow, setInMorningWindow] = useState(isInMorningCallWindow());
   const [inviteUserIds, setInviteUserIds] = useState<number[]>([]);
+  const isTodaySelected = selectedDate === todayIsoDate();
 
   useEffect(() => {
     const tick = () => setInMorningWindow(isInMorningCallWindow());
@@ -149,6 +151,7 @@ export default function MeetingsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['meetings-day', selectedDate],
     queryFn: () => meetingsApi.getDay(selectedDate).then((r) => r.data.data),
+    refetchInterval: isTodaySelected ? 15_000 : false,
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['meetings-day', selectedDate] });
@@ -178,9 +181,10 @@ export default function MeetingsPage() {
     onError: () => toast.error('Could not record departure'),
   });
 
-  const isToday = selectedDate === todayIsoDate();
+  const isToday = isTodaySelected;
   const canJoinMorning = isToday && inMorningWindow;
   const activeInstant = data?.active_instant_call ?? null;
+  const invitedCalls: InstantCallInvite[] = data?.invited_active_instant_calls ?? [];
 
   const displayDate = (() => {
     try { return format(parseISO(selectedDate), 'EEEE, MMM d, yyyy'); }
@@ -245,6 +249,44 @@ export default function MeetingsPage() {
               </p>
             </div>
           </div>
+
+          {invitedCalls.length > 0 && (
+            <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+              <p className="text-2xs font-medium uppercase tracking-wider text-emerald-400/90 px-0.5">
+                Invites for you
+              </p>
+              <ul className="space-y-2">
+                {invitedCalls.map((invite) => {
+                  const name = invite.starter
+                    ? `${invite.starter.first_name} ${invite.starter.last_name}`
+                    : 'Teammate';
+                  return (
+                    <li
+                      key={invite.id}
+                      className="flex items-center gap-3 rounded-lg bg-dark-card/80 border border-dark-border px-3 py-2.5"
+                    >
+                      <Avatar
+                        name={name}
+                        size="sm"
+                        src={invite.starter?.profile_picture ?? undefined}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-text-primary truncate">{name}</p>
+                        <p className="text-2xs text-text-muted">wants you to join their call</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="gap-1.5 shrink-0"
+                        onClick={() => openMeetUrl(invite.meet_url)}
+                      >
+                        <Video className="h-3.5 w-3.5" /> Join
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {!activeInstant ? (
             <>

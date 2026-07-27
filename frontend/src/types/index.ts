@@ -298,6 +298,19 @@ export interface MeetPoolLink {
   last_occupied_at: string | null;
 }
 
+export interface InstantCallInvite {
+  id: number;
+  pool_id: number;
+  meet_url: string;
+  created_at: string;
+  starter: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    profile_picture?: string | null;
+  } | null;
+}
+
 export interface MeetingDaySummary {
   date: string;
   morning_call_join_available: boolean;
@@ -307,6 +320,7 @@ export interface MeetingDaySummary {
   task_calls: MeetingLog[];
   general_calls: MeetingLog[];
   active_instant_call: MeetPoolLink | null;
+  invited_active_instant_calls: InstantCallInvite[];
   pool_available_count: number;
 }
 

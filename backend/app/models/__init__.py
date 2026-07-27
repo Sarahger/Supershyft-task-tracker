@@ -496,6 +496,31 @@ class GoogleMeetPool(Base):
     last_occupied_at = Column(DateTime(timezone=True), nullable=True)
 
     logs = relationship("MeetingLog", back_populates="pool")
+    instant_invites = relationship(
+        "InstantCallInvite",
+        back_populates="pool",
+        cascade="all, delete-orphan",
+    )
+
+
+class InstantCallInvite(Base):
+    """Invitee rows for an active instant general call (cleared when the pool is released)."""
+
+    __tablename__ = "instant_call_invites"
+    __table_args__ = (
+        UniqueConstraint("pool_id", "invitee_user_id", name="uq_instant_invite_pool_invitee"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    pool_id = Column(Integer, ForeignKey("google_meet_pool.id", ondelete="CASCADE"), nullable=False, index=True)
+    starter_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    invitee_user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    meet_url = Column(String(500), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    pool = relationship("GoogleMeetPool", back_populates="instant_invites")
+    starter = relationship("User", foreign_keys=[starter_user_id])
+    invitee = relationship("User", foreign_keys=[invitee_user_id])
 
 
 class MeetingDaySetting(Base):

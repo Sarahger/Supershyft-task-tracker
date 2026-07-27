@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.constants import MeetingPoolType
-from app.models import GoogleMeetPool
+from app.models import GoogleMeetPool, InstantCallInvite
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,16 @@ def seed_meet_pool(db: Session) -> None:
         logger.info("Seeded %s Google Meet pool link(s)", added)
 
 
+def _clear_instant_invites(db: Session, pool_ids: list[int]) -> None:
+    if not pool_ids:
+        return
+    (
+        db.query(InstantCallInvite)
+        .filter(InstantCallInvite.pool_id.in_(pool_ids))
+        .delete(synchronize_session=False)
+    )
+
+
 def release_stale_pool_links(db: Session) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=settings.MEET_POOL_AUTO_RELEASE_MINUTES)
     stale = (
@@ -47,11 +57,13 @@ def release_stale_pool_links(db: Session) -> int:
         )
         .all()
     )
+    stale_ids = [link.id for link in stale]
     for link in stale:
         link.is_occupied = False
         link.current_context_id = None
         link.meeting_type = None
     if stale:
+        _clear_instant_invites(db, stale_ids)
         db.commit()
         logger.info("Auto-released %s stale Meet pool link(s)", len(stale))
     return len(stale)
@@ -86,6 +98,7 @@ def release_pool_link(db: Session, pool_id: int) -> GoogleMeetPool:
     link.is_occupied = False
     link.current_context_id = None
     link.meeting_type = None
+    _clear_instant_invites(db, [pool_id])
     db.commit()
     db.refresh(link)
     return link
