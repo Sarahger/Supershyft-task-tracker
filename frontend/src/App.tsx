@@ -11,7 +11,7 @@ import { RequireManager } from './components/auth/RequireManager';
 import { canAccessManagerFeatures } from './lib/roles';
 import { TaskDrawer } from './components/tasks/TaskDrawer';
 import { UserDrawer } from './components/users/UserDrawer';
-import { CreateTaskModal } from './components/tasks/CreateTaskModal';
+import { FluxCreateTaskComposer, GlobalCreateTaskFab } from './components/tasks/FluxCreateTaskComposer';
 import { ToastContainer } from './components/ui/Toast';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
@@ -83,9 +83,10 @@ function ProtectedLayout() {
   return (
     <>
       <AppLayout />
+      {!isCreateOpen && <GlobalCreateTaskFab onClick={openCreate} />}
       {selectedUserId != null && <UserDrawer userId={selectedUserId} onClose={closeUser} />}
       {selectedTaskId != null && <TaskDrawer taskId={selectedTaskId} onClose={closeTask} />}
-      {isCreateOpen && <CreateTaskModal isOpen={isCreateOpen} onClose={closeCreate} />}
+      <FluxCreateTaskComposer isOpen={isCreateOpen} onClose={closeCreate} />
     </>
   );
 }

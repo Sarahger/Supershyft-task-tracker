@@ -11,7 +11,6 @@ import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './Tas
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
 import { DeletedTasksList } from './DeletedTasksList';
-import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
 import { toast } from '../ui/Toast';
@@ -566,8 +565,6 @@ export function TasksWorkspace({
           )}
         </div>
       )}
-
-      {isMobile && !isDeletedView && <FloatingActionButton onClick={openCreate} />}
 
       {allowDelete && (
       <DeleteTaskModal
