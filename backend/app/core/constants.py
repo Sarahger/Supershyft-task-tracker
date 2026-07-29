@@ -106,6 +106,20 @@ class MeetingPoolType(str, Enum):
     INSTANT = "Instant"
 
 
+class AttendanceStatus(str, Enum):
+    WFO = "WFO"
+    WFH = "WFH"
+    LEAVE = "LEAVE"
+
+
+class AttendanceFilterStatus(str, Enum):
+    WFO = "WFO"
+    WFH = "WFH"
+    LEAVE = "LEAVE"
+    NOT_MARKED = "NOT_MARKED"
+    ALL = "ALL"
+
+
 class ActivityType(str, Enum):
     TASK_CREATED = "task_created"
     TASK_UPDATED = "task_updated"

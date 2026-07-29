@@ -447,3 +447,101 @@ export interface DailyUpdateCalendar {
   month: number;
   days: DailyUpdateCalendarDay[];
 }
+
+export type AttendanceStatus = 'WFO' | 'WFH' | 'LEAVE';
+
+export type AttendanceFilterStatus = AttendanceStatus | 'NOT_MARKED' | 'ALL';
+
+export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
+  WFO: 'Work From Office',
+  WFH: 'Work From Home',
+  LEAVE: 'On Leave',
+};
+
+export const ATTENDANCE_STATUS_SHORT: Record<AttendanceStatus, string> = {
+  WFO: 'WFO',
+  WFH: 'WFH',
+  LEAVE: 'Leave',
+};
+
+export interface AttendanceUserBrief {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+  role?: string | null;
+  departments?: string[];
+}
+
+export interface AttendanceRecord {
+  id: number;
+  user_id: number;
+  attendance_date: string;
+  status: AttendanceStatus;
+  recorded_at: string;
+  created_at: string;
+  editable: boolean;
+  user?: AttendanceUserBrief | null;
+}
+
+export interface AttendanceSummary {
+  wfo_count: number;
+  wfh_count: number;
+  leave_count: number;
+  present_count: number;
+  total_marked: number;
+  working_days: number;
+  attendance_percent: number;
+  late_count: number;
+}
+
+export interface AttendanceMe {
+  year: number;
+  month: number;
+  today: string;
+  today_record: AttendanceRecord | null;
+  records: AttendanceRecord[];
+  summary: AttendanceSummary;
+  week: (AttendanceRecord | null)[];
+}
+
+export interface AttendanceTodayStats {
+  present_wfo: number;
+  wfh: number;
+  on_leave: number;
+  not_marked: number;
+  total_active: number;
+}
+
+export interface AttendanceList {
+  records: AttendanceRecord[];
+  today_stats: AttendanceTodayStats;
+  year: number;
+  month: number;
+}
+
+export interface AttendanceWeekDayCell {
+  date: string;
+  status: AttendanceStatus | null;
+  recorded_at: string | null;
+}
+
+export interface AttendanceWeekRow {
+  user: AttendanceUserBrief;
+  days: AttendanceWeekDayCell[];
+}
+
+export interface AttendanceWeek {
+  week_start: string;
+  week_end: string;
+  rows: AttendanceWeekRow[];
+}
+
+export interface AttendanceUserDetail {
+  user: AttendanceUserBrief;
+  year: number;
+  month: number;
+  records: AttendanceRecord[];
+  summary: AttendanceSummary;
+}

@@ -577,3 +577,17 @@ class DailyUpdateMention(Base):
 
     daily_update = relationship("DailyUpdate", back_populates="mentions")
     mentioned_user = relationship("User", foreign_keys=[mentioned_user_id])
+
+
+class Attendance(Base):
+    __tablename__ = "attendances"
+    __table_args__ = (UniqueConstraint("user_id", "attendance_date", name="uq_attendance_user_date"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    attendance_date = Column(Date, nullable=False, index=True)
+    status = Column(String(50), nullable=False)
+    recorded_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])

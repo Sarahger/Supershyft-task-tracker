@@ -10,6 +10,10 @@ export function canDeleteTasks(user: User | null | undefined): boolean {
   return canAccessManagerFeatures(user);
 }
 
+export function canAccessAttendanceHr(user: User | null | undefined): boolean {
+  return canAccessManagerFeatures(user);
+}
+
 export function canManageUsers(user: User | null | undefined): boolean {
   return canAccessManagerFeatures(user);
 }

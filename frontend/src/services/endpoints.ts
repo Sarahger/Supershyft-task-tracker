@@ -183,3 +183,22 @@ export const reportsApi = {
   exportCsv: (filters: Record<string, unknown>) =>
     api.post('/reports/export/csv', filters, { responseType: 'blob' }),
 };
+
+export const attendanceApi = {
+  mark: (status: import('../types').AttendanceStatus) =>
+    api.post<APIResponse<import('../types').AttendanceRecord>>('/attendance', { status }),
+  me: (params?: { month?: number; year?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceMe>>('/attendance/me', { params }),
+  today: () =>
+    api.get<APIResponse<import('../types').AttendanceRecord | null>>('/attendance/me/today'),
+  list: (params?: Record<string, unknown>) =>
+    api.get<APIResponse<import('../types').AttendanceList>>('/attendance', { params }),
+  week: (params?: { week_start?: string; department_id?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceWeek>>('/attendance/week', { params }),
+  userDetail: (userId: number, params?: { month?: number; year?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceUserDetail>>(`/attendance/users/${userId}`, {
+      params,
+    }),
+  exportCsv: (filters: Record<string, unknown>) =>
+    api.post('/attendance/export/csv', filters, { responseType: 'blob' }),
+};

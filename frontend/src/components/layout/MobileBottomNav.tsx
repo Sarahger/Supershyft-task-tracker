@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutList, CheckSquare, FolderKanban, BarChart3, Users, Video, NotebookPen } from 'lucide-react';
+import { LayoutList, CheckSquare, FolderKanban, BarChart3, Users, Video, NotebookPen, CalendarCheck } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
@@ -15,6 +15,7 @@ const items: {
   { to: '/', icon: LayoutList, label: 'All tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My tasks', end: true },
   { to: '/daily-updates', icon: NotebookPen, label: 'Updates', end: true },
+  { to: '/attendance', icon: CalendarCheck, label: 'Attendance', end: true },
   { to: '/meetings', icon: Video, label: 'Meetings', end: true },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },
@@ -49,7 +50,7 @@ export function MobileBottomNav() {
       className="mobile-bottom-nav fixed bottom-0 left-0 right-0 z-40 md:hidden border-t border-dark-border bg-dark-sidebar"
       aria-label="Main navigation"
     >
-      <div className="flex items-stretch justify-between px-0.5">
+      <div className="flex items-stretch justify-start px-0.5 overflow-x-auto">
         {visible.map((item) => (
           <NavItem key={item.to} to={item.to} icon={item.icon} label={item.label} end={item.end} />
         ))}

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "vercel-build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:attendance": "playwright test e2e/attendance.spec.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -26,6 +28,7 @@
     "recharts": "^2.15.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
