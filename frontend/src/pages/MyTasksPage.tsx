@@ -11,6 +11,7 @@ import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
+import { FloatingActionButton } from '../components/layout/FloatingActionButton';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
@@ -70,6 +71,7 @@ export default function MyTasksPage() {
   const { openTask, closeTask, selectedTaskId, openCreate } = useTaskDrawer();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const isMobile = useIsMobile();
   const allowDelete = canDeleteTasks(user);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
@@ -207,6 +209,8 @@ export default function MyTasksPage() {
           {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} {...listProps} /></Section>}
         </>
       )}
+
+      {isMobile && <FloatingActionButton onClick={openCreate} />}
 
       {allowDelete && (
       <DeleteTaskModal
