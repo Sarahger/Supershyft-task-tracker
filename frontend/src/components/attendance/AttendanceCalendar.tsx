@@ -40,11 +40,11 @@ export function AttendanceCalendar({
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-dark-border bg-dark-card p-4 animate-pulse">
+      <div className="card p-4 animate-pulse">
         <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-4" />
         <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: 35 }).map((_, i) => (
-            <div key={i} className="aspect-square rounded-lg bg-dark-muted" />
+            <div key={i} className="aspect-square rounded-md bg-dark-muted" />
           ))}
         </div>
       </div>
@@ -52,12 +52,12 @@ export function AttendanceCalendar({
   }
 
   return (
-    <section className="rounded-2xl border border-dark-border bg-dark-card p-3 sm:p-4">
+    <section className="card p-3 sm:p-4 h-full">
       <div className="flex items-center justify-between mb-3">
         <button
           type="button"
           onClick={() => onMonthChange(subMonths(month, 1))}
-          className="p-2 rounded-lg text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="p-2 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors duration-hover"
           aria-label="Previous month"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -68,7 +68,7 @@ export function AttendanceCalendar({
         <button
           type="button"
           onClick={() => onMonthChange(addMonths(month, 1))}
-          className="p-2 rounded-lg text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="p-2 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors duration-hover"
           aria-label="Next month"
         >
           <ChevronRight className="h-4 w-4" />
@@ -76,7 +76,7 @@ export function AttendanceCalendar({
       </div>
       <div className="grid grid-cols-7 gap-1 mb-1">
         {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
-          <div key={d} className="text-center text-2xs uppercase tracking-wide text-text-muted py-1">
+          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-1">
             {d}
           </div>
         ))}
@@ -99,19 +99,19 @@ export function AttendanceCalendar({
                   : statusLabel(null)
               }
               className={clsx(
-                'relative flex flex-col items-center justify-center rounded-lg py-1.5 min-h-[40px] sm:min-h-[44px] text-sm transition-all duration-200',
-                selectedDay && 'ring-2 ring-accent-primary',
+                'relative flex flex-col items-center justify-center rounded-md py-1.5 min-h-[40px] sm:min-h-[44px] text-sm transition-colors duration-hover',
+                selectedDay && 'bg-surface-active text-text-primary',
                 !selectedDay && inMonth && 'text-text-primary hover:bg-dark-hover',
                 !selectedDay && !inMonth && 'text-text-muted/40',
-                !selectedDay && isToday(day) && 'ring-1 ring-accent-primary/40',
+                !selectedDay && isToday(day) && 'calendar-today-pill',
               )}
               aria-label={`${format(day, 'MMMM d')}: ${statusLabel(status)}`}
             >
-              <span className="text-xs mb-0.5">{format(day, 'd')}</span>
+              <span className="text-xs mb-0.5 tabular-nums">{format(day, 'd')}</span>
               <span
                 className={clsx(
-                  'h-2.5 w-2.5 rounded-md',
-                  status ? statusDotClass(status) : 'bg-dark-muted',
+                  'h-1.5 w-1.5 rounded-full',
+                  status ? statusDotClass(status) : 'bg-transparent',
                   !inMonth && 'opacity-40',
                 )}
                 aria-hidden

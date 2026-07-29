@@ -71,7 +71,7 @@ export function AttendanceEmployeeDrawer({ userId, onClose }: Props) {
             />
 
             {selected && (
-              <div className="rounded-xl border border-dark-border bg-surface-subtle p-4 text-sm">
+              <div className="card p-4 text-sm bg-surface-subtle">
                 <p className="font-medium text-text-primary">{format(selected.day, 'EEEE, MMM d, yyyy')}</p>
                 <p className="text-text-secondary mt-1">{statusLabel(selected.record?.status)}</p>
                 {selected.record?.recorded_at && (
@@ -84,7 +84,7 @@ export function AttendanceEmployeeDrawer({ userId, onClose }: Props) {
 
             <AttendanceSummaryCard summary={data.summary} />
 
-            <div className="rounded-xl border border-dark-border bg-surface-subtle p-4 flex justify-between text-sm">
+            <div className="card p-4 flex justify-between text-sm bg-surface-subtle">
               <span className="text-text-muted">Late Count</span>
               <span className="tabular-nums text-text-secondary">{data.summary.late_count}</span>
             </div>

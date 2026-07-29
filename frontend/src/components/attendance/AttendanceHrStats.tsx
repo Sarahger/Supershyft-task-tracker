@@ -8,10 +8,38 @@ interface Props {
 }
 
 const CARDS = [
-  { key: 'present_wfo' as const, label: 'Present Today (WFO)', icon: Building2, color: 'text-emerald-400' },
-  { key: 'wfh' as const, label: 'WFH Today', icon: Home, color: 'text-sky-400' },
-  { key: 'on_leave' as const, label: 'On Leave', icon: Umbrella, color: 'text-amber-400' },
-  { key: 'not_marked' as const, label: 'Not Marked', icon: CircleDashed, color: 'text-text-muted' },
+  {
+    key: 'present_wfo' as const,
+    label: 'Present (WFO)',
+    icon: Building2,
+    color: 'metric-emerald',
+    border: 'border-emerald-500/20 bg-emerald-500/5',
+    iconWrap: 'bg-emerald-500/10 text-emerald-400',
+  },
+  {
+    key: 'wfh' as const,
+    label: 'WFH today',
+    icon: Home,
+    color: 'metric-sky',
+    border: 'border-sky-500/20 bg-sky-500/5',
+    iconWrap: 'bg-sky-500/10 text-sky-400',
+  },
+  {
+    key: 'on_leave' as const,
+    label: 'On leave',
+    icon: Umbrella,
+    color: 'metric-amber',
+    border: 'border-amber-500/20 bg-amber-500/5',
+    iconWrap: 'bg-amber-500/10 text-amber-400',
+  },
+  {
+    key: 'not_marked' as const,
+    label: 'Not marked',
+    icon: CircleDashed,
+    color: 'text-text-muted',
+    border: 'border-dark-border',
+    iconWrap: 'bg-surface-muted text-text-muted',
+  },
 ];
 
 export function AttendanceHrStats({ stats, loading }: Props) {
@@ -22,7 +50,7 @@ export function AttendanceHrStats({ stats, loading }: Props) {
         return (
           <div
             key={c.key}
-            className="rounded-2xl border border-dark-border bg-dark-card p-4"
+            className={clsx('card p-4 border', c.border)}
             data-testid={`hr-stat-${c.key}`}
           >
             <div className="flex items-start justify-between gap-2">
@@ -34,7 +62,9 @@ export function AttendanceHrStats({ stats, loading }: Props) {
                 )}
                 <p className="text-xs text-text-secondary mt-1 font-medium">{c.label}</p>
               </div>
-              <Icon className={clsx('h-4 w-4 shrink-0 opacity-70', c.color)} aria-hidden />
+              <div className={clsx('p-1.5 rounded-lg shrink-0', c.iconWrap)}>
+                <Icon className="h-3.5 w-3.5" aria-hidden />
+              </div>
             </div>
           </div>
         );

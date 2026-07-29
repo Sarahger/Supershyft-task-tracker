@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ArrowLeft, Download } from 'lucide-react';
+import clsx from 'clsx';
+import { Download, Search } from 'lucide-react';
 import { attendanceApi, departmentsApi, usersApi } from '../services/endpoints';
 import { AttendanceHrStats } from '../components/attendance/AttendanceHrStats';
 import { AttendanceHrWeekTable } from '../components/attendance/AttendanceHrWeekTable';
 import { AttendanceEmployeeDrawer } from '../components/attendance/AttendanceEmployeeDrawer';
 import { AttendanceTable } from '../components/attendance/AttendanceTable';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { toast } from '../components/ui/Toast';
 import type { AttendanceFilterStatus } from '../types';
@@ -28,6 +30,7 @@ function monthOptions(count = 18) {
 }
 
 export default function AttendanceHrPage() {
+  const navigate = useNavigate();
   const options = monthOptions();
   const [selectedMonth, setSelectedMonth] = useState(options[0].value);
   const [search, setSearch] = useState('');
@@ -97,19 +100,11 @@ export default function AttendanceHrPage() {
 
   return (
     <div className="w-full pb-12" data-testid="attendance-hr-page">
-      <header className="mb-6">
-        <Link
-          to="/attendance"
-          className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-text-primary mb-3"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          Attendance
-        </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-text-primary">Attendance — HR</h1>
-            <p className="text-sm text-text-muted mt-0.5">Organization overview and monthly filters.</p>
-          </div>
+      <PageHeader
+        title="Attendance — HR"
+        subtitle="Organization overview and monthly filters."
+        onMobileBack={() => navigate('/attendance')}
+        action={
           <Button
             variant="secondary"
             loading={exporting}
@@ -120,25 +115,28 @@ export default function AttendanceHrPage() {
             <Download className="h-3.5 w-3.5" />
             Export CSV
           </Button>
-        </div>
-      </header>
+        }
+      />
 
       <AttendanceHrStats stats={listData?.today_stats} loading={listLoading} />
 
-      <div className="sticky top-0 z-20 mt-5 mb-4 py-3 bg-dark-bg border-b border-dark-border space-y-3">
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="search"
-            placeholder="Search employee…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg border border-dark-border bg-dark-card text-sm text-text-primary px-3 py-2 min-h-[44px] min-w-[160px] flex-1 max-w-xs"
-            data-testid="hr-search"
-          />
+      <div className="sticky top-0 z-20 mt-6 mb-4 py-3 bg-dark-bg border-b border-dark-border">
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted pointer-events-none" />
+            <input
+              type="search"
+              placeholder="Search employee…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input pl-8 py-2 text-sm min-h-[40px]"
+              data-testid="hr-search"
+            />
+          </div>
           <select
             value={departmentId}
             onChange={(e) => setDepartmentId(e.target.value)}
-            className="rounded-lg border border-dark-border bg-dark-card text-sm text-text-primary px-3 py-2 min-h-[44px]"
+            className="input py-2 text-sm w-auto min-h-[40px]"
             aria-label="Department"
           >
             <option value="">All departments</option>
@@ -151,7 +149,7 @@ export default function AttendanceHrPage() {
           <select
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
-            className="rounded-lg border border-dark-border bg-dark-card text-sm text-text-primary px-3 py-2 min-h-[44px]"
+            className="input py-2 text-sm w-auto min-h-[40px]"
             aria-label="Employee"
           >
             <option value="">All employees</option>
@@ -164,7 +162,7 @@ export default function AttendanceHrPage() {
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="rounded-lg border border-dark-border bg-dark-card text-sm text-text-primary px-3 py-2 min-h-[44px]"
+            className="input py-2 text-sm w-auto min-h-[40px]"
             aria-label="Month"
           >
             {options.map((o) => (
@@ -176,7 +174,7 @@ export default function AttendanceHrPage() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as AttendanceFilterStatus)}
-            className="rounded-lg border border-dark-border bg-dark-card text-sm text-text-primary px-3 py-2 min-h-[44px]"
+            className="input py-2 text-sm w-auto min-h-[40px]"
             aria-label="Status"
           >
             <option value="ALL">All statuses</option>
@@ -185,18 +183,24 @@ export default function AttendanceHrPage() {
             <option value="LEAVE">Leave</option>
             <option value="NOT_MARKED">Not Marked</option>
           </select>
-          <div className="flex rounded-lg border border-dark-border overflow-hidden ml-auto">
+          <div className="flex rounded-lg border border-dark-border overflow-hidden bg-dark-card ml-auto">
             <button
               type="button"
               onClick={() => setView('week')}
-              className={`px-3 py-2 text-xs font-medium min-h-[44px] ${view === 'week' ? 'bg-dark-hover text-text-primary' : 'text-text-muted'}`}
+              className={clsx(
+                'px-3 py-2 text-xs font-medium min-h-[40px] transition-colors duration-hover',
+                view === 'week' ? 'bg-surface-highlight text-text-primary' : 'text-text-muted',
+              )}
             >
               Week
             </button>
             <button
               type="button"
               onClick={() => setView('table')}
-              className={`px-3 py-2 text-xs font-medium min-h-[44px] ${view === 'table' ? 'bg-dark-hover text-text-primary' : 'text-text-muted'}`}
+              className={clsx(
+                'px-3 py-2 text-xs font-medium min-h-[40px] transition-colors duration-hover',
+                view === 'table' ? 'bg-surface-highlight text-text-primary' : 'text-text-muted',
+              )}
             >
               Table
             </button>
@@ -204,8 +208,8 @@ export default function AttendanceHrPage() {
         </div>
       </div>
 
-      <section className="mt-2">
-        <h2 className="text-sm font-semibold text-text-primary mb-3">Attendance This Week</h2>
+      <section className="workspace-section !mb-0">
+        <h2 className="workspace-section-title">Attendance this week</h2>
         {view === 'week' ? (
           <AttendanceHrWeekTable
             week={weekData}
@@ -214,10 +218,7 @@ export default function AttendanceHrPage() {
             search={search}
           />
         ) : (
-          <AttendanceTable
-            records={listData?.records ?? []}
-            loading={listLoading}
-          />
+          <AttendanceTable records={listData?.records ?? []} loading={listLoading} />
         )}
       </section>
 

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, startOfWeek } from 'date-fns';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Shield } from 'lucide-react';
 import { attendanceApi } from '../services/endpoints';
 import { useAuth } from '../contexts/AuthContext';
 import { canAccessAttendanceHr } from '../lib/roles';
 import { toast } from '../components/ui/Toast';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Button } from '../components/ui/Button';
 import { AttendanceTodayHero } from '../components/attendance/AttendanceTodayHero';
 import { AttendanceWeekStrip } from '../components/attendance/AttendanceWeekStrip';
 import { AttendanceSummaryCard } from '../components/attendance/AttendanceSummaryCard';
@@ -16,6 +18,7 @@ import { formatRecordedTime, statusLabel } from '../components/attendance/attend
 
 export default function AttendancePage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const now = new Date();
   const [month, setMonth] = useState(now);
@@ -66,45 +69,47 @@ export default function AttendancePage() {
     : startOfWeek(now, { weekStartsOn: 1 });
 
   return (
-    <div className="w-full pb-12 max-w-5xl" data-testid="attendance-page">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-text-primary">Attendance</h1>
-          <p className="text-sm text-text-muted mt-0.5">Mark once a day. View your week and month at a glance.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/attendance/history"
-            className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary px-3 py-2 rounded-lg hover:bg-dark-hover min-h-[44px]"
-          >
-            <CalendarDays className="h-4 w-4" />
-            History
-          </Link>
-          {canAccessAttendanceHr(user) && (
-            <Link
-              to="/attendance/hr"
-              className="inline-flex items-center gap-1.5 text-sm text-accent-primary hover:opacity-90 px-3 py-2 rounded-lg hover:bg-dark-hover min-h-[44px]"
-              data-testid="link-attendance-hr"
+    <div className="w-full pb-12" data-testid="attendance-page">
+      <PageHeader
+        title="Attendance"
+        subtitle="Mark once a day. View your week and month at a glance."
+        action={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => navigate('/attendance/history')}
             >
-              HR overview
-            </Link>
-          )}
-        </div>
-      </header>
+              <CalendarDays className="h-3.5 w-3.5" />
+              History
+            </Button>
+            {canAccessAttendanceHr(user) && (
+              <Link to="/attendance/hr" data-testid="link-attendance-hr">
+                <Button variant="secondary" size="sm" className="gap-1.5">
+                  <Shield className="h-3.5 w-3.5" />
+                  HR overview
+                </Button>
+              </Link>
+            )}
+          </div>
+        }
+      />
 
-      <div className="space-y-5">
+      <div className="space-y-8 max-w-5xl">
         <AttendanceTodayHero
           todayRecord={data?.today_record}
           showMarkModal={showMarkModal}
           markSuccess={markSuccess}
           marking={markMutation.isPending}
           onMark={(status) => markMutation.mutate(status)}
+          onOpenMark={() => setShowMarkModal(true)}
           loading={isLoading}
         />
 
         <AttendanceWeekStrip week={data?.week ?? []} weekStart={weekStart} loading={isLoading} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <AttendanceSummaryCard summary={data?.summary} loading={isLoading} />
           <div className="space-y-3">
             <AttendanceCalendar
@@ -116,7 +121,7 @@ export default function AttendancePage() {
               loading={isLoading}
             />
             {selected && (
-              <div className="rounded-xl border border-dark-border bg-surface-subtle p-4 text-sm">
+              <div className="card p-4 text-sm bg-surface-subtle">
                 <p className="font-medium text-text-primary">{format(selected.day, 'EEEE, MMM d')}</p>
                 <p className="text-text-secondary mt-1">{statusLabel(selected.record?.status)}</p>
                 {selected.record?.recorded_at && (

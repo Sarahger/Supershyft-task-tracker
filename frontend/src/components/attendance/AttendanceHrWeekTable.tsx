@@ -16,7 +16,7 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = ''
 
   if (loading || !week) {
     return (
-      <div className="rounded-2xl border border-dark-border bg-dark-card p-4 animate-pulse space-y-2">
+      <div className="task-table p-4 animate-pulse space-y-2">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-10 bg-dark-muted rounded" />
         ))}
@@ -36,12 +36,12 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = ''
   ];
 
   return (
-    <div className="rounded-2xl border border-dark-border bg-dark-card overflow-hidden" data-testid="hr-week-table">
+    <div className="task-table" data-testid="hr-week-table">
       <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
         <table className="w-full text-sm border-collapse">
-          <thead className="sticky top-0 bg-dark-card z-20 border-b border-dark-border">
-            <tr className="text-2xs uppercase tracking-wide text-text-muted">
-              <th className="sticky left-0 z-30 bg-dark-card px-3 py-2.5 text-left font-medium min-w-[160px]">
+          <thead className="sticky top-0 z-20 task-table-header">
+            <tr className="text-2xs uppercase tracking-wider text-text-muted">
+              <th className="sticky left-0 z-30 task-table-header px-3 py-2.5 text-left font-medium min-w-[160px]">
                 Employee
               </th>
               <th className="px-2 py-2.5 text-left font-medium min-w-[100px]">Department</th>
@@ -59,7 +59,7 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = ''
               return (
                 <tr
                   key={row.user.id}
-                  className="border-b border-dark-border/50 hover:bg-dark-hover cursor-pointer"
+                  className="border-b border-dark-border/50 hover:bg-dark-hover cursor-pointer transition-colors duration-hover last:border-0"
                   onClick={() => onSelectUser(row.user.id)}
                 >
                   <td className="sticky left-0 z-10 bg-dark-card px-3 py-2">

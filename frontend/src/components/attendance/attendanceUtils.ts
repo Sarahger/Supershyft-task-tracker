@@ -24,15 +24,31 @@ export function statusDotClass(status: AttendanceStatus | null | undefined): str
   if (s === 'WFO') return 'bg-emerald-500';
   if (s === 'WFH') return 'bg-sky-500';
   if (s === 'LEAVE') return 'bg-amber-500';
-  return 'bg-dark-muted ring-1 ring-dark-border';
+  return 'bg-dark-muted ring-1 ring-inset ring-dark-border';
 }
 
 export function statusBadgeClass(status: AttendanceStatus | null | undefined): string {
   const s = normalizeStatus(status ?? undefined);
-  if (s === 'WFO') return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-  if (s === 'WFH') return 'bg-sky-500/15 text-sky-400 border-sky-500/30';
-  if (s === 'LEAVE') return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
-  return 'bg-surface-muted text-text-muted border-dark-border';
+  if (s === 'WFO') return 'badge-approved border border-emerald-500/25';
+  if (s === 'WFH') return 'badge-todo border border-sky-500/25';
+  if (s === 'LEAVE') return 'badge-progress border border-amber-500/25';
+  return 'bg-surface-muted text-text-muted border border-dark-border';
+}
+
+export function statusAccentBorder(status: AttendanceStatus | null | undefined): string {
+  const s = normalizeStatus(status ?? undefined);
+  if (s === 'WFO') return 'border-emerald-500/20 bg-emerald-500/5';
+  if (s === 'WFH') return 'border-sky-500/20 bg-sky-500/5';
+  if (s === 'LEAVE') return 'border-amber-500/20 bg-amber-500/5';
+  return 'border-dark-border';
+}
+
+export function statusIconWrap(status: AttendanceStatus | null | undefined): string {
+  const s = normalizeStatus(status ?? undefined);
+  if (s === 'WFO') return 'bg-emerald-500/10 text-emerald-400';
+  if (s === 'WFH') return 'bg-sky-500/10 text-sky-400';
+  if (s === 'LEAVE') return 'bg-amber-500/10 text-amber-400';
+  return 'bg-surface-muted text-text-muted';
 }
 
 export function greetingForNow(now = new Date()): string {
@@ -51,11 +67,11 @@ export function formatRecordedTime(iso: string | null | undefined): string {
 
 export const MARK_OPTIONS: {
   status: AttendanceStatus;
-  emoji: string;
   label: string;
   hint: string;
+  iconKey: 'building' | 'home' | 'umbrella';
 }[] = [
-  { status: 'WFO', emoji: '🏢', label: 'Work From Office', hint: 'In the office today' },
-  { status: 'WFH', emoji: '💻', label: 'Work From Home', hint: 'Working remotely' },
-  { status: 'LEAVE', emoji: '🌴', label: 'On Leave', hint: 'Out today' },
+  { status: 'WFO', label: 'Work From Office', hint: 'In the office today', iconKey: 'building' },
+  { status: 'WFH', label: 'Work From Home', hint: 'Working remotely', iconKey: 'home' },
+  { status: 'LEAVE', label: 'On Leave', hint: 'Out today', iconKey: 'umbrella' },
 ];
