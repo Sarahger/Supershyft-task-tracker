@@ -6,6 +6,7 @@ import { tasksApi } from '../services/endpoints';
 import { useTaskDrawer } from '../contexts/TaskDrawerContext';
 import { useAuth } from '../contexts/AuthContext';
 import { canDeleteTasks } from '../lib/roles';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
