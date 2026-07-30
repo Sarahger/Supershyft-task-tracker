@@ -78,6 +78,11 @@ export function TasksWorkspace({
   const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const defaultProjectId = typeof listFilters?.project_id === 'number' ? listFilters.project_id : undefined;
+  const handleOpenCreate = useCallback(() => {
+    openCreate(defaultProjectId != null ? { projectId: defaultProjectId } : undefined);
+  }, [openCreate, defaultProjectId]);
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -443,7 +448,7 @@ export function TasksWorkspace({
         onGroupByChange={setGroupBy}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
-        onNewTask={isDeletedView ? undefined : openCreate}
+        onNewTask={isDeletedView ? undefined : handleOpenCreate}
         totalCount={data?.total}
         visibleColumns={columns}
         onToggleColumn={toggleColumn}
@@ -462,7 +467,7 @@ export function TasksWorkspace({
         <div className="space-y-3">
           <p className="text-sm text-text-muted max-md:hidden">Loading tasks…</p>
           {isMobile ? (
-            <MobileTasksView tasks={[]} onTaskClick={() => {}} onCreateTask={openCreate} isLoading />
+            <MobileTasksView tasks={[]} onTaskClick={() => {}} onCreateTask={handleOpenCreate} isLoading />
           ) : viewMode === 'calendar' ? (
             <Suspense fallback={<TaskDatabaseSkeleton />}><TaskCalendarSkeleton /></Suspense>
           ) : viewMode === 'weekly' ? (
@@ -521,7 +526,7 @@ export function TasksWorkspace({
         <MobileTasksView
           tasks={displayTasks}
           onTaskClick={openTask}
-          onCreateTask={openCreate}
+          onCreateTask={handleOpenCreate}
           isLoading={isLoading}
           groupBy={groupBy}
         />
@@ -567,7 +572,7 @@ export function TasksWorkspace({
         </div>
       )}
 
-      {isMobile && !isDeletedView && <FloatingActionButton onClick={openCreate} />}
+      {isMobile && !isDeletedView && <FloatingActionButton onClick={handleOpenCreate} />}
 
       {allowDelete && (
       <DeleteTaskModal

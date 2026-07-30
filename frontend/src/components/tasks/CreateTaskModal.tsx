@@ -7,6 +7,8 @@ import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
 import { Avatar } from '../ui/Avatar';
 import { toast } from '../ui/Toast';
+import { useAuth } from '../../contexts/AuthContext';
+import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { tasksApi, projectsApi, usersApi } from '../../services/endpoints';
 import {
   matchMentionUsers,
@@ -25,13 +27,20 @@ import {
 } from '../../lib/quickTaskParse';
 import { format } from 'date-fns';
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 interface CreateTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
+  const { user: currentUser } = useAuth();
+  const { createDefaultProjectId } = useTaskDrawer();
   const [text, setText] = useState('');
+  const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [priority, setPriority] = useState<QuickPriority>('medium');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [description, setDescription] = useState('');
@@ -62,6 +71,16 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     [text, mentionUsers],
   );
 
+  const assigneeUsers = useMemo(() => {
+    const byId = new Map(mentionUsers.map((u) => [u.id, u]));
+    if (currentUser && !byId.has(currentUser.id)) {
+      byId.set(currentUser.id, currentUser);
+    }
+    return assigneeIds
+      .map((id) => byId.get(id))
+      .filter((u): u is MentionUser => Boolean(u));
+  }, [assigneeIds, mentionUsers, currentUser]);
+
   const mentionQuery = useMemo(() => {
     const match = text.match(/@([\w\s]*)$/);
     return match ? match[1] : null;
@@ -71,8 +90,11 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
-    return matchMentionUsers(mentionUsers, mentionQuery).slice(0, 8);
-  }, [mentionUsers, mentionQuery]);
+    const selected = new Set(assigneeIds);
+    return matchMentionUsers(mentionUsers, mentionQuery)
+      .filter((u) => !selected.has(u.id))
+      .slice(0, 8);
+  }, [mentionUsers, mentionQuery, assigneeIds]);
 
   const dateSuggestions = useMemo(() => {
     if (dateQuery === null) return [];
@@ -86,21 +108,38 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     setText('');
+    setAssigneeIds(currentUser?.id ? [currentUser.id] : []);
     setPriority('medium');
-    setShowAdvanced(false);
+    setShowAdvanced(Boolean(createDefaultProjectId));
     setDescription('');
-    setProjectId('');
+    setProjectId(createDefaultProjectId ? String(createDefaultProjectId) : '');
     setReviewRequired(false);
     setTestingRequired(false);
     setMenuHighlight(0);
     setMenuOpen(false);
     const t = window.setTimeout(() => textareaRef.current?.focus(), 50);
     return () => window.clearTimeout(t);
-  }, [isOpen]);
+  }, [isOpen, currentUser?.id, createDefaultProjectId]);
 
   useEffect(() => {
     setMenuHighlight(0);
   }, [mentionQuery, dateQuery]);
+
+  // Sync @mentions from the quick-input into assignee pills (additive only).
+  useEffect(() => {
+    if (!parsed.assigneeIds.length) return;
+    setAssigneeIds((prev) => {
+      let changed = false;
+      const next = [...prev];
+      for (const id of parsed.assigneeIds) {
+        if (!next.includes(id)) {
+          next.push(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [parsed.assigneeIds]);
 
   const resetAndClose = () => {
     onClose();
@@ -111,6 +150,8 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      qc.invalidateQueries({ queryKey: ['project-tasks'] });
+      qc.invalidateQueries({ queryKey: ['project-my-tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       toast.success('Task created');
       resetAndClose();
@@ -121,9 +162,24 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   const pickUser = (user: MentionUser) => {
     const token = mentionToken(user);
     setText((prev) => prev.replace(/@[\w\s]*$/, `${token} `));
+    setAssigneeIds((prev) => (prev.includes(user.id) ? prev : [...prev, user.id]));
     setMenuOpen(false);
     setMenuHighlight(0);
     textareaRef.current?.focus();
+  };
+
+  const removeAssignee = (userId: number) => {
+    setAssigneeIds((prev) => prev.filter((id) => id !== userId));
+    const user = mentionUsers.find((u) => u.id === userId)
+      ?? (currentUser?.id === userId ? currentUser : undefined);
+    if (!user) return;
+    const token = mentionToken(user);
+    setText((prev) =>
+      prev
+        .replace(new RegExp(`(?:^|\\s)${escapeRegExp(token)}(?=\\s|$)`, 'g'), ' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    );
   };
 
   const pickDate = (token: string) => {
@@ -143,10 +199,10 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       title,
       description: description.trim() || undefined,
       priority,
-      status: parsed.assigneeIds.length ? 'to_do' : 'unassigned',
+      status: assigneeIds.length ? 'to_do' : 'unassigned',
       project_id: projectId ? Number(projectId) : undefined,
       due_date: parsed.dueDate ? formatDueForApi(parsed.dueDate) : undefined,
-      assignee_ids: parsed.assigneeIds,
+      assignee_ids: assigneeIds,
       review_required: reviewRequired,
       testing_required: testingRequired,
     });
@@ -183,9 +239,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     }
   };
 
-  const assigneeSummary = parsed.assignees.length
-    ? parsed.assignees.map((u) => u.first_name).join(', ')
-    : 'no assignees';
   const dueSummary = parsed.dueLabel ?? 'no due date';
 
   return (
@@ -205,7 +258,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
             What&apos;s the move?
           </h2>
           <p className="text-sm text-text-muted mt-1.5">
-            Just type it. Use @ for people, / for dates.
+            You&apos;re assigned by default. Use @ to add others, / for dates.
           </p>
         </div>
 
@@ -282,47 +335,57 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-            <button
-              type="button"
-              onClick={() => setPriority((p) => nextPriority(p))}
-              className={clsx(
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors',
-                priority === 'low' && 'border-sky-500/30 bg-sky-500/10 text-sky-300',
-                priority === 'medium' && 'border-amber-500/35 bg-amber-500/10 text-amber-300',
-                priority === 'high' && 'border-orange-500/35 bg-orange-500/10 text-orange-300',
-                priority === 'critical' && 'border-red-500/35 bg-red-500/10 text-red-300',
-              )}
-              title="Click to change priority"
-            >
-              <Flag className="h-3 w-3" />
-              {PRIORITY_SHORT[priority]}
-            </button>
+          <div className="flex flex-col gap-2 px-4 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPriority((p) => nextPriority(p))}
+                className={clsx(
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border transition-colors',
+                  priority === 'low' && 'border-sky-500/30 bg-sky-500/10 text-sky-300',
+                  priority === 'medium' && 'border-amber-500/35 bg-amber-500/10 text-amber-300',
+                  priority === 'high' && 'border-orange-500/35 bg-orange-500/10 text-orange-300',
+                  priority === 'critical' && 'border-red-500/35 bg-red-500/10 text-red-300',
+                )}
+                title="Click to change priority"
+              >
+                <Flag className="h-3 w-3" />
+                {PRIORITY_SHORT[priority]}
+              </button>
 
-            <div className="flex items-center gap-2 min-w-0 text-xs text-text-muted">
-              {parsed.assignees.length > 0 && (
-                <div className="flex -space-x-1.5">
-                  {parsed.assignees.slice(0, 3).map((u) => (
-                    <Avatar
+              <span className="text-xs text-text-muted truncate">{dueSummary}</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 min-h-[1.75rem]">
+              {assigneeUsers.length ? (
+                assigneeUsers.map((u) => {
+                  const name = mentionDisplayName(u);
+                  return (
+                    <span
                       key={u.id}
-                      name={mentionDisplayName(u)}
-                      src={u.profile_picture}
-                      size="sm"
-                      className="ring-2 ring-[var(--surface-subtle,#111)]"
-                    />
-                  ))}
-                </div>
+                      className="chip badge-todo inline-flex items-center gap-1.5 pl-1 pr-1.5 py-0.5 border border-dark-border"
+                    >
+                      <Avatar name={name} src={u.profile_picture} size="sm" />
+                      <span className="text-xs text-text-primary max-w-[7rem] truncate">{name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAssignee(u.id)}
+                        className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
+                        aria-label={`Remove ${name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  );
+                })
+              ) : (
+                <span className="text-xs text-text-muted">No assignees — type @ to add</span>
               )}
-              <span className="truncate">
-                {assigneeSummary}
-                <span className="mx-1.5 opacity-50">·</span>
-                {dueSummary}
-              </span>
             </div>
           </div>
 
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-dark-border/80">
-            <p className="text-2xs text-text-muted">tips: @mention /date</p>
+            <p className="text-2xs text-text-muted">tips: @ to assign · / for date</p>
             <Button
               type="button"
               onClick={ship}
@@ -341,14 +404,14 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
             <p className="text-2xs uppercase tracking-wider text-text-muted mb-1.5">Preview</p>
             <p className="text-sm font-medium text-text-primary">{parsed.title}</p>
             <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-text-muted">
-              {parsed.assignees[0] && (
+              {assigneeUsers[0] && (
                 <span className="inline-flex items-center gap-1.5">
                   <Avatar
-                    name={mentionDisplayName(parsed.assignees[0])}
-                    src={parsed.assignees[0].profile_picture}
+                    name={mentionDisplayName(assigneeUsers[0])}
+                    src={assigneeUsers[0].profile_picture}
                     size="sm"
                   />
-                  {parsed.assignees.map((u) => u.first_name).join(', ')}
+                  {assigneeUsers.map((u) => u.first_name).join(', ')}
                 </span>
               )}
               {parsed.dueLabel && (

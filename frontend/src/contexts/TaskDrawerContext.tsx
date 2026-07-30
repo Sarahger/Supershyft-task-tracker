@@ -1,11 +1,16 @@
 import { createContext, useCallback, useContext, useMemo, useState, ReactNode } from 'react';
 
+export type OpenCreateOptions = {
+  projectId?: number;
+};
+
 interface TaskDrawerContextType {
   selectedTaskId: number | null;
   openTask: (id: number) => void;
   closeTask: () => void;
   isCreateOpen: boolean;
-  openCreate: () => void;
+  createDefaultProjectId: number | null;
+  openCreate: (options?: OpenCreateOptions) => void;
   closeCreate: () => void;
 }
 
@@ -14,11 +19,18 @@ const TaskDrawerContext = createContext<TaskDrawerContextType | undefined>(undef
 export function TaskDrawerProvider({ children }: { children: ReactNode }) {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createDefaultProjectId, setCreateDefaultProjectId] = useState<number | null>(null);
 
   const openTask = useCallback((id: number) => setSelectedTaskId(id), []);
   const closeTask = useCallback(() => setSelectedTaskId(null), []);
-  const openCreate = useCallback(() => setIsCreateOpen(true), []);
-  const closeCreate = useCallback(() => setIsCreateOpen(false), []);
+  const openCreate = useCallback((options?: OpenCreateOptions) => {
+    setCreateDefaultProjectId(options?.projectId ?? null);
+    setIsCreateOpen(true);
+  }, []);
+  const closeCreate = useCallback(() => {
+    setIsCreateOpen(false);
+    setCreateDefaultProjectId(null);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -26,10 +38,11 @@ export function TaskDrawerProvider({ children }: { children: ReactNode }) {
       openTask,
       closeTask,
       isCreateOpen,
+      createDefaultProjectId,
       openCreate,
       closeCreate,
     }),
-    [selectedTaskId, openTask, closeTask, isCreateOpen, openCreate, closeCreate],
+    [selectedTaskId, openTask, closeTask, isCreateOpen, createDefaultProjectId, openCreate, closeCreate],
   );
 
   return (

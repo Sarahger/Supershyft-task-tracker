@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -59,16 +59,18 @@ function ProtectedLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { selectedTaskId, closeTask, isCreateOpen, closeCreate, openCreate } = useTaskDrawer();
   const { selectedUserId, closeUser } = useUserDrawer();
+  const location = useLocation();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'c' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        openCreate();
+        const projectMatch = location.pathname.match(/^\/projects\/(\d+)/);
+        openCreate(projectMatch ? { projectId: Number(projectMatch[1]) } : undefined);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [openCreate]);
+  }, [openCreate, location.pathname]);
 
   if (isLoading) {
     return (
