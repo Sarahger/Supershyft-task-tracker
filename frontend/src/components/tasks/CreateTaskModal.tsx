@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Calendar, ChevronDown, Flag, CornerDownLeft, X } from 'lucide-react';
+import { Calendar, ChevronDown, Flag, Folder, CornerDownLeft, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
@@ -110,7 +110,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     setText('');
     setAssigneeIds(currentUser?.id ? [currentUser.id] : []);
     setPriority('medium');
-    setShowAdvanced(Boolean(createDefaultProjectId));
+    setShowAdvanced(false);
     setDescription('');
     setProjectId(createDefaultProjectId ? String(createDefaultProjectId) : '');
     setReviewRequired(false);
@@ -240,6 +240,17 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   };
 
   const dueSummary = parsed.dueLabel ?? 'no due date';
+
+  const selectedProject = useMemo(() => {
+    if (!projectId || !projects) return null;
+    return projects.find((p: { id: number; name: string }) => String(p.id) === projectId) ?? null;
+  }, [projectId, projects]);
+
+  const projectPillLabel = selectedProject
+    ? selectedProject.name.length > 10
+      ? `${selectedProject.name.slice(0, 10)}…`
+      : selectedProject.name
+    : null;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
@@ -382,6 +393,26 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
                 <span className="text-xs text-text-muted">No assignees — type @ to add</span>
               )}
             </div>
+
+            {selectedProject && projectPillLabel && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className="chip inline-flex items-center gap-1.5 pl-1.5 pr-1.5 py-0.5 border border-dark-border bg-surface-active/40"
+                  title={selectedProject.name}
+                >
+                  <Folder className="h-3 w-3 text-text-muted shrink-0" />
+                  <span className="text-xs text-text-primary">{projectPillLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => setProjectId('')}
+                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
+                    aria-label={`Remove project ${selectedProject.name}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-dark-border/80">
