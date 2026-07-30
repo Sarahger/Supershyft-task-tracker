@@ -22,9 +22,9 @@ interface Props {
 }
 
 function StatusIcon({ status }: { status: AttendanceStatus }) {
-  if (status === 'WFO') return <Building2 className="h-5 w-5" />;
-  if (status === 'WFH') return <Home className="h-5 w-5" />;
-  return <Umbrella className="h-5 w-5" />;
+  if (status === 'WFO') return <Building2 className="h-4 w-4" />;
+  if (status === 'WFH') return <Home className="h-4 w-4" />;
+  return <Umbrella className="h-4 w-4" />;
 }
 
 export function AttendanceTodayHero({
@@ -38,9 +38,9 @@ export function AttendanceTodayHero({
 }: Props) {
   if (loading) {
     return (
-      <div className="card p-5 animate-pulse">
-        <div className="h-5 w-40 bg-dark-muted rounded mb-3" />
-        <div className="h-10 w-28 bg-dark-muted rounded" />
+      <div className="card h-full p-4 animate-pulse">
+        <div className="h-4 w-32 bg-dark-muted rounded mb-3" />
+        <div className="h-8 w-24 bg-dark-muted rounded" />
       </div>
     );
   }
@@ -49,22 +49,22 @@ export function AttendanceTodayHero({
     <>
       <section
         className={clsx(
-          'card p-5',
+          'card h-full min-h-0 p-4 flex flex-col justify-between gap-3',
           todayRecord ? statusAccentBorder(todayRecord.status) : 'border-sky-500/20 bg-sky-500/5',
         )}
       >
-        <div className="flex items-start gap-3 mb-4">
+        <div className="flex items-start gap-2.5 min-w-0">
           <div
             className={clsx(
-              'p-2 rounded-lg shrink-0',
+              'p-1.5 rounded-lg shrink-0',
               todayRecord ? statusIconWrap(todayRecord.status) : 'bg-sky-500/10 text-sky-400',
             )}
           >
-            {todayRecord ? <StatusIcon status={todayRecord.status} /> : <CalendarCheck className="h-5 w-5" />}
+            {todayRecord ? <StatusIcon status={todayRecord.status} /> : <CalendarCheck className="h-4 w-4" />}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-text-primary">Attendance Today</h2>
-            <p className="text-sm text-text-muted mt-0.5">
+            <h2 className="text-sm font-semibold text-text-primary">Attendance Today</h2>
+            <p className="text-xs text-text-muted mt-0.5 line-clamp-2">
               {todayRecord
                 ? 'Your status for today is locked in.'
                 : 'Mark once — no forms, no confirmation.'}
@@ -73,30 +73,27 @@ export function AttendanceTodayHero({
         </div>
 
         {todayRecord ? (
-          <div data-testid="attendance-submitted">
+          <div data-testid="attendance-submitted" className="min-w-0">
             <span
               className={clsx(
-                'chip inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold',
+                'chip inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-sm font-semibold',
                 statusBadgeClass(todayRecord.status),
               )}
             >
               {statusShort(todayRecord.status)}
             </span>
-            <p className="mt-3 text-sm text-text-secondary">
-              Recorded today at {formatRecordedTime(todayRecord.recorded_at)}
-            </p>
-            <p className="mt-1 text-xs text-text-muted">
-              Attendance for today has already been submitted.
+            <p className="mt-2 text-xs text-text-secondary">
+              Recorded at {formatRecordedTime(todayRecord.recorded_at)}
             </p>
           </div>
         ) : (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <p className="text-sm text-text-secondary flex-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-auto">
+            <p className="text-xs text-text-secondary flex-1 line-clamp-2">
               You haven&apos;t marked attendance yet.
             </p>
             {onOpenMark && (
-              <Button className="gap-2 shrink-0" onClick={onOpenMark}>
-                <CalendarCheck className="h-4 w-4" />
+              <Button size="sm" className="gap-1.5 shrink-0" onClick={onOpenMark}>
+                <CalendarCheck className="h-3.5 w-3.5" />
                 Mark attendance
               </Button>
             )}

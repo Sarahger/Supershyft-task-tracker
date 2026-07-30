@@ -37,14 +37,15 @@ export function AttendanceCalendar({
   const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
   const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start, end });
+  const weekCount = Math.ceil(days.length / 7);
 
   if (loading) {
     return (
-      <div className="card p-4 animate-pulse">
-        <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-4" />
-        <div className="grid grid-cols-7 gap-1">
+      <div className="card h-full p-3 animate-pulse flex flex-col">
+        <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-3" />
+        <div className="flex-1 grid grid-cols-7 gap-1">
           {Array.from({ length: 35 }).map((_, i) => (
-            <div key={i} className="aspect-square rounded-md bg-dark-muted" />
+            <div key={i} className="rounded-md bg-dark-muted" />
           ))}
         </div>
       </div>
@@ -52,12 +53,12 @@ export function AttendanceCalendar({
   }
 
   return (
-    <section className="card p-3 sm:p-4 h-full">
-      <div className="flex items-center justify-between mb-3">
+    <section className="card h-full min-h-0 p-3 flex flex-col">
+      <div className="flex items-center justify-between shrink-0 mb-2">
         <button
           type="button"
           onClick={() => onMonthChange(subMonths(month, 1))}
-          className="p-2 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors duration-hover"
+          className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[36px] min-w-[36px] flex items-center justify-center transition-colors duration-hover"
           aria-label="Previous month"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -68,20 +69,24 @@ export function AttendanceCalendar({
         <button
           type="button"
           onClick={() => onMonthChange(addMonths(month, 1))}
-          className="p-2 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors duration-hover"
+          className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[36px] min-w-[36px] flex items-center justify-center transition-colors duration-hover"
           aria-label="Next month"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 mb-1">
+      <div className="grid grid-cols-7 gap-1 shrink-0 mb-1">
         {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
-          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-1">
+          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-0.5">
             {d}
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1" key={format(month, 'yyyy-MM')}>
+      <div
+        className="flex-1 min-h-0 grid grid-cols-7 gap-1"
+        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
+        key={format(month, 'yyyy-MM')}
+      >
         {days.map((day) => {
           const key = format(day, 'yyyy-MM-dd');
           const record = map.get(key) ?? null;
@@ -99,7 +104,7 @@ export function AttendanceCalendar({
                   : statusLabel(null)
               }
               className={clsx(
-                'relative flex flex-col items-center justify-center rounded-md py-1.5 min-h-[40px] sm:min-h-[44px] text-sm transition-colors duration-hover',
+                'relative flex flex-col items-center justify-center rounded-md text-sm transition-colors duration-hover min-h-0',
                 selectedDay && 'bg-surface-active text-text-primary',
                 !selectedDay && inMonth && 'text-text-primary hover:bg-dark-hover',
                 !selectedDay && !inMonth && 'text-text-muted/40',
@@ -107,10 +112,10 @@ export function AttendanceCalendar({
               )}
               aria-label={`${format(day, 'MMMM d')}: ${statusLabel(status)}`}
             >
-              <span className="text-xs mb-0.5 tabular-nums">{format(day, 'd')}</span>
+              <span className="text-xs tabular-nums leading-none">{format(day, 'd')}</span>
               <span
                 className={clsx(
-                  'h-1.5 w-1.5 rounded-full',
+                  'mt-1 h-1.5 w-1.5 rounded-full',
                   status ? statusDotClass(status) : 'bg-transparent',
                   !inMonth && 'opacity-40',
                 )}
