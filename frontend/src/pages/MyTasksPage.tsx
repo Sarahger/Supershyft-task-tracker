@@ -150,7 +150,7 @@ export default function MyTasksPage() {
           <p className="text-sm text-text-muted mt-0.5">{openCount} open</p>
         </div>
         <Button
-          onClick={openCreate}
+          onClick={() => openCreate()}
           size="sm"
           className="h-9 px-2.5 py-0 shrink-0 gap-1.5"
           aria-label="New task"
@@ -192,7 +192,7 @@ export default function MyTasksPage() {
           title="Nothing assigned yet"
           description="Create a task or wait for one to be assigned to you."
           action={
-            <Button onClick={openCreate} className="mt-2 gap-1.5">
+            <Button onClick={() => openCreate()} className="mt-2 gap-1.5">
               <Plus className="h-4 w-4" />
               New task
             </Button>
@@ -210,7 +210,7 @@ export default function MyTasksPage() {
         </>
       )}
 
-      {isMobile && <FloatingActionButton onClick={openCreate} />}
+      {isMobile && <FloatingActionButton onClick={() => openCreate()} />}
 
       {allowDelete && (
       <DeleteTaskModal
