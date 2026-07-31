@@ -203,10 +203,12 @@ export function TasksWorkspace({
         sort_order: 'asc',
       };
     }
+    // Load the full active task set so mobile project groups / kanban aren't
+    // capped at the first page of 50 newest tasks.
     return {
       ...sharedListFilters,
-      page,
-      page_size: 50,
+      page: 1,
+      page_size: 500,
       sort_by: sortField,
       sort_order: sortDir,
     };
@@ -228,8 +230,34 @@ export function TasksWorkspace({
         }
         return { items: filtered, total: filtered.length, total_pages: 1, page: 1 };
       }
+
       const res = await tasksApi.list({ ...filters, ...listFilters });
-      return res.data.data;
+      const first = res.data.data;
+      const pageSize = Number(filters.page_size) || 50;
+
+      // Paginated deleted view stays page-by-page; everything else loads all pages.
+      if (isDeletedView || !first.total_pages || first.total_pages <= 1) {
+        return first;
+      }
+
+      const items = [...first.items];
+      for (let p = 2; p <= first.total_pages; p += 1) {
+        const next = await tasksApi.list({
+          ...filters,
+          ...listFilters,
+          page: p,
+          page_size: pageSize,
+        });
+        items.push(...next.data.data.items);
+      }
+
+      return {
+        ...first,
+        items,
+        page: 1,
+        page_size: items.length,
+        total_pages: 1,
+      };
     },
   });
 
