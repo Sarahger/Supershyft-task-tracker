@@ -71,7 +71,7 @@ export function AttendanceTodayHero({
             <p className="text-xs text-text-muted mt-0.5 line-clamp-2">
               {todayRecord
                 ? 'You can update today anytime.'
-                : 'Mark today — or tap a past day on the calendar.'}
+                : 'Mark today — or tap yesterday on the calendar to edit.'}
             </p>
           </div>
         </div>

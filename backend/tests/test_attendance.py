@@ -150,6 +150,22 @@ def test_future_date_rejected(client, users):
     assert r.status_code == 400
 
 
+def test_older_than_yesterday_rejected(client, users):
+    from datetime import timedelta
+
+    from app.services.attendance_service import today_local
+
+    headers = auth_header(users["employee"])
+    two_days_ago = (today_local() - timedelta(days=2)).isoformat()
+    r = client.post(
+        "/api/attendance",
+        json={"status": "WFO", "attendance_date": two_days_ago},
+        headers=headers,
+    )
+    assert r.status_code == 400
+    assert "today and yesterday" in r.json()["detail"].lower()
+
+
 def test_invalid_status_rejected(client, users):
     headers = auth_header(users["employee"])
     # Pydantic rejects unknown literal

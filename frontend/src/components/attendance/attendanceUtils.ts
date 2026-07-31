@@ -1,3 +1,4 @@
+import { startOfDay } from 'date-fns';
 import type { AttendanceStatus } from '../../types';
 import { ATTENDANCE_STATUS_LABELS, ATTENDANCE_STATUS_SHORT } from '../../types';
 
@@ -71,6 +72,14 @@ export function formatRecordedTime(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/** Mark/edit allowed only for today and yesterday (local calendar days). */
+export function isAttendanceEditableDay(day: Date, now = new Date()): boolean {
+  const start = startOfDay(now).getTime();
+  const target = startOfDay(day).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  return target <= start && target >= start - dayMs;
 }
 
 export const MARK_OPTIONS: {

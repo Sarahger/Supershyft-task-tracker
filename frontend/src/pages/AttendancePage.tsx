@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, isAfter, isToday, parseISO, startOfDay, startOfWeek } from 'date-fns';
-import { CalendarDays, Pencil, Shield } from 'lucide-react';
+import { format, isToday, parseISO, startOfWeek } from 'date-fns';
+import { CalendarDays, Shield } from 'lucide-react';
 import { attendanceApi } from '../services/endpoints';
 import { useAuth } from '../contexts/AuthContext';
 import { canAccessAttendanceHr } from '../lib/roles';
@@ -14,14 +14,10 @@ import { AttendanceSummaryCard } from '../components/attendance/AttendanceSummar
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
 import type { AttendanceRecord, AttendanceStatus } from '../types';
-import { formatRecordedTime, statusLabel } from '../components/attendance/attendanceUtils';
+import { isAttendanceEditableDay } from '../components/attendance/attendanceUtils';
 
 function toIsoDate(d: Date): string {
   return format(d, 'yyyy-MM-dd');
-}
-
-function isFutureDay(d: Date): boolean {
-  return isAfter(startOfDay(d), startOfDay(new Date()));
 }
 
 export default function AttendancePage() {
@@ -32,7 +28,6 @@ export default function AttendancePage() {
   const [month, setMonth] = useState(now);
   const [showTodayModal, setShowTodayModal] = useState(false);
   const [markSuccess, setMarkSuccess] = useState(false);
-  const [selected, setSelected] = useState<{ day: Date; record: AttendanceRecord | null } | null>(null);
   const [editTarget, setEditTarget] = useState<{
     day: Date;
     record: AttendanceRecord | null;
@@ -79,11 +74,10 @@ export default function AttendancePage() {
     : startOfWeek(now, { weekStartsOn: 1 });
 
   const openDayEditor = (day: Date, record: AttendanceRecord | null) => {
-    if (isFutureDay(day)) {
-      toast.info('Future dates cannot be marked.');
+    if (!isAttendanceEditableDay(day)) {
+      toast.info('You can only mark or edit today and yesterday.');
       return;
     }
-    setSelected({ day, record });
     if (isToday(day)) {
       setEditTarget(null);
       setShowTodayModal(true);
@@ -102,7 +96,7 @@ export default function AttendancePage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-text-primary tracking-tight">Attendance</h1>
           <p className="text-xs text-text-muted mt-0.5 truncate">
-            Mark or edit today and past days. Future days stay locked.
+            Mark or edit today and yesterday only.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -155,44 +149,10 @@ export default function AttendancePage() {
           <AttendanceCalendar
             month={month}
             records={data?.records ?? []}
-            selected={selected?.day}
             onMonthChange={setMonth}
             onSelect={(day, record) => openDayEditor(day, record)}
             loading={isLoading}
           />
-          {selected && !isFutureDay(selected.day) && (
-            <div className="absolute bottom-3 left-3 right-3 rounded-xl border border-dark-border bg-dark-card/95 backdrop-blur-sm px-3 py-2 flex items-center justify-between gap-3 text-sm shadow-lg">
-              <div className="min-w-0">
-                <p className="font-medium text-text-primary truncate">
-                  {format(selected.day, 'EEE, MMM d')}
-                </p>
-                <p className="text-xs text-text-secondary truncate">
-                  {statusLabel(selected.record?.status)}
-                  {selected.record?.recorded_at
-                    ? ` · ${formatRecordedTime(selected.record.recorded_at)}`
-                    : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="gap-1"
-                  onClick={() => openDayEditor(selected.day, selected.record)}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  {selected.record ? 'Edit' : 'Mark'}
-                </Button>
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="text-xs text-text-muted hover:text-text-primary"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 

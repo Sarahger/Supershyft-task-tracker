@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, isAfter, parseISO, startOfDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import clsx from 'clsx';
 import { Pencil } from 'lucide-react';
 import { attendanceApi } from '../services/endpoints';
@@ -11,7 +11,11 @@ import { toast } from '../components/ui/Toast';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { AttendanceTable } from '../components/attendance/AttendanceTable';
 import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
-import { formatRecordedTime, statusLabel } from '../components/attendance/attendanceUtils';
+import {
+  formatRecordedTime,
+  isAttendanceEditableDay,
+  statusLabel,
+} from '../components/attendance/attendanceUtils';
 import type { AttendanceRecord, AttendanceStatus } from '../types';
 
 function monthOptions(count = 18): { value: string; label: string; year: number; month: number }[] {
@@ -33,10 +37,6 @@ function toIsoDate(d: Date): string {
   return format(d, 'yyyy-MM-dd');
 }
 
-function isFutureDay(d: Date): boolean {
-  return isAfter(startOfDay(d), startOfDay(new Date()));
-}
-
 export default function AttendanceHistoryPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -49,6 +49,7 @@ export default function AttendanceHistoryPage() {
 
   const opt = options.find((o) => o.value === selectedMonth) ?? options[0];
   const monthDate = new Date(opt.year, opt.month - 1, 1);
+  const canEditDetail = detail ? isAttendanceEditableDay(detail.day) : false;
 
   const { data, isLoading } = useQuery({
     queryKey: ['attendance', 'me', opt.year, opt.month],
@@ -76,18 +77,19 @@ export default function AttendanceHistoryPage() {
   });
 
   const selectDay = (day: Date, record: AttendanceRecord | null) => {
-    if (isFutureDay(day)) {
-      toast.info('Future dates cannot be marked.');
-      return;
-    }
     setDetail({ day, record });
+    if (isAttendanceEditableDay(day)) {
+      setEditOpen(true);
+    } else {
+      setEditOpen(false);
+    }
   };
 
   return (
     <div className="w-full pb-12 max-w-5xl" data-testid="attendance-history-page">
       <PageHeader
         title="Attendance History"
-        subtitle="View, mark, or edit any past or current day."
+        subtitle="View your history. Mark or edit only today and yesterday."
         onMobileBack={() => navigate('/attendance')}
       />
 
@@ -102,6 +104,7 @@ export default function AttendanceHistoryPage() {
           onChange={(e) => {
             setSelectedMonth(e.target.value);
             setDetail(null);
+            setEditOpen(false);
           }}
           className="input py-2 text-sm w-auto min-h-[40px]"
         >
@@ -119,7 +122,9 @@ export default function AttendanceHistoryPage() {
             onClick={() => setView('calendar')}
             className={clsx(
               'px-3 py-2 text-xs font-medium min-h-[40px] transition-colors duration-hover',
-              view === 'calendar' ? 'bg-surface-highlight text-text-primary' : 'text-text-muted hover:text-text-secondary',
+              view === 'calendar'
+                ? 'bg-surface-highlight text-text-primary'
+                : 'text-text-muted hover:text-text-secondary',
             )}
           >
             Calendar
@@ -130,7 +135,9 @@ export default function AttendanceHistoryPage() {
             onClick={() => setView('table')}
             className={clsx(
               'px-3 py-2 text-xs font-medium min-h-[40px] transition-colors duration-hover',
-              view === 'table' ? 'bg-surface-highlight text-text-primary' : 'text-text-muted hover:text-text-secondary',
+              view === 'table'
+                ? 'bg-surface-highlight text-text-primary'
+                : 'text-text-muted hover:text-text-secondary',
             )}
           >
             Table
@@ -148,6 +155,7 @@ export default function AttendanceHistoryPage() {
               onMonthChange={(m) => {
                 setSelectedMonth(`${m.getFullYear()}-${m.getMonth() + 1}`);
                 setDetail(null);
+                setEditOpen(false);
               }}
               onSelect={selectDay}
               loading={isLoading}
@@ -156,9 +164,7 @@ export default function AttendanceHistoryPage() {
             <AttendanceTable
               records={data?.records ?? []}
               loading={isLoading}
-              onSelect={(record) =>
-                selectDay(parseISO(record.attendance_date), record)
-              }
+              onSelect={(record) => selectDay(parseISO(record.attendance_date), record)}
             />
           )}
         </div>
@@ -168,23 +174,32 @@ export default function AttendanceHistoryPage() {
           {detail ? (
             <div className="space-y-3 text-sm">
               <div>
-                <p className="font-medium text-text-primary">{format(detail.day, 'EEEE, MMM d, yyyy')}</p>
+                <p className="font-medium text-text-primary">
+                  {format(detail.day, 'EEEE, MMM d, yyyy')}
+                </p>
                 <p className="text-text-secondary mt-1">{statusLabel(detail.record?.status)}</p>
                 {detail.record?.recorded_at && (
                   <p className="text-xs text-text-muted">
                     Recorded time: {formatRecordedTime(detail.record.recorded_at)}
                   </p>
                 )}
+                {!canEditDetail && (
+                  <p className="text-xs text-text-muted mt-2">
+                    Only today and yesterday can be marked or edited.
+                  </p>
+                )}
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="gap-1.5 w-full"
-                onClick={() => setEditOpen(true)}
-              >
-                <Pencil className="h-3.5 w-3.5" />
-                {detail.record ? 'Edit attendance' : 'Mark attendance'}
-              </Button>
+              {canEditDetail && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="gap-1.5 w-full"
+                  onClick={() => setEditOpen(true)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {detail.record ? 'Edit attendance' : 'Mark attendance'}
+                </Button>
+              )}
             </div>
           ) : (
             <p className="text-sm text-text-muted">Select a day to view or edit.</p>
@@ -192,7 +207,7 @@ export default function AttendanceHistoryPage() {
         </aside>
       </div>
 
-      {detail && (
+      {detail && canEditDetail && (
         <AttendanceMarkModal
           open={editOpen || markSuccess}
           loading={markMutation.isPending}
@@ -200,9 +215,7 @@ export default function AttendanceHistoryPage() {
           date={detail.day}
           currentStatus={detail.record?.status}
           isEdit={!!detail.record}
-          onSelect={(status) =>
-            markMutation.mutate({ status, date: toIsoDate(detail.day) })
-          }
+          onSelect={(status) => markMutation.mutate({ status, date: toIsoDate(detail.day) })}
           onClose={() => setEditOpen(false)}
         />
       )}

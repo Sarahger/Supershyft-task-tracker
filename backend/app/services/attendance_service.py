@@ -34,6 +34,17 @@ def today_local() -> date:
     return datetime.now(timezone.utc).astimezone(_tz()).date()
 
 
+def earliest_editable_date(today: date | None = None) -> date:
+    """Attendance may only be marked/edited for today and yesterday."""
+    day = today or today_local()
+    return day - timedelta(days=1)
+
+
+def is_editable_date(target: date, today: date | None = None) -> bool:
+    day = today or today_local()
+    return earliest_editable_date(day) <= target <= day
+
+
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -50,7 +61,7 @@ def _user_brief(user: User | None) -> dict | None:
 
 def _format_record(record: Attendance, include_user: bool = False, editable: bool | None = None) -> dict:
     today = today_local()
-    can_edit = record.attendance_date <= today if editable is None else editable
+    can_edit = is_editable_date(record.attendance_date, today) if editable is None else editable
     data = {
         "id": record.id,
         "user_id": record.user_id,
@@ -131,6 +142,11 @@ class AttendanceService:
         target = attendance_date or today
         if target > today:
             raise HTTPException(status_code=400, detail="Future dates are not allowed")
+        if target < earliest_editable_date(today):
+            raise HTTPException(
+                status_code=400,
+                detail="Attendance can only be marked or edited for today and yesterday",
+            )
 
         existing = (
             self.db.query(Attendance)

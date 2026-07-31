@@ -12,7 +12,7 @@ class AttendanceMarkRequest(BaseModel):
     status: AttendanceStatusValue
     attendance_date: date | None = Field(
         None,
-        description="Calendar day in company timezone. Defaults to today. Future dates rejected.",
+        description="Calendar day in company timezone. Defaults to today. Only today and yesterday allowed.",
     )
 
 
