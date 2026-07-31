@@ -547,6 +547,19 @@ export interface AttendanceList {
   month: number;
 }
 
+export interface AttendanceDayRow {
+  user: AttendanceUserBrief;
+  status: AttendanceStatus | null;
+  recorded_at: string | null;
+  attendance_date: string;
+}
+
+export interface AttendanceDay {
+  date: string;
+  rows: AttendanceDayRow[];
+  stats: AttendanceTodayStats;
+}
+
 export interface AttendanceWeekDayCell {
   date: string;
   status: AttendanceStatus | null;

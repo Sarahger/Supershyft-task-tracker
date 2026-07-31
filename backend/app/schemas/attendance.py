@@ -94,6 +94,19 @@ class AttendanceListResponse(BaseModel):
     month: int
 
 
+class AttendanceDayRow(BaseModel):
+    user: AttendanceUserBrief
+    status: AttendanceStatusValue | None = None
+    recorded_at: datetime | None = None
+    attendance_date: date
+
+
+class AttendanceDayResponse(BaseModel):
+    date: date
+    rows: list[AttendanceDayRow]
+    stats: AttendanceTodayStats
+
+
 class AttendanceWeekDayCell(BaseModel):
     date: date
     status: AttendanceStatusValue | None = None

@@ -199,6 +199,8 @@ export const attendanceApi = {
     api.get<APIResponse<import('../types').AttendanceRecord | null>>('/attendance/me/today'),
   list: (params?: Record<string, unknown>) =>
     api.get<APIResponse<import('../types').AttendanceList>>('/attendance', { params }),
+  day: (params?: { day?: string; department_id?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceDay>>('/attendance/day', { params }),
   week: (params?: { week_start?: string; department_id?: number }) =>
     api.get<APIResponse<import('../types').AttendanceWeek>>('/attendance/week', { params }),
   userDetail: (userId: number, params?: { month?: number; year?: number }) =>

@@ -385,6 +385,89 @@ class AttendanceService:
             "month": month,
         }
 
+    def get_day(self, day: date | None = None, department_id: int | None = None) -> dict:
+        today = today_local()
+        target = day or today
+        if target > today:
+            raise HTTPException(status_code=400, detail="Future dates are not allowed")
+
+        users = self._active_users_query(department_id=department_id).all()
+        user_ids = [u.id for u in users]
+
+        records: list[Attendance] = []
+        if user_ids:
+            records = (
+                self.db.query(Attendance)
+                .options(joinedload(Attendance.user).joinedload(User.departments))
+                .filter(
+                    Attendance.user_id.in_(user_ids),
+                    Attendance.attendance_date == target,
+                )
+                .all()
+            )
+        by_user = {r.user_id: r for r in records}
+
+        def people_with_status(status_value: str) -> list[dict]:
+            out = []
+            for uid, rec in by_user.items():
+                if rec.status != status_value:
+                    continue
+                user = next((u for u in users if u.id == uid), rec.user)
+                brief = _user_brief(user)
+                if brief:
+                    out.append(brief)
+            return out
+
+        present_wfo_people = people_with_status(AttendanceStatus.WFO.value)
+        wfh_people = people_with_status(AttendanceStatus.WFH.value)
+        on_leave_people = people_with_status(AttendanceStatus.LEAVE.value)
+        half_day_people = people_with_status(AttendanceStatus.HALF_DAY.value)
+        camp_people = people_with_status(AttendanceStatus.CAMP.value)
+        not_marked_people = [
+            brief
+            for u in users
+            if u.id not in by_user
+            for brief in [_user_brief(u)]
+            if brief
+        ]
+
+        rows = []
+        for u in users:
+            rec = by_user.get(u.id)
+            brief = _user_brief(u)
+            if not brief:
+                continue
+            rows.append(
+                {
+                    "user": brief,
+                    "status": rec.status if rec else None,
+                    "recorded_at": rec.recorded_at if rec else None,
+                    "attendance_date": target,
+                }
+            )
+
+        return {
+            "date": target,
+            "rows": rows,
+            "stats": {
+                "present_wfo": len(present_wfo_people),
+                "wfh": len(wfh_people),
+                "on_leave": len(on_leave_people),
+                "half_day": len(half_day_people),
+                "camp": len(camp_people),
+                "not_marked": len(not_marked_people),
+                "total_active": len(user_ids),
+                "people": {
+                    "present_wfo": present_wfo_people,
+                    "wfh": wfh_people,
+                    "on_leave": on_leave_people,
+                    "half_day": half_day_people,
+                    "camp": camp_people,
+                    "not_marked": not_marked_people,
+                },
+            },
+        }
+
     def get_week(self, week_start: date | None = None, department_id: int | None = None) -> dict:
         start, end = _week_bounds(week_start)
         users = self._active_users_query(department_id=department_id).all()

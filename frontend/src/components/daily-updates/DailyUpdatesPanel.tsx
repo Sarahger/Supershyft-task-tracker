@@ -157,8 +157,8 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="space-y-3">
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] min-w-0">
+        <div className="space-y-3 min-w-0">
           <DailyUpdateCalendar
             month={calendarMonth}
             selected={selectedDate}
@@ -195,7 +195,7 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
             </div>
         </div>
 
-        <div className="rounded-2xl border border-dark-border bg-dark-card p-5 sm:p-6 min-h-[280px] overflow-visible">
+        <div className="rounded-2xl border border-dark-border bg-dark-card p-5 sm:p-6 min-h-[280px] min-w-0 overflow-hidden">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
               <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
@@ -233,7 +233,7 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                     <p className="text-2xs uppercase tracking-wider text-text-muted mb-2 flex items-center gap-1.5">
                       <Link2 className="h-3 w-3" /> Related tasks (optional)
                     </p>
-                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto min-w-0">
                       {myTasks.slice(0, 40).map((t) => {
                         const on = taskIds.includes(t.id);
                         return (
@@ -241,10 +241,11 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                             key={t.id}
                             type="button"
                             onClick={() => toggleTask(t.id)}
+                            title={t.title}
                             className={
                               on
-                                ? 'chip border border-accent-primary/40 bg-accent-primary/10 text-accent-primary'
-                                : 'chip border border-dark-border text-text-muted hover:text-text-secondary'
+                                ? 'chip border border-accent-primary/40 bg-accent-primary/10 text-accent-primary max-w-full min-w-0 truncate'
+                                : 'chip border border-dark-border text-text-muted hover:text-text-secondary max-w-full min-w-0 truncate'
                             }
                           >
                             {t.title}
@@ -286,13 +287,14 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                 <div className="space-y-4">
                   <DailyUpdateContent content={ownUpdate.content} />
                   {ownUpdate.tasks.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
+                    <div className="flex flex-wrap gap-1.5 pt-1 min-w-0">
                       {ownUpdate.tasks.map((t) => (
                         <button
                           key={t.id}
                           type="button"
                           onClick={() => openTask(t.id)}
-                          className="chip border border-dark-border text-text-secondary hover:text-text-primary"
+                          title={t.title}
+                          className="chip border border-dark-border text-text-secondary hover:text-text-primary max-w-full min-w-0 truncate"
                         >
                           {t.title}
                         </button>
@@ -342,26 +344,27 @@ export function DailyUpdatesPanel({ hideIntro = false }: { hideIntro?: boolean }
                   {(dayData?.team_updates.length ?? 0) > 0 ? (
                     <div className="space-y-5">
                       {dayData!.team_updates.map((u) => (
-                        <article key={u.id}>
+                        <article key={u.id} className="min-w-0">
                           <div className="flex items-center gap-2 mb-2">
                             <Avatar
                               name={`${u.author.first_name} ${u.author.last_name}`}
                               size="sm"
                               src={u.author.profile_picture ?? undefined}
                             />
-                            <p className="text-sm font-medium text-text-primary">
+                            <p className="text-sm font-medium text-text-primary truncate">
                               {u.author.first_name} {u.author.last_name}
                             </p>
                           </div>
                           <DailyUpdateContent content={u.content} />
                           {u.tasks.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
+                            <div className="flex flex-wrap gap-1.5 mt-2 min-w-0">
                               {u.tasks.map((t) => (
                                 <button
                                   key={t.id}
                                   type="button"
                                   onClick={() => openTask(t.id)}
-                                  className="chip border border-dark-border text-text-secondary"
+                                  title={t.title}
+                                  className="chip border border-dark-border text-text-secondary max-w-full min-w-0 truncate"
                                 >
                                   {t.title}
                                 </button>

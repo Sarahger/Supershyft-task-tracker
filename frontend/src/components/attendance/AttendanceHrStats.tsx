@@ -27,7 +27,7 @@ const CARDS: {
   },
   {
     key: 'wfh',
-    label: 'WFH today',
+    label: 'WFH',
     icon: Home,
     color: 'metric-sky',
     border: 'border-sky-500/20 bg-sky-500/5',
@@ -114,7 +114,7 @@ export function AttendanceHrStats({ stats, loading, activeKey, onSelect }: Props
 
 export const ATTENDANCE_HR_STAT_LABELS: Record<AttendanceTodayStatKey, string> = {
   present_wfo: 'Present (WFO)',
-  wfh: 'WFH today',
+  wfh: 'WFH',
   on_leave: 'On leave',
   half_day: 'Half day',
   camp: 'Camp/Meeting',

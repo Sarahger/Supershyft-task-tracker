@@ -43,9 +43,9 @@ export function AttendanceTable({
 
   return (
     <div className="task-table" data-testid="hr-attendance-table">
-      <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
+      <div className="overflow-x-auto scrollbar-none">
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 task-table-header">
+          <thead className="task-table-header">
             <tr className="text-left text-2xs uppercase tracking-wider text-text-muted">
               {showEmployee && <th className="px-4 py-2.5 font-medium">Employee</th>}
               <th className="px-4 py-2.5 font-medium">Date</th>

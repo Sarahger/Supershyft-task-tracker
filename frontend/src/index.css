@@ -538,6 +538,11 @@ html.light {
 @media (max-width: 767px) {
   .mobile-main-content {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .mobile-main-content::-webkit-scrollbar {
+    display: none;
   }
   .mobile-bottom-nav {
     padding-bottom: env(safe-area-inset-bottom, 0px);

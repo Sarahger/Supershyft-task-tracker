@@ -218,6 +218,12 @@ def test_manager_can_list_and_export(client, users):
     assert week.status_code == 200
     assert len(week.json()["data"]["rows"]) >= 2
 
+    day = client.get("/api/attendance/day", headers=mgr)
+    assert day.status_code == 200
+    day_data = day.json()["data"]
+    assert day_data["stats"]["on_leave"] >= 1
+    assert any(r["user"]["id"] == users["employee"].id and r["status"] == "LEAVE" for r in day_data["rows"])
+
     detail = client.get(f"/api/attendance/users/{users['employee'].id}", headers=mgr)
     assert detail.status_code == 200
     assert detail.json()["data"]["user"]["id"] == users["employee"].id

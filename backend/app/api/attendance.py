@@ -10,6 +10,7 @@ from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import User
 from app.schemas.attendance import (
+    AttendanceDayResponse,
     AttendanceExportFilter,
     AttendanceListResponse,
     AttendanceMarkRequest,
@@ -69,6 +70,17 @@ def get_week_dashboard(
 ):
     data = AttendanceService(db).get_week(week_start=week_start, department_id=department_id)
     return APIResponse(data=AttendanceWeekResponse(**data))
+
+
+@router.get("/day", response_model=APIResponse[AttendanceDayResponse])
+def get_day_overview(
+    day: date | None = Query(None, description="Calendar day in company timezone. Defaults to today."),
+    department_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager),
+):
+    data = AttendanceService(db).get_day(day=day, department_id=department_id)
+    return APIResponse(data=AttendanceDayResponse(**data))
 
 
 @router.get("/users/{user_id}", response_model=APIResponse[AttendanceUserDetailResponse])

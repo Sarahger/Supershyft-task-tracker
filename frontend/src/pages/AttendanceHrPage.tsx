@@ -1,59 +1,46 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import { Download } from 'lucide-react';
+import { format, isAfter, startOfDay } from 'date-fns';
+import { CalendarDays, Download, X } from 'lucide-react';
+import clsx from 'clsx';
 import { attendanceApi } from '../services/endpoints';
 import { AttendanceHrStats, ATTENDANCE_HR_STAT_LABELS } from '../components/attendance/AttendanceHrStats';
 import { AttendanceHrPeopleModal } from '../components/attendance/AttendanceHrPeopleModal';
+import { AttendanceHrDayTable } from '../components/attendance/AttendanceHrDayTable';
 import { AttendanceEmployeeDrawer } from '../components/attendance/AttendanceEmployeeDrawer';
-import { AttendanceTable } from '../components/attendance/AttendanceTable';
+import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { toast } from '../components/ui/Toast';
 import type { AttendanceTodayStatKey } from '../types';
 
-function monthOptions(count = 18) {
-  const out = [];
-  const now = new Date();
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    out.push({
-      value: `${d.getFullYear()}-${d.getMonth() + 1}`,
-      label: format(d, 'MMMM yyyy'),
-      year: d.getFullYear(),
-      month: d.getMonth() + 1,
-    });
-  }
-  return out;
+function toIsoDate(d: Date): string {
+  return format(d, 'yyyy-MM-dd');
 }
 
 export default function AttendanceHrPage() {
   const navigate = useNavigate();
-  const options = monthOptions();
-  const [selectedMonth, setSelectedMonth] = useState(options[0].value);
+  const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
+  const [calendarMonth, setCalendarMonth] = useState(() => startOfDay(new Date()));
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [drawerUserId, setDrawerUserId] = useState<number | null>(null);
   const [statKey, setStatKey] = useState<AttendanceTodayStatKey | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  const opt = options.find((o) => o.value === selectedMonth) ?? options[0];
+  const dayIso = toIsoDate(selectedDay);
 
-  const listParams = {
-    year: opt.year,
-    month: opt.month,
-  };
-
-  const { data: listData, isLoading: listLoading } = useQuery({
-    queryKey: ['attendance', 'list', listParams],
-    queryFn: () => attendanceApi.list(listParams).then((r) => r.data.data),
+  const { data, isLoading } = useQuery({
+    queryKey: ['attendance', 'day', dayIso],
+    queryFn: () => attendanceApi.day({ day: dayIso }).then((r) => r.data.data),
   });
 
   const handleExport = async () => {
     setExporting(true);
     try {
       const response = await attendanceApi.exportCsv({
-        year: opt.year,
-        month: opt.month,
+        year: selectedDay.getFullYear(),
+        month: selectedDay.getMonth() + 1,
         status: 'ALL',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -70,16 +57,27 @@ export default function AttendanceHrPage() {
     }
   };
 
-  const people = (statKey && listData?.today_stats?.people?.[statKey]) || [];
+  const pickDay = (day: Date) => {
+    if (isAfter(startOfDay(day), startOfDay(new Date()))) {
+      toast.info('Future dates are not available.');
+      return;
+    }
+    setSelectedDay(startOfDay(day));
+    setCalendarOpen(false);
+    setStatKey(null);
+  };
+
+  const people = (statKey && data?.stats?.people?.[statKey]) || [];
   const peopleTitle = statKey
     ? `${ATTENDANCE_HR_STAT_LABELS[statKey]} · ${people.length}`
     : '';
+  const dayLabel = format(selectedDay, 'EEE, MMM d');
 
   return (
     <div className="w-full pb-12" data-testid="attendance-hr-page">
       <PageHeader
         title="Attendance — HR"
-        subtitle="Organization overview for today, and monthly attendance records."
+        subtitle="Daily organization overview."
         onMobileBack={() => navigate('/attendance')}
         action={
           <Button
@@ -90,48 +88,95 @@ export default function AttendanceHrPage() {
             className="gap-1.5"
           >
             <Download className="h-3.5 w-3.5" />
-            Export CSV
+            <span className="hidden sm:inline">Export CSV</span>
           </Button>
         }
       />
 
       <AttendanceHrStats
-        stats={listData?.today_stats}
-        loading={listLoading}
+        stats={data?.stats}
+        loading={isLoading}
         activeKey={statKey}
         onSelect={setStatKey}
       />
 
       <div className="sticky top-0 z-20 mt-6 mb-4 py-3 bg-dark-bg border-b border-dark-border">
-        <div className="flex flex-wrap gap-2 items-center justify-between">
-          <label className="flex items-center gap-2 text-xs font-medium text-text-secondary">
-            Month
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="input py-2 text-sm w-auto min-h-[40px]"
-              aria-label="Month"
-              data-testid="hr-month-filter"
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-text-secondary">Day</p>
+            <p className="text-sm font-semibold text-text-primary truncate" data-testid="hr-selected-day">
+              {dayLabel}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                setCalendarMonth(selectedDay);
+                setCalendarOpen(true);
+              }}
+              data-testid="hr-open-calendar"
+              aria-label="Pick a day"
             >
-              {options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              <CalendarDays className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Change day</span>
+            </Button>
+          </div>
         </div>
       </div>
 
       <section className="workspace-section !mb-0">
-        <h2 className="workspace-section-title">Attendance · {opt.label}</h2>
-        <AttendanceTable
-          records={listData?.records ?? []}
-          loading={listLoading}
-          showEmployee
+        <h2 className="workspace-section-title">Attendance · {dayLabel}</h2>
+        <AttendanceHrDayTable
+          rows={data?.rows ?? []}
+          loading={isLoading}
           onSelectUser={setDrawerUserId}
         />
       </section>
+
+      {calendarOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div
+            className="fixed inset-0 bg-[var(--overlay-backdrop)]"
+            onClick={() => setCalendarOpen(false)}
+          />
+          <div
+            className={clsx(
+              'relative w-full sm:max-w-md bg-dark-card border border-dark-border',
+              'rounded-t-2xl sm:rounded-2xl max-h-[min(90dvh,640px)] overflow-y-auto',
+              'pb-[env(safe-area-inset-bottom,0px)]',
+            )}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select day"
+            data-testid="hr-calendar-popup"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border">
+              <h2 className="text-base font-semibold text-text-primary">Select day</h2>
+              <button
+                type="button"
+                onClick={() => setCalendarOpen(false)}
+                className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-3">
+              <AttendanceCalendar
+                month={calendarMonth}
+                records={[]}
+                selected={selectedDay}
+                onMonthChange={setCalendarMonth}
+                onSelect={(day) => pickDay(day)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <AttendanceHrPeopleModal
         open={!!statKey}
