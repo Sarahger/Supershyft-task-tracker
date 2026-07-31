@@ -272,16 +272,6 @@ test.describe('Attendance employee flows', () => {
     await expect(page.getByTestId('edit-today-attendance')).toBeVisible();
   });
 
-  test('history calendar/table toggle works', async ({ page }) => {
-    await mockAuth(page, fakeEmployee, () => meMarked);
-    await page.goto('/attendance/history');
-    await expect(page.getByTestId('attendance-history-page')).toBeVisible({ timeout: 15000 });
-    await page.getByTestId('view-table').click();
-    await expect(page.getByText('Status', { exact: true }).first()).toBeVisible();
-    await page.getByTestId('view-calendar').click();
-    await expect(page.getByLabel('Previous month')).toBeVisible();
-  });
-
   test('employee is redirected away from HR route', async ({ page }) => {
     await mockAuth(page, fakeEmployee, () => meMarked);
     await page.goto('/attendance/hr');

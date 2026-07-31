@@ -27,7 +27,6 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
-const AttendanceHistoryPage = lazy(() => import('./pages/AttendanceHistoryPage'));
 const AttendanceHrPage = lazy(() => import('./pages/AttendanceHrPage'));
 
 const STALE_REFERENCE_MS = 5 * 60 * 1000;
@@ -157,14 +156,6 @@ export default function App() {
                     element={
                       <Suspense fallback={<PageLoader />}>
                         <AttendancePage />
-                      </Suspense>
-                    }
-                  />
-                  <Route
-                    path="attendance/history"
-                    element={
-                      <Suspense fallback={<PageLoader />}>
-                        <AttendanceHistoryPage />
                       </Suspense>
                     }
                   />

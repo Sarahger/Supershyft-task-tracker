@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, isToday, parseISO, startOfWeek } from 'date-fns';
-import { CalendarDays, Shield } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { attendanceApi } from '../services/endpoints';
 import { useAuth } from '../contexts/AuthContext';
 import { canAccessAttendanceHr } from '../lib/roles';
@@ -22,7 +22,6 @@ function toIsoDate(d: Date): string {
 
 export default function AttendancePage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const now = new Date();
   const [month, setMonth] = useState(now);
@@ -99,25 +98,16 @@ export default function AttendancePage() {
             Mark or edit today and yesterday only.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            variant="secondary"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => navigate('/attendance/history')}
-          >
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">History</span>
-          </Button>
-          {canAccessAttendanceHr(user) && (
+        {canAccessAttendanceHr(user) && (
+          <div className="flex items-center gap-2 shrink-0">
             <Link to="/attendance/hr" data-testid="link-attendance-hr">
               <Button variant="secondary" size="sm" className="gap-1.5">
                 <Shield className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">HR overview</span>
               </Button>
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 md:grid-rows-[minmax(0,0.9fr)_minmax(0,1.15fr)] gap-3 max-md:grid-rows-none max-md:auto-rows-min">
