@@ -48,7 +48,9 @@ def _user_brief(user: User | None) -> dict | None:
     return brief
 
 
-def _format_record(record: Attendance, include_user: bool = False) -> dict:
+def _format_record(record: Attendance, include_user: bool = False, editable: bool | None = None) -> dict:
+    today = today_local()
+    can_edit = record.attendance_date <= today if editable is None else editable
     data = {
         "id": record.id,
         "user_id": record.user_id,
@@ -56,7 +58,7 @@ def _format_record(record: Attendance, include_user: bool = False) -> dict:
         "status": record.status,
         "recorded_at": record.recorded_at,
         "created_at": record.created_at,
-        "editable": False,
+        "editable": can_edit,
         "user": None,
     }
     if include_user and record.user:
@@ -121,23 +123,31 @@ class AttendanceService:
     def __init__(self, db: Session):
         self.db = db
 
-    def mark_today(self, user: User, status: str) -> dict:
+    def upsert(self, user: User, status: str, attendance_date: date | None = None) -> dict:
         if status not in VALID_STATUSES:
             raise HTTPException(status_code=400, detail="Invalid attendance status")
 
         today = today_local()
+        target = attendance_date or today
+        if target > today:
+            raise HTTPException(status_code=400, detail="Future dates are not allowed")
+
         existing = (
             self.db.query(Attendance)
-            .filter(Attendance.user_id == user.id, Attendance.attendance_date == today)
+            .filter(Attendance.user_id == user.id, Attendance.attendance_date == target)
             .first()
         )
         if existing:
-            logger.warning("Duplicate attendance mark attempt user_id=%s date=%s", user.id, today)
-            raise HTTPException(status_code=409, detail="Already submitted today.")
+            existing.status = status
+            existing.recorded_at = now_utc()
+            self.db.commit()
+            self.db.refresh(existing)
+            existing.user = user
+            return _format_record(existing, include_user=True)
 
         record = Attendance(
             user_id=user.id,
-            attendance_date=today,
+            attendance_date=target,
             status=status,
             recorded_at=now_utc(),
         )
@@ -146,11 +156,26 @@ class AttendanceService:
             self.db.commit()
         except IntegrityError:
             self.db.rollback()
-            logger.warning("IntegrityError on attendance mark user_id=%s", user.id)
-            raise HTTPException(status_code=409, detail="Already submitted today.")
+            # Race: another request inserted first — update instead
+            existing = (
+                self.db.query(Attendance)
+                .filter(Attendance.user_id == user.id, Attendance.attendance_date == target)
+                .first()
+            )
+            if not existing:
+                raise HTTPException(status_code=409, detail="Could not save attendance")
+            existing.status = status
+            existing.recorded_at = now_utc()
+            self.db.commit()
+            self.db.refresh(existing)
+            existing.user = user
+            return _format_record(existing, include_user=True)
         self.db.refresh(record)
         record.user = user
         return _format_record(record, include_user=True)
+
+    def mark_today(self, user: User, status: str) -> dict:
+        return self.upsert(user, status, attendance_date=None)
 
     def get_today(self, user: User) -> dict | None:
         today = today_local()
@@ -281,12 +306,29 @@ class AttendanceService:
             )
             today_by_user = {r.user_id: r for r in today_rows}
 
-        present_wfo = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.WFO.value)
-        wfh = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.WFH.value)
-        on_leave = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.LEAVE.value)
-        half_day = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.HALF_DAY.value)
-        camp = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.CAMP.value)
-        not_marked = len(user_ids) - len(today_by_user)
+        def people_with_status(status_value: str) -> list[dict]:
+            out = []
+            for uid, rec in today_by_user.items():
+                if rec.status != status_value:
+                    continue
+                user = user_map.get(uid) or rec.user
+                brief = _user_brief(user)
+                if brief:
+                    out.append(brief)
+            return out
+
+        present_wfo_people = people_with_status(AttendanceStatus.WFO.value)
+        wfh_people = people_with_status(AttendanceStatus.WFH.value)
+        on_leave_people = people_with_status(AttendanceStatus.LEAVE.value)
+        half_day_people = people_with_status(AttendanceStatus.HALF_DAY.value)
+        camp_people = people_with_status(AttendanceStatus.CAMP.value)
+        not_marked_people = [
+            brief
+            for u in users
+            if u.id not in today_by_user
+            for brief in [_user_brief(u)]
+            if brief
+        ]
 
         filtered: list[Attendance] = records
         if status == AttendanceFilterStatus.NOT_MARKED.value:
@@ -307,13 +349,21 @@ class AttendanceService:
         return {
             "records": formatted,
             "today_stats": {
-                "present_wfo": present_wfo,
-                "wfh": wfh,
-                "on_leave": on_leave,
-                "half_day": half_day,
-                "camp": camp,
-                "not_marked": max(0, not_marked),
+                "present_wfo": len(present_wfo_people),
+                "wfh": len(wfh_people),
+                "on_leave": len(on_leave_people),
+                "half_day": len(half_day_people),
+                "camp": len(camp_people),
+                "not_marked": len(not_marked_people),
                 "total_active": len(user_ids),
+                "people": {
+                    "present_wfo": present_wfo_people,
+                    "wfh": wfh_people,
+                    "on_leave": on_leave_people,
+                    "half_day": half_day_people,
+                    "camp": camp_people,
+                    "not_marked": not_marked_people,
+                },
             },
             "year": year,
             "month": month,

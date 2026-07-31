@@ -512,6 +512,23 @@ export interface AttendanceMe {
   week: (AttendanceRecord | null)[];
 }
 
+export type AttendanceTodayStatKey =
+  | 'present_wfo'
+  | 'wfh'
+  | 'on_leave'
+  | 'half_day'
+  | 'camp'
+  | 'not_marked';
+
+export interface AttendanceTodayPeople {
+  present_wfo: AttendanceUserBrief[];
+  wfh: AttendanceUserBrief[];
+  on_leave: AttendanceUserBrief[];
+  half_day: AttendanceUserBrief[];
+  camp: AttendanceUserBrief[];
+  not_marked: AttendanceUserBrief[];
+}
+
 export interface AttendanceTodayStats {
   present_wfo: number;
   wfh: number;
@@ -520,6 +537,7 @@ export interface AttendanceTodayStats {
   camp: number;
   not_marked: number;
   total_active: number;
+  people?: AttendanceTodayPeople;
 }
 
 export interface AttendanceList {

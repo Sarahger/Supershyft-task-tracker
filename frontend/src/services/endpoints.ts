@@ -185,8 +185,14 @@ export const reportsApi = {
 };
 
 export const attendanceApi = {
-  mark: (status: import('../types').AttendanceStatus) =>
-    api.post<APIResponse<import('../types').AttendanceRecord>>('/attendance', { status }),
+  mark: (
+    status: import('../types').AttendanceStatus,
+    attendance_date?: string,
+  ) =>
+    api.post<APIResponse<import('../types').AttendanceRecord>>('/attendance', {
+      status,
+      ...(attendance_date ? { attendance_date } : {}),
+    }),
   me: (params?: { month?: number; year?: number }) =>
     api.get<APIResponse<import('../types').AttendanceMe>>('/attendance/me', { params }),
   today: () =>

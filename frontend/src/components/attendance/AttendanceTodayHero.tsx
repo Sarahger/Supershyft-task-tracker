@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Building2, CalendarCheck, Clock, Home, Umbrella, Users } from 'lucide-react';
+import { Building2, CalendarCheck, Clock, Home, Pencil, Umbrella, Users } from 'lucide-react';
 import type { AttendanceRecord, AttendanceStatus } from '../../types';
 import {
   formatRecordedTime,
@@ -18,6 +18,7 @@ interface Props {
   marking: boolean;
   onMark: (status: AttendanceStatus) => void;
   onOpenMark?: () => void;
+  onCloseMark?: () => void;
   loading?: boolean;
 }
 
@@ -36,6 +37,7 @@ export function AttendanceTodayHero({
   marking,
   onMark,
   onOpenMark,
+  onCloseMark,
   loading,
 }: Props) {
   if (loading) {
@@ -68,8 +70,8 @@ export function AttendanceTodayHero({
             <h2 className="text-sm font-semibold text-text-primary">Attendance Today</h2>
             <p className="text-xs text-text-muted mt-0.5 line-clamp-2">
               {todayRecord
-                ? 'Your status for today is locked in.'
-                : 'Mark once — no forms, no confirmation.'}
+                ? 'You can update today anytime.'
+                : 'Mark today — or tap a past day on the calendar.'}
             </p>
           </div>
         </div>
@@ -87,6 +89,18 @@ export function AttendanceTodayHero({
             <p className="mt-2 text-xs text-text-secondary">
               Recorded at {formatRecordedTime(todayRecord.recorded_at)}
             </p>
+            {onOpenMark && (
+              <Button
+                size="sm"
+                variant="secondary"
+                className="gap-1.5 mt-3"
+                onClick={onOpenMark}
+                data-testid="edit-today-attendance"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-auto">
@@ -104,10 +118,13 @@ export function AttendanceTodayHero({
       </section>
 
       <AttendanceMarkModal
-        open={(showMarkModal && !todayRecord) || markSuccess}
+        open={showMarkModal || markSuccess}
         loading={marking}
         success={markSuccess}
+        isEdit={!!todayRecord}
+        currentStatus={todayRecord?.status}
         onSelect={onMark}
+        onClose={onCloseMark}
       />
     </>
   );

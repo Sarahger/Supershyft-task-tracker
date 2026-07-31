@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isPast, isToday, isThisWeek } from 'date-fns';
-import { Plus, X } from 'lucide-react';
+import { ChevronDown, Plus, X } from 'lucide-react';
+import clsx from 'clsx';
 import { tasksApi } from '../services/endpoints';
 import { useTaskDrawer } from '../contexts/TaskDrawerContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -63,6 +64,42 @@ function Section({ title, count, children }: { title: string; count?: number; ch
         {title}{count !== undefined ? ` · ${count}` : ''}
       </h2>
       {children}
+    </section>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  count,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  count?: number;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className="mb-10">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 mb-3 px-1 text-left group"
+        aria-expanded={open}
+      >
+        <ChevronDown
+          className={clsx(
+            'h-3.5 w-3.5 text-text-muted shrink-0 transition-transform duration-200',
+            !open && '-rotate-90',
+          )}
+        />
+        <h2 className="text-xs font-medium uppercase tracking-wider text-text-muted group-hover:text-text-secondary transition-colors">
+          {title}{count !== undefined ? ` · ${count}` : ''}
+        </h2>
+      </button>
+      {open && children}
     </section>
   );
 }
@@ -206,7 +243,11 @@ export default function MyTasksPage() {
           {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
           {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
           {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} {...listProps} /></Section>}
-          {groups.completed.length > 0 && <Section title="Completed" count={groups.completed.length}><TaskList tasks={groups.completed} {...listProps} /></Section>}
+          {groups.completed.length > 0 && (
+            <CollapsibleSection title="Completed" count={groups.completed.length} defaultOpen={false}>
+              <TaskList tasks={groups.completed} {...listProps} />
+            </CollapsibleSection>
+          )}
         </>
       )}
 

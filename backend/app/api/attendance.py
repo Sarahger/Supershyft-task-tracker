@@ -32,8 +32,12 @@ def mark_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    data = AttendanceService(db).mark_today(current_user, body.status)
-    return APIResponse(data=AttendanceRecordResponse(**data), message="Attendance Recorded")
+    data = AttendanceService(db).upsert(
+        current_user,
+        body.status,
+        attendance_date=body.attendance_date,
+    )
+    return APIResponse(data=AttendanceRecordResponse(**data), message="Attendance saved")
 
 
 @router.get("/me/today", response_model=APIResponse[AttendanceRecordResponse | None])

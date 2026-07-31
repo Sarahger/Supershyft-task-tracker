@@ -98,15 +98,56 @@ def test_unauthenticated_rejected(client):
     assert client.post("/api/attendance", json={"status": "WFO"}).status_code == 401
 
 
-def test_employee_can_mark_once(client, users):
+def test_employee_can_mark_and_edit(client, users):
     headers = auth_header(users["employee"])
     r1 = client.post("/api/attendance", json={"status": "WFO"}, headers=headers)
     assert r1.status_code == 200
     assert r1.json()["data"]["status"] == "WFO"
-    assert r1.json()["data"]["editable"] is False
+    assert r1.json()["data"]["editable"] is True
 
     r2 = client.post("/api/attendance", json={"status": "WFH"}, headers=headers)
-    assert r2.status_code == 409
+    assert r2.status_code == 200
+    assert r2.json()["data"]["status"] == "WFH"
+
+
+def test_employee_can_mark_past_day(client, users):
+    from datetime import timedelta
+
+    from app.services.attendance_service import today_local
+
+    headers = auth_header(users["employee"])
+    yesterday = (today_local() - timedelta(days=1)).isoformat()
+    r = client.post(
+        "/api/attendance",
+        json={"status": "HALF_DAY", "attendance_date": yesterday},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["status"] == "HALF_DAY"
+    assert r.json()["data"]["attendance_date"] == yesterday
+
+    r2 = client.post(
+        "/api/attendance",
+        json={"status": "CAMP", "attendance_date": yesterday},
+        headers=headers,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["data"]["status"] == "CAMP"
+
+
+def test_future_date_rejected(client, users):
+    from datetime import timedelta
+
+    from app.services.attendance_service import today_local
+
+    headers = auth_header(users["employee"])
+    tomorrow = (today_local() + timedelta(days=1)).isoformat()
+    r = client.post(
+        "/api/attendance",
+        json={"status": "WFO", "attendance_date": tomorrow},
+        headers=headers,
+    )
+    assert r.status_code == 400
 
 
 def test_invalid_status_rejected(client, users):
@@ -154,6 +195,8 @@ def test_manager_can_list_and_export(client, users):
     assert listed.status_code == 200
     stats = listed.json()["data"]["today_stats"]
     assert stats["on_leave"] >= 1
+    assert len(stats["people"]["on_leave"]) == stats["on_leave"]
+    assert any(p["id"] == users["employee"].id for p in stats["people"]["on_leave"])
 
     week = client.get("/api/attendance/week", headers=mgr)
     assert week.status_code == 200

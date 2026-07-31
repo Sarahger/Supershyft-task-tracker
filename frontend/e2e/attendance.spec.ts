@@ -179,12 +179,50 @@ async function fulfillApi(
     return;
   }
   if (path.endsWith('/attendance') || path.endsWith('/attendance/')) {
+    const empUser = {
+      id: 1,
+      first_name: 'Emp',
+      last_name: 'Loyee',
+      departments: ['Engineering'],
+      profile_picture: null,
+      job_title: 'Engineer',
+      role: 'employee',
+    };
     await route.fulfill(
       json({
         success: true,
         data: {
-          records: [markedRecord],
-          today_stats: { present_wfo: 1, wfh: 0, on_leave: 0, half_day: 0, camp: 0, not_marked: 2, total_active: 3 },
+          records: [{ ...markedRecord, user: empUser }],
+          today_stats: {
+            present_wfo: 1,
+            wfh: 0,
+            on_leave: 0,
+            half_day: 0,
+            camp: 0,
+            not_marked: 2,
+            total_active: 3,
+            people: {
+              present_wfo: [empUser],
+              wfh: [],
+              on_leave: [],
+              half_day: [],
+              camp: [],
+              not_marked: [
+                {
+                  id: 2,
+                  first_name: 'Man',
+                  last_name: 'Ager',
+                  departments: ['HR'],
+                },
+                {
+                  id: 3,
+                  first_name: 'Other',
+                  last_name: 'Person',
+                  departments: [],
+                },
+              ],
+            },
+          },
           year: 2026,
           month: 7,
         },
@@ -231,6 +269,7 @@ test.describe('Attendance employee flows', () => {
     await page.getByTestId('mark-WFO').click();
     await expect(page.getByTestId('attendance-success')).toBeVisible({ timeout: 10000 });
     await expect(page.getByTestId('attendance-submitted')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('edit-today-attendance')).toBeVisible();
   });
 
   test('history calendar/table toggle works', async ({ page }) => {
@@ -259,13 +298,16 @@ test.describe('Attendance employee flows', () => {
 });
 
 test.describe('Attendance HR flows', () => {
-  test('manager sees HR stats and week table', async ({ page }) => {
+  test('manager sees HR stats, month table, and KPI people list', async ({ page }) => {
     await mockAuth(page, { ...fakeManager, role: 'administrator' }, () => meMarked);
     await page.goto('/attendance/hr');
     await expect(page.getByTestId('attendance-hr-page')).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId('hr-stat-present_wfo')).toBeVisible();
-    await expect(page.getByTestId('hr-week-table')).toBeVisible();
-    await page.getByText('Emp Loyee').click();
+    await expect(page.getByTestId('hr-month-filter')).toBeVisible();
+    await expect(page.getByTestId('hr-attendance-table')).toBeVisible();
+    await page.getByTestId('hr-stat-present_wfo').click();
+    await expect(page.getByTestId('hr-stat-people-list')).toBeVisible();
+    await page.getByText('Emp Loyee').first().click();
     await expect(page.getByTestId('attendance-employee-drawer')).toBeVisible();
   });
 });

@@ -10,6 +10,10 @@ AttendanceFilterValue = Literal["WFO", "WFH", "LEAVE", "HALF_DAY", "CAMP", "NOT_
 
 class AttendanceMarkRequest(BaseModel):
     status: AttendanceStatusValue
+    attendance_date: date | None = Field(
+        None,
+        description="Calendar day in company timezone. Defaults to today. Future dates rejected.",
+    )
 
 
 class AttendanceUserBrief(BaseModel):
@@ -63,6 +67,15 @@ class AttendanceMeResponse(BaseModel):
     )
 
 
+class AttendanceTodayPeople(BaseModel):
+    present_wfo: list[AttendanceUserBrief] = Field(default_factory=list)
+    wfh: list[AttendanceUserBrief] = Field(default_factory=list)
+    on_leave: list[AttendanceUserBrief] = Field(default_factory=list)
+    half_day: list[AttendanceUserBrief] = Field(default_factory=list)
+    camp: list[AttendanceUserBrief] = Field(default_factory=list)
+    not_marked: list[AttendanceUserBrief] = Field(default_factory=list)
+
+
 class AttendanceTodayStats(BaseModel):
     present_wfo: int = 0
     wfh: int = 0
@@ -71,6 +84,7 @@ class AttendanceTodayStats(BaseModel):
     camp: int = 0
     not_marked: int = 0
     total_active: int = 0
+    people: AttendanceTodayPeople = Field(default_factory=AttendanceTodayPeople)
 
 
 class AttendanceListResponse(BaseModel):
