@@ -1,21 +1,19 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Bell, Video, NotebookPen, CalendarCheck,
+  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Video, NotebookPen, CalendarCheck,
 } from 'lucide-react';
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { AppLogo } from './AppLogo';
 import { Avatar } from '../ui/Avatar';
 import { GlobalSearch } from './GlobalSearch';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { MobileBottomNav } from './MobileBottomNav';
 import { MobileProfileSheet } from './MobileProfileSheet';
-import { notificationsApi } from '../../services/endpoints';
+import { MobileMoreSheet } from './MobileMoreSheet';
 import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
-import type { Notification, User } from '../../types';
+import type { User } from '../../types';
 
 const navItems: {
   to: string;
@@ -37,50 +35,10 @@ const navItems: {
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showNotifs, setShowNotifs] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, logout } = useAuth();
-  const { openTask } = useTaskDrawer();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  const { data: notifications } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => notificationsApi.list().then((r) => r.data.data as Notification[]),
-    refetchInterval: 30000,
-    retry: false,
-  });
-
-  const markReadMutation = useMutation({
-    mutationFn: (id: number) => notificationsApi.markRead(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-  });
-
-  const markAllReadMutation = useMutation({
-    mutationFn: () => notificationsApi.markAllRead(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
-  });
-
-  const unreadCount = notifications?.filter((n) => !n.is_read).length || 0;
-  const handleNotificationClick = (notification: Notification) => {
-    if (!notification.is_read) {
-      markReadMutation.mutate(notification.id);
-    }
-    setShowNotifs(false);
-    const link = notification.link || '';
-    const taskMatch = link.match(/\/tasks\/(\d+)/);
-    if (taskMatch) {
-      openTask(Number(taskMatch[1]));
-      return;
-    }
-    if (link.startsWith('http')) {
-      window.open(link, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (link.startsWith('/')) {
-      navigate(link);
-    }
-  };
 
   const visibleNav = navItems.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role))
@@ -153,56 +111,16 @@ export function AppLayout() {
 
           <div className="flex items-center gap-1 ml-auto">
             <ThemeToggle className="max-md:p-2" />
-            <div className="relative">
-            <button onClick={() => setShowNotifs(!showNotifs)} className="relative p-2 rounded-md text-text-secondary hover:bg-dark-hover hover:text-text-primary transition-colors duration-hover min-h-[44px] min-w-[44px] flex items-center justify-center">
-              <Bell className="h-4 w-4" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 h-3.5 w-3.5 rounded-full bg-accent-danger text-[var(--btn-primary-fg)] text-[9px] flex items-center justify-center font-medium">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
+
+            {/* Mobile more menu — replaces notifications */}
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              className="md:hidden p-2 rounded-md text-text-secondary hover:bg-dark-hover hover:text-text-primary transition-colors duration-hover min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Open more menu"
+            >
+              <Menu className="h-4 w-4" />
             </button>
-            {showNotifs && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowNotifs(false)} />
-                <div className="absolute right-0 top-full mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-dark-card z-50 max-h-96 overflow-y-auto dropdown-panel">
-                  <div className="px-3 py-2 border-b border-dark-border flex items-center justify-between gap-2">
-                    <span className="text-2xs font-medium text-text-muted uppercase tracking-wider">Notifications</span>
-                    {unreadCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => markAllReadMutation.mutate()}
-                        disabled={markAllReadMutation.isPending}
-                        className="text-2xs text-text-muted hover:text-text-secondary"
-                      >
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  {notifications?.length ? notifications.slice(0, 15).map((n) => (
-                    <button
-                      key={n.id}
-                      type="button"
-                      onClick={() => handleNotificationClick(n)}
-                      className={clsx(
-                        'w-full text-left px-3 py-2.5 border-b border-dark-border last:border-0 text-sm hover:bg-dark-hover transition-colors',
-                        !n.is_read && 'bg-surface-subtle',
-                      )}
-                    >
-                      <p className="font-medium text-text-primary text-xs">{n.title}</p>
-                      {n.message && <p className="text-text-muted text-2xs mt-0.5 line-clamp-2">{n.message}</p>}
-                      <p className="text-2xs text-text-muted mt-1">
-                        {new Date(n.created_at).toLocaleString()}
-                        {n.email_sent ? ' · emailed' : ''}
-                      </p>
-                    </button>
-                  )) : (
-                    <p className="p-4 text-xs text-text-muted text-center">No notifications</p>
-                  )}
-                </div>
-              </>
-            )}
-            </div>
 
             {/* Mobile profile avatar */}
             {user && (
@@ -224,6 +142,7 @@ export function AppLayout() {
       </div>
 
       <MobileBottomNav />
+      <MobileMoreSheet isOpen={moreOpen} onClose={() => setMoreOpen(false)} />
       <MobileProfileSheet isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   );

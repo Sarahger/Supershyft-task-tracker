@@ -4,8 +4,8 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-AttendanceStatusValue = Literal["WFO", "WFH", "LEAVE"]
-AttendanceFilterValue = Literal["WFO", "WFH", "LEAVE", "NOT_MARKED", "ALL"]
+AttendanceStatusValue = Literal["WFO", "WFH", "LEAVE", "HALF_DAY", "CAMP"]
+AttendanceFilterValue = Literal["WFO", "WFH", "LEAVE", "HALF_DAY", "CAMP", "NOT_MARKED", "ALL"]
 
 
 class AttendanceMarkRequest(BaseModel):
@@ -41,6 +41,8 @@ class AttendanceSummary(BaseModel):
     wfo_count: int = 0
     wfh_count: int = 0
     leave_count: int = 0
+    half_day_count: int = 0
+    camp_count: int = 0
     present_count: int = 0
     total_marked: int = 0
     working_days: int = 0
@@ -65,6 +67,8 @@ class AttendanceTodayStats(BaseModel):
     present_wfo: int = 0
     wfh: int = 0
     on_leave: int = 0
+    half_day: int = 0
+    camp: int = 0
     not_marked: int = 0
     total_active: int = 0
 

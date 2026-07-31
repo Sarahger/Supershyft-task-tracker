@@ -110,12 +110,16 @@ class AttendanceStatus(str, Enum):
     WFO = "WFO"
     WFH = "WFH"
     LEAVE = "LEAVE"
+    HALF_DAY = "HALF_DAY"
+    CAMP = "CAMP"
 
 
 class AttendanceFilterStatus(str, Enum):
     WFO = "WFO"
     WFH = "WFH"
     LEAVE = "LEAVE"
+    HALF_DAY = "HALF_DAY"
+    CAMP = "CAMP"
     NOT_MARKED = "NOT_MARKED"
     ALL = "ALL"
 

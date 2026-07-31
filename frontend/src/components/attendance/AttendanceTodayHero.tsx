@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Building2, CalendarCheck, Home, Umbrella } from 'lucide-react';
+import { Building2, CalendarCheck, Clock, Home, Umbrella, Users } from 'lucide-react';
 import type { AttendanceRecord, AttendanceStatus } from '../../types';
 import {
   formatRecordedTime,
@@ -24,6 +24,8 @@ interface Props {
 function StatusIcon({ status }: { status: AttendanceStatus }) {
   if (status === 'WFO') return <Building2 className="h-4 w-4" />;
   if (status === 'WFH') return <Home className="h-4 w-4" />;
+  if (status === 'HALF_DAY') return <Clock className="h-4 w-4" />;
+  if (status === 'CAMP') return <Users className="h-4 w-4" />;
   return <Umbrella className="h-4 w-4" />;
 }
 

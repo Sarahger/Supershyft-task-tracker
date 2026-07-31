@@ -448,7 +448,7 @@ export interface DailyUpdateCalendar {
   days: DailyUpdateCalendarDay[];
 }
 
-export type AttendanceStatus = 'WFO' | 'WFH' | 'LEAVE';
+export type AttendanceStatus = 'WFO' | 'WFH' | 'LEAVE' | 'HALF_DAY' | 'CAMP';
 
 export type AttendanceFilterStatus = AttendanceStatus | 'NOT_MARKED' | 'ALL';
 
@@ -456,12 +456,16 @@ export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
   WFO: 'Work From Office',
   WFH: 'Work From Home',
   LEAVE: 'On Leave',
+  HALF_DAY: 'Half Day',
+  CAMP: 'Camp/Meeting',
 };
 
 export const ATTENDANCE_STATUS_SHORT: Record<AttendanceStatus, string> = {
   WFO: 'WFO',
   WFH: 'WFH',
   LEAVE: 'Leave',
+  HALF_DAY: 'Half Day',
+  CAMP: 'Camp',
 };
 
 export interface AttendanceUserBrief {
@@ -489,6 +493,8 @@ export interface AttendanceSummary {
   wfo_count: number;
   wfh_count: number;
   leave_count: number;
+  half_day_count: number;
+  camp_count: number;
   present_count: number;
   total_marked: number;
   working_days: number;
@@ -510,6 +516,8 @@ export interface AttendanceTodayStats {
   present_wfo: number;
   wfh: number;
   on_leave: number;
+  half_day: number;
+  camp: number;
   not_marked: number;
   total_active: number;
 }

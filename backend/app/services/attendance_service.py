@@ -87,13 +87,17 @@ def _build_summary(records: list[Attendance], year: int, month: int, today: date
     wfo = sum(1 for r in records if r.status == AttendanceStatus.WFO.value)
     wfh = sum(1 for r in records if r.status == AttendanceStatus.WFH.value)
     leave = sum(1 for r in records if r.status == AttendanceStatus.LEAVE.value)
-    present = wfo + wfh
+    half_day = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY.value)
+    camp = sum(1 for r in records if r.status == AttendanceStatus.CAMP.value)
+    present = wfo + wfh + half_day + camp
     working = _working_days_in_month(year, month, today)
     percent = round((present / working) * 100, 1) if working > 0 else 0.0
     return {
         "wfo_count": wfo,
         "wfh_count": wfh,
         "leave_count": leave,
+        "half_day_count": half_day,
+        "camp_count": camp,
         "present_count": present,
         "total_marked": len(records),
         "working_days": working,
@@ -280,6 +284,8 @@ class AttendanceService:
         present_wfo = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.WFO.value)
         wfh = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.WFH.value)
         on_leave = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.LEAVE.value)
+        half_day = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.HALF_DAY.value)
+        camp = sum(1 for r in today_by_user.values() if r.status == AttendanceStatus.CAMP.value)
         not_marked = len(user_ids) - len(today_by_user)
 
         filtered: list[Attendance] = records
@@ -304,6 +310,8 @@ class AttendanceService:
                 "present_wfo": present_wfo,
                 "wfh": wfh,
                 "on_leave": on_leave,
+                "half_day": half_day,
+                "camp": camp,
                 "not_marked": max(0, not_marked),
                 "total_active": len(user_ids),
             },

@@ -109,7 +109,6 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
       qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
       qc.invalidateQueries({ queryKey: ['task-active-call', taskId] });
       qc.invalidateQueries({ queryKey: ['meetings-day'] });
-      qc.invalidateQueries({ queryKey: ['notifications'] });
       toast.success('Task call started — assignees notified');
     },
   });

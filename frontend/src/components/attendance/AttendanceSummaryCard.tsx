@@ -36,15 +36,25 @@ export function AttendanceSummaryCard({ summary, loading }: Props) {
     );
   }
 
-  const max = Math.max(summary.working_days, summary.wfo_count + summary.wfh_count + summary.leave_count, 1);
+  const max = Math.max(
+    summary.working_days,
+    summary.wfo_count
+      + summary.wfh_count
+      + summary.leave_count
+      + (summary.half_day_count ?? 0)
+      + (summary.camp_count ?? 0),
+    1,
+  );
 
   return (
     <section className="card h-full min-h-0 p-4 flex flex-col">
       <h2 className="workspace-section-title !mb-3 !px-0 shrink-0">Monthly summary</h2>
-      <div className="flex-1 min-h-0 flex flex-col justify-center space-y-3">
+      <div className="flex-1 min-h-0 flex flex-col justify-center space-y-2.5">
         <Bar label="Present (WFO)" value={summary.wfo_count} max={max} color="bg-emerald-500" />
         <Bar label="WFH" value={summary.wfh_count} max={max} color="bg-sky-500" />
         <Bar label="Leave" value={summary.leave_count} max={max} color="bg-amber-500" />
+        <Bar label="Half Day" value={summary.half_day_count ?? 0} max={max} color="bg-violet-500" />
+        <Bar label="Camp/Meeting" value={summary.camp_count ?? 0} max={max} color="bg-orange-500" />
       </div>
       <div className="mt-3 pt-3 border-t border-dark-border flex items-center justify-between shrink-0">
         <span className="text-xs text-text-muted">Attendance %</span>

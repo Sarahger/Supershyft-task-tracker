@@ -112,7 +112,7 @@ def list_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_manager),
 ):
-    allowed = {"WFO", "WFH", "LEAVE", "NOT_MARKED", "ALL"}
+    allowed = {"WFO", "WFH", "LEAVE", "HALF_DAY", "CAMP", "NOT_MARKED", "ALL"}
     if status not in allowed:
         raise HTTPException(status_code=400, detail="Invalid status filter")
     data = AttendanceService(db).get_list(

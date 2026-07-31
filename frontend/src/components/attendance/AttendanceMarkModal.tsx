@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, Check, Home, Umbrella } from 'lucide-react';
+import { Building2, Check, Clock, Home, Umbrella, Users } from 'lucide-react';
 import clsx from 'clsx';
 import type { AttendanceStatus } from '../../types';
 import { greetingForNow, MARK_OPTIONS, statusIconWrap } from './attendanceUtils';
@@ -16,6 +16,8 @@ const ICONS = {
   building: Building2,
   home: Home,
   umbrella: Umbrella,
+  clock: Clock,
+  users: Users,
 } as const;
 
 export function AttendanceMarkModal({ open, loading, onSelect, success }: Props) {

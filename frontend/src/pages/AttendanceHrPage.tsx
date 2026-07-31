@@ -181,6 +181,8 @@ export default function AttendanceHrPage() {
             <option value="WFO">WFO</option>
             <option value="WFH">WFH</option>
             <option value="LEAVE">Leave</option>
+            <option value="HALF_DAY">Half Day</option>
+            <option value="CAMP">Camp/Meeting</option>
             <option value="NOT_MARKED">Not Marked</option>
           </select>
           <div className="flex rounded-lg border border-dark-border overflow-hidden bg-dark-card ml-auto">

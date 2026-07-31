@@ -13,6 +13,8 @@ const meUnmarked = {
       wfo_count: 0,
       wfh_count: 0,
       leave_count: 0,
+      half_day_count: 0,
+      camp_count: 0,
       present_count: 0,
       total_marked: 0,
       working_days: 20,
@@ -182,7 +184,7 @@ async function fulfillApi(
         success: true,
         data: {
           records: [markedRecord],
-          today_stats: { present_wfo: 1, wfh: 0, on_leave: 0, not_marked: 2, total_active: 3 },
+          today_stats: { present_wfo: 1, wfh: 0, on_leave: 0, half_day: 0, camp: 0, not_marked: 2, total_active: 3 },
           year: 2026,
           month: 7,
         },

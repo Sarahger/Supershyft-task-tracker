@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Building2, Home, Umbrella, CircleDashed } from 'lucide-react';
+import { Building2, Home, Umbrella, CircleDashed, Clock, Users } from 'lucide-react';
 import type { AttendanceTodayStats } from '../../types';
 
 interface Props {
@@ -33,6 +33,22 @@ const CARDS = [
     iconWrap: 'bg-amber-500/10 text-amber-400',
   },
   {
+    key: 'half_day' as const,
+    label: 'Half day',
+    icon: Clock,
+    color: 'metric-violet',
+    border: 'border-violet-500/20 bg-violet-500/5',
+    iconWrap: 'bg-violet-500/10 text-violet-400',
+  },
+  {
+    key: 'camp' as const,
+    label: 'Camp/Meeting',
+    icon: Users,
+    color: 'metric-orange',
+    border: 'border-orange-500/20 bg-orange-500/5',
+    iconWrap: 'bg-orange-500/10 text-orange-400',
+  },
+  {
     key: 'not_marked' as const,
     label: 'Not marked',
     icon: CircleDashed,
@@ -44,7 +60,7 @@ const CARDS = [
 
 export function AttendanceHrStats({ stats, loading }: Props) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
       {CARDS.map((c) => {
         const Icon = c.icon;
         return (
