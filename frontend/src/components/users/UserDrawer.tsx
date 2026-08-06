@@ -14,8 +14,6 @@ import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
-import { AttendanceStatusDot } from '../attendance/AttendanceStatusDot';
-import { formatRecordedTime, statusLabel } from '../attendance/attendanceUtils';
 import { UserFormModal, emptyUserForm, userToForm, type UserFormState } from './UserFormModal';
 import { STATUS_LABELS, USER_STATUS_LABELS, type UserProfile } from '../../types';
 
@@ -62,84 +60,55 @@ function UserAttendanceSection({ userId }: { userId: number }) {
       attendanceApi.userDetail(userId, { year, month }).then((r) => r.data.data),
   });
 
-  const todayIso = format(now, 'yyyy-MM-dd');
-  const todayRecord = data?.records.find((r) => r.attendance_date === todayIso) ?? null;
   const summary = data?.summary;
+
+  const cards = summary
+    ? [
+        { key: 'wfo', label: 'WFO', value: summary.wfo_count, color: 'metric-emerald' },
+        { key: 'wfh', label: 'WFH', value: summary.wfh_count, color: 'metric-sky' },
+        { key: 'leave', label: 'Leave', value: summary.leave_count, color: 'metric-amber' },
+        { key: 'half', label: 'Half day', value: summary.half_day_count ?? 0, color: 'metric-violet' },
+        { key: 'camp', label: 'Camp/Meeting', value: summary.camp_count ?? 0, color: 'metric-orange' },
+        {
+          key: 'pct',
+          label: 'Attendance %',
+          value: `${summary.attendance_percent}%`,
+          color: 'metric-emerald',
+          hint: `${summary.present_count}/${summary.working_days} working days`,
+        },
+      ]
+    : [];
 
   return (
     <section className="rounded-lg border border-dark-border p-4" data-testid="user-attendance-section">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h2 className="text-sm font-medium text-text-primary">Attendance</h2>
-          <p className="text-xs text-text-muted mt-0.5">
-            {format(now, 'MMMM yyyy')}
-          </p>
+          <p className="text-xs text-text-muted mt-0.5">{format(now, 'MMMM yyyy')}</p>
         </div>
         <CalendarCheck className="h-4 w-4 text-text-muted shrink-0" />
       </div>
 
       {isLoading ? (
         <div className="grid grid-cols-2 gap-3 animate-pulse">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="h-16 rounded-md bg-dark-muted" />
           ))}
         </div>
       ) : isError || !summary ? (
         <p className="text-sm text-text-muted">Could not load attendance for this user.</p>
       ) : (
-        <>
-          <div className="rounded-md border border-dark-border bg-surface-subtle p-3 mb-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-2xs uppercase tracking-wider text-text-muted">Today</p>
-              <p className="text-sm font-medium text-text-primary mt-0.5 truncate">
-                {statusLabel(todayRecord?.status)}
-              </p>
-              {todayRecord?.recorded_at && (
-                <p className="text-2xs text-text-muted mt-0.5">
-                  Marked at {formatRecordedTime(todayRecord.recorded_at)}
-                </p>
-              )}
+        <div className="grid grid-cols-2 gap-3">
+          {cards.map((c) => (
+            <div key={c.key} className="rounded-md border border-dark-border bg-surface-subtle p-3">
+              <p className="text-2xs uppercase tracking-wider text-text-muted">{c.label}</p>
+              <p className={clsx('text-lg font-semibold mt-0.5 tabular-nums', c.color)}>{c.value}</p>
+              {'hint' in c && c.hint ? (
+                <p className="text-2xs text-text-muted mt-0.5">{c.hint}</p>
+              ) : null}
             </div>
-            <AttendanceStatusDot
-              status={todayRecord?.status ?? null}
-              recordedAt={todayRecord?.recorded_at}
-              size="md"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-              <p className="text-2xs uppercase tracking-wider text-text-muted">WFO</p>
-              <p className="text-lg font-semibold metric-emerald mt-0.5 tabular-nums">
-                {summary.wfo_count}
-              </p>
-            </div>
-            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-              <p className="text-2xs uppercase tracking-wider text-text-muted">WFH</p>
-              <p className="text-lg font-semibold metric-sky mt-0.5 tabular-nums">
-                {summary.wfh_count}
-              </p>
-            </div>
-            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-              <p className="text-2xs uppercase tracking-wider text-text-muted">Leave / half / camp</p>
-              <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">
-                {summary.leave_count + (summary.half_day_count ?? 0) + (summary.camp_count ?? 0)}
-              </p>
-              <p className="text-2xs text-text-muted mt-0.5">
-                {summary.leave_count}L · {summary.half_day_count ?? 0}H · {summary.camp_count ?? 0}C
-              </p>
-            </div>
-            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-              <p className="text-2xs uppercase tracking-wider text-text-muted">Attendance %</p>
-              <p className="text-lg font-semibold metric-emerald mt-0.5 tabular-nums">
-                {summary.attendance_percent}%
-              </p>
-              <p className="text-2xs text-text-muted mt-0.5">
-                {summary.present_count}/{summary.working_days} working days
-              </p>
-            </div>
-          </div>
-        </>
+          ))}
+        </div>
       )}
     </section>
   );

@@ -243,3 +243,20 @@ def test_injection_status_filter_rejected(client, users):
     mgr = auth_header(users["manager"])
     r = client.get("/api/attendance", params={"status": "WFO; DROP TABLE"}, headers=mgr)
     assert r.status_code == 400
+
+
+def test_working_days_exclude_sundays_and_2nd_4th_saturdays():
+    from datetime import date
+
+    from app.services.attendance_service import _is_company_holiday, _working_days_in_month
+
+    # August 2026: Sat 8 = 2nd Sat, Sat 22 = 4th Sat
+    assert _is_company_holiday(date(2026, 8, 2))  # Sunday
+    assert _is_company_holiday(date(2026, 8, 8))  # 2nd Saturday
+    assert _is_company_holiday(date(2026, 8, 22))  # 4th Saturday
+    assert not _is_company_holiday(date(2026, 8, 1))  # 1st Saturday
+    assert not _is_company_holiday(date(2026, 8, 15))  # 3rd Saturday
+    assert not _is_company_holiday(date(2026, 8, 3))  # Monday
+
+    # Full August 2026 has 31 days; exclude 5 Sundays + 2 holiday Saturdays = 24 working days
+    assert _working_days_in_month(2026, 8, date(2026, 8, 31)) == 24

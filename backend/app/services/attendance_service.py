@@ -82,18 +82,39 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
+def _is_company_holiday(d: date) -> bool:
+    """Sundays and the 2nd & 4th Saturdays of the month are holidays."""
+    if d.weekday() == 6:  # Sunday
+        return True
+    if d.weekday() == 5:  # Saturday
+        saturday_ordinal = (d.day - 1) // 7 + 1
+        return saturday_ordinal in (2, 4)
+    return False
+
+
 def _working_days_in_month(year: int, month: int, today: date) -> int:
-    """Count Mon–Fri up to today (if current month) or full month."""
+    """
+    Count company working days in the month (excludes Sundays and 2nd/4th Saturdays).
+    For the current month, only days up to today are counted.
+    """
     start, end = _month_bounds(year, month)
     if year == today.year and month == today.month:
         end = min(end, today)
     count = 0
     d = start
     while d <= end:
-        if d.weekday() < 5:
+        if not _is_company_holiday(d):
             count += 1
         d += timedelta(days=1)
     return count
+
+
+PRESENT_STATUSES = {
+    AttendanceStatus.WFO.value,
+    AttendanceStatus.WFH.value,
+    AttendanceStatus.HALF_DAY.value,
+    AttendanceStatus.CAMP.value,
+}
 
 
 def _build_summary(records: list[Attendance], year: int, month: int, today: date) -> dict:
@@ -102,9 +123,14 @@ def _build_summary(records: list[Attendance], year: int, month: int, today: date
     leave = sum(1 for r in records if r.status == AttendanceStatus.LEAVE.value)
     half_day = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY.value)
     camp = sum(1 for r in records if r.status == AttendanceStatus.CAMP.value)
-    present = wfo + wfh + half_day + camp
+    # Present days only count on company working days (holidays excluded from %)
+    present = sum(
+        1
+        for r in records
+        if r.status in PRESENT_STATUSES and not _is_company_holiday(r.attendance_date)
+    )
     working = _working_days_in_month(year, month, today)
-    percent = round((present / working) * 100, 1) if working > 0 else 0.0
+    percent = round(min(100.0, (present / working) * 100), 1) if working > 0 else 0.0
     return {
         "wfo_count": wfo,
         "wfh_count": wfh,
