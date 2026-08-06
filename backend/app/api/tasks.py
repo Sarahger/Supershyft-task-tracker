@@ -620,7 +620,10 @@ async def download_attachment(
             return Response(
                 content=content,
                 media_type=attachment.mime_type or content_type,
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                headers={
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                    "Content-Type": attachment.mime_type or content_type or "application/octet-stream",
+                },
             )
         return RedirectResponse(attachment.url)
     if attachment.file_path and os.path.exists(attachment.file_path):
@@ -628,6 +631,7 @@ async def download_attachment(
             attachment.file_path,
             filename=attachment.filename or os.path.basename(attachment.file_path),
             media_type=attachment.mime_type or "application/octet-stream",
+            content_disposition_type="inline",
         )
     raise HTTPException(status_code=404, detail="File not found")
 

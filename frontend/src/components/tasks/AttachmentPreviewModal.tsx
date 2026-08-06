@@ -1,12 +1,11 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
-import { Download, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Download, ExternalLink, X } from 'lucide-react';
 import api from '../../services/api';
 import { tasksApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
+import { PdfViewer } from './PdfViewer';
 import type { TaskAttachment } from '../../types';
-
-const PdfViewer = lazy(() => import('./PdfViewer').then((m) => ({ default: m.PdfViewer })));
 
 interface AttachmentPreviewModalProps {
   attachment: TaskAttachment | null;
@@ -18,7 +17,7 @@ function isImageMime(mime?: string) {
 }
 
 function isPdfMime(mime?: string) {
-  return mime === 'application/pdf';
+  return mime === 'application/pdf' || !!mime?.includes('pdf');
 }
 
 function isTextMime(mime?: string) {
@@ -29,19 +28,29 @@ export function canPreviewInApp(mime?: string) {
   return isImageMime(mime) || isPdfMime(mime) || isTextMime(mime);
 }
 
+async function blobLooksLikePdf(blob: Blob): Promise<boolean> {
+  const header = new Uint8Array(await blob.slice(0, 5).arrayBuffer());
+  // %PDF-
+  return (
+    header.length >= 4 &&
+    header[0] === 0x25 &&
+    header[1] === 0x50 &&
+    header[2] === 0x44 &&
+    header[3] === 0x46
+  );
+}
+
 export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPreviewModalProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [pdfData, setPdfData] = useState<ArrayBuffer | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!attachment) {
       setPreviewUrl(null);
-      setPdfData(null);
       setTextContent(null);
-      setError(false);
+      setError(null);
       return;
     }
 
@@ -50,36 +59,66 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
 
     const load = async () => {
       setLoading(true);
-      setError(false);
+      setError(null);
       setPreviewUrl(null);
-      setPdfData(null);
       setTextContent(null);
 
       try {
-        const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: 'blob' });
+        const response = await api.get(`/attachments/${attachment.id}/download`, {
+          responseType: 'blob',
+        });
         const mime = attachment.mime_type || response.data.type || 'application/octet-stream';
         const raw = response.data as Blob;
         const blob =
           raw instanceof Blob
-            ? raw.type && raw.type !== 'application/octet-stream'
-              ? raw
-              : new Blob([raw], { type: mime })
+            ? new Blob([raw], { type: mime || raw.type || 'application/octet-stream' })
             : new Blob([raw], { type: mime });
 
         if (!active) return;
 
+        if (blob.size === 0) {
+          throw new Error('Downloaded file was empty.');
+        }
+
+        // Auth/API errors often come back as JSON blobs when responseType is blob.
+        if (blob.type.includes('json') || blob.type.includes('text/html')) {
+          const text = await blob.text();
+          throw new Error(text.slice(0, 120) || 'Server returned an error instead of the file.');
+        }
+
         if (isTextMime(mime)) {
           setTextContent(await blob.text());
-        } else if (isPdfMime(mime)) {
-          const buffer = await blob.arrayBuffer();
-          if (!buffer.byteLength) throw new Error('Empty PDF');
-          setPdfData(buffer);
-        } else if (isImageMime(mime)) {
+          return;
+        }
+
+        if (isPdfMime(mime) || attachment.filename?.toLowerCase().endsWith('.pdf')) {
+          const isPdf = await blobLooksLikePdf(blob);
+          if (!isPdf) {
+            const text = await blob.text();
+            throw new Error(
+              text.startsWith('{') || text.startsWith('<')
+                ? 'Could not download the PDF (server returned an error).'
+                : 'Downloaded file is not a valid PDF.',
+            );
+          }
+          const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+          objectUrl = URL.createObjectURL(pdfBlob);
+          setPreviewUrl(objectUrl);
+          return;
+        }
+
+        if (isImageMime(mime)) {
           objectUrl = URL.createObjectURL(blob);
           setPreviewUrl(objectUrl);
+          return;
         }
-      } catch {
-        if (active) setError(true);
+      } catch (err) {
+        if (!active) return;
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Could not load preview.';
+        setError(message);
       } finally {
         if (active) setLoading(false);
       }
@@ -103,6 +142,9 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
 
   if (!attachment) return null;
 
+  const isPdf =
+    isPdfMime(attachment.mime_type) || attachment.filename?.toLowerCase().endsWith('.pdf');
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4">
       <div className="fixed inset-0 bg-[var(--overlay-backdrop)]" onClick={onClose} />
@@ -115,6 +157,17 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {previewUrl && isPdf && (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => window.open(previewUrl, '_blank', 'noopener,noreferrer')}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Open</span>
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -144,7 +197,17 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
           )}
 
           {!loading && error && (
-            <p className="text-sm text-red-400 text-center py-12">Could not load preview.</p>
+            <div className="text-center py-12 space-y-4">
+              <p className="text-sm text-red-400">{error}</p>
+              <Button
+                variant="secondary"
+                onClick={() => tasksApi.downloadAttachment(attachment.id, attachment.filename)}
+                className="gap-1.5"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download file
+              </Button>
+            </div>
           )}
 
           {!loading && !error && previewUrl && isImageMime(attachment.mime_type) && (
@@ -157,10 +220,8 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
             </div>
           )}
 
-          {!loading && !error && pdfData && isPdfMime(attachment.mime_type) && (
-            <Suspense fallback={<Skeleton className="h-[60vh] w-full" />}>
-              <PdfViewer data={pdfData} />
-            </Suspense>
+          {!loading && !error && previewUrl && isPdf && (
+            <PdfViewer url={previewUrl} filename={attachment.filename} />
           )}
 
           {!loading && !error && textContent !== null && (
@@ -169,7 +230,7 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
             </pre>
           )}
 
-          {!loading && !error && !previewUrl && !pdfData && textContent === null && (
+          {!loading && !error && !previewUrl && textContent === null && (
             <div className="text-center py-12">
               <p className="text-sm text-text-muted mb-4">No in-app preview for this file type.</p>
               <Button

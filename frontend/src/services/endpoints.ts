@@ -50,7 +50,8 @@ export const tasksApi = {
     api.get<APIResponse<TaskAttachment[]>>(`/tasks/${taskId}/attachments`),
   downloadAttachment: async (attachmentId: number, filename: string) => {
     const response = await api.get(`/attachments/${attachmentId}/download`, { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const mime = response.data?.type || 'application/octet-stream';
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: mime }));
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
