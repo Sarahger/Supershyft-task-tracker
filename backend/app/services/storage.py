@@ -261,13 +261,16 @@ async def fetch_url_bytes(
     oidc_token: str | None = None,
 ) -> tuple[bytes, str]:
     auth = _resolve_blob_auth(oidc_token)
-    if not auth:
-        raise FileNotFoundError("Blob storage not configured")
-    token, _store_id = auth
-    headers = {"Authorization": f"Bearer {token}"}
+    headers: dict[str, str] = {}
+    if auth:
+        token, _store_id = auth
+        headers["Authorization"] = f"Bearer {token}"
 
     async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
         response = await client.get(url, headers=headers)
+        # Public blobs can be fetched without auth — retry once if bearer was rejected.
+        if response.status_code in (401, 403) and headers.get("Authorization"):
+            response = await client.get(url)
         response.raise_for_status()
         content_type = response.headers.get("content-type", "application/octet-stream")
         return response.content, content_type

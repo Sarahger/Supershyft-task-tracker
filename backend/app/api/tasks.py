@@ -43,7 +43,14 @@ from app.schemas.task import (
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
 from app.utils.mentions import resolve_mentioned_user_ids
-from app.services.storage import StorageError, delete_stored_file, fetch_url_bytes, is_private_blob_url, store_file
+from app.services.storage import (
+    StorageError,
+    delete_stored_file,
+    fetch_blob_bytes,
+    fetch_url_bytes,
+    is_private_blob_url,
+    store_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -607,33 +614,86 @@ async def download_attachment(
     attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    if attachment.url:
-        if is_private_blob_url(attachment.url):
-            try:
+
+    oidc_token = request.headers.get("x-vercel-oidc-token")
+    filename = attachment.filename or "download"
+    mime = attachment.mime_type or "application/octet-stream"
+
+    def _file_response(content: bytes, content_type: str | None = None) -> Response:
+        return Response(
+            content=content,
+            media_type=content_type or mime,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "private, max-age=60",
+            },
+        )
+
+    # Vercel Blob: file_path is a store pathname like "attachments/<uuid>.pdf"
+    blob_pathname = None
+    if attachment.file_path and (
+        attachment.file_path.startswith("attachments/")
+        or "blob.vercel-storage.com" in (attachment.file_path or "")
+    ):
+        blob_pathname = attachment.file_path.lstrip("/")
+
+    if blob_pathname or (attachment.url and "blob.vercel-storage.com" in attachment.url):
+        try:
+            if attachment.url and is_private_blob_url(attachment.url):
                 content, content_type = await fetch_url_bytes(
                     attachment.url,
-                    oidc_token=request.headers.get("x-vercel-oidc-token"),
+                    oidc_token=oidc_token,
                 )
-            except Exception as exc:
-                raise HTTPException(status_code=404, detail=f"File not found: {exc}") from exc
-            filename = attachment.filename or "download"
-            return Response(
-                content=content,
-                media_type=attachment.mime_type or content_type,
-                headers={
-                    "Content-Disposition": f'inline; filename="{filename}"',
-                    "Content-Type": attachment.mime_type or content_type or "application/octet-stream",
-                },
+                return _file_response(content, content_type)
+            if blob_pathname:
+                content, content_type = await fetch_blob_bytes(
+                    blob_pathname,
+                    oidc_token=oidc_token,
+                )
+                return _file_response(content, content_type)
+            if attachment.url:
+                # Public blob URL — proxy through API so axios/CORS stay reliable
+                content, content_type = await fetch_url_bytes(
+                    attachment.url,
+                    oidc_token=oidc_token,
+                )
+                return _file_response(content, content_type)
+        except Exception as exc:
+            logger.exception(
+                "Blob download failed for attachment %s (path=%s url=%s)",
+                attachment_id,
+                attachment.file_path,
+                attachment.url,
             )
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Could not read this file from Vercel Blob. "
+                    "Check BLOB_READ_WRITE_TOKEN / Blob store linking, then re-upload the file. "
+                    f"({exc})"
+                ),
+            ) from exc
+
+    # Non-blob remote URL
+    if attachment.url:
         return RedirectResponse(attachment.url)
+
+    # Local disk (dev / non-Vercel hosts only)
     if attachment.file_path and os.path.exists(attachment.file_path):
         return FileResponse(
             attachment.file_path,
-            filename=attachment.filename or os.path.basename(attachment.file_path),
-            media_type=attachment.mime_type or "application/octet-stream",
+            filename=filename,
+            media_type=mime,
             content_disposition_type="inline",
         )
-    raise HTTPException(status_code=404, detail="File not found")
+
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            "File not found on this host. It may have been uploaded on another server "
+            "without Vercel Blob — re-upload the attachment from this environment."
+        ),
+    )
 
 
 @router.delete("/attachments/{attachment_id}")

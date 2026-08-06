@@ -81,9 +81,20 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
         }
 
         // Auth/API errors often come back as JSON blobs when responseType is blob.
-        if (blob.type.includes('json') || blob.type.includes('text/html')) {
+        if (
+          blob.type.includes('json') ||
+          blob.type.includes('text/html') ||
+          blob.type.includes('text/plain')
+        ) {
           const text = await blob.text();
-          throw new Error(text.slice(0, 120) || 'Server returned an error instead of the file.');
+          let detail = text.slice(0, 200);
+          try {
+            const parsed = JSON.parse(text) as { detail?: string };
+            if (parsed.detail) detail = parsed.detail;
+          } catch {
+            /* keep raw text */
+          }
+          throw new Error(detail || 'Server returned an error instead of the file.');
         }
 
         if (isTextMime(mime)) {
@@ -95,11 +106,16 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
           const isPdf = await blobLooksLikePdf(blob);
           if (!isPdf) {
             const text = await blob.text();
-            throw new Error(
-              text.startsWith('{') || text.startsWith('<')
-                ? 'Could not download the PDF (server returned an error).'
-                : 'Downloaded file is not a valid PDF.',
-            );
+            let detail = 'Downloaded file is not a valid PDF.';
+            try {
+              const parsed = JSON.parse(text) as { detail?: string };
+              if (parsed.detail) detail = parsed.detail;
+            } catch {
+              if (text.startsWith('{') || text.startsWith('<')) {
+                detail = 'Could not download the PDF (server returned an error).';
+              }
+            }
+            throw new Error(detail);
           }
           const pdfBlob = new Blob([blob], { type: 'application/pdf' });
           objectUrl = URL.createObjectURL(pdfBlob);
@@ -114,6 +130,20 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
         }
       } catch (err) {
         if (!active) return;
+        // Axios 404 with blob body
+        const axiosData = (err as { response?: { data?: Blob; status?: number } })?.response?.data;
+        if (axiosData instanceof Blob) {
+          try {
+            const text = await axiosData.text();
+            const parsed = JSON.parse(text) as { detail?: string };
+            if (parsed.detail) {
+              setError(parsed.detail);
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
         const message =
           err instanceof Error && err.message
             ? err.message
