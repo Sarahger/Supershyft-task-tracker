@@ -58,14 +58,22 @@ export function AttachmentPreviewModal({ attachment, onClose }: AttachmentPrevie
       try {
         const response = await api.get(`/attachments/${attachment.id}/download`, { responseType: 'blob' });
         const mime = attachment.mime_type || response.data.type || 'application/octet-stream';
-        const blob = new Blob([response.data], { type: mime });
+        const raw = response.data as Blob;
+        const blob =
+          raw instanceof Blob
+            ? raw.type && raw.type !== 'application/octet-stream'
+              ? raw
+              : new Blob([raw], { type: mime })
+            : new Blob([raw], { type: mime });
 
         if (!active) return;
 
         if (isTextMime(mime)) {
           setTextContent(await blob.text());
         } else if (isPdfMime(mime)) {
-          setPdfData(await blob.arrayBuffer());
+          const buffer = await blob.arrayBuffer();
+          if (!buffer.byteLength) throw new Error('Empty PDF');
+          setPdfData(buffer);
         } else if (isImageMime(mime)) {
           objectUrl = URL.createObjectURL(blob);
           setPreviewUrl(objectUrl);
