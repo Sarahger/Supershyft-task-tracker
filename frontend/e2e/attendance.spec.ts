@@ -359,6 +359,11 @@ test.describe('Attendance HR flows', () => {
     await expect(page.getByTestId('hr-stat-present_wfo')).toBeVisible();
     await expect(page.getByTestId('hr-open-calendar')).toBeVisible();
     await expect(page.getByTestId('hr-attendance-table')).toBeVisible();
+    await page.getByTestId('hr-view-week').click();
+    await expect(page.getByTestId('hr-week-table')).toBeVisible();
+    await expect(page.getByText('Mon', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Sat', { exact: true }).first()).toBeVisible();
+    await page.getByTestId('hr-view-day').click();
     await page.getByTestId('hr-open-calendar').click();
     await expect(page.getByTestId('hr-calendar-popup')).toBeVisible();
     await page.getByLabel('Close').click();

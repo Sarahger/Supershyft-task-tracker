@@ -8,15 +8,15 @@ interface Props {
   week: AttendanceWeek | undefined;
   loading?: boolean;
   onSelectUser: (userId: number) => void;
-  search?: string;
 }
 
-export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = '' }: Props) {
-  const q = search.trim().toLowerCase();
+/** Monday–Saturday only (indices 0–5 of Mon-based week). */
+const WORK_DAY_COUNT = 6;
 
+export function AttendanceHrWeekTable({ week, loading, onSelectUser }: Props) {
   if (loading || !week) {
     return (
-      <div className="task-table p-4 animate-pulse space-y-2">
+      <div className="task-table p-4 animate-pulse space-y-2" data-testid="hr-week-table">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-10 bg-dark-muted rounded" />
         ))}
@@ -24,38 +24,45 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = ''
     );
   }
 
-  const rows = week.rows.filter((row) => {
-    if (!q) return true;
-    const name = `${row.user.first_name} ${row.user.last_name}`.toLowerCase();
-    const depts = (row.user.departments || []).join(' ').toLowerCase();
-    return name.includes(q) || depts.includes(q);
-  });
-
-  const dayHeaders = week.rows[0]?.days.map((d) => format(parseISO(d.date), 'EEE')) ?? [
-    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
-  ];
+  const sampleDays = (week.rows[0]?.days ?? []).slice(0, WORK_DAY_COUNT);
+  const dayHeaders =
+    sampleDays.length > 0
+      ? sampleDays.map((d) => ({
+          key: d.date,
+          label: format(parseISO(d.date), 'EEE'),
+          dateLabel: format(parseISO(d.date), 'd'),
+        }))
+      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((label, i) => ({
+          key: String(i),
+          label,
+          dateLabel: '',
+        }));
 
   return (
     <div className="task-table" data-testid="hr-week-table">
-      <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
+      <div className="overflow-x-auto scrollbar-none">
         <table className="w-full text-sm border-collapse">
-          <thead className="sticky top-0 z-20 task-table-header">
+          <thead className="task-table-header">
             <tr className="text-2xs uppercase tracking-wider text-text-muted">
-              <th className="sticky left-0 z-30 task-table-header px-3 py-2.5 text-left font-medium min-w-[160px]">
+              <th className="sticky left-0 z-10 task-table-header px-3 py-2.5 text-left font-medium min-w-[140px]">
                 Employee
               </th>
-              <th className="px-2 py-2.5 text-left font-medium min-w-[100px]">Department</th>
               {dayHeaders.map((d) => (
-                <th key={d} className="px-2 py-2.5 text-center font-medium w-12">
-                  {d}
+                <th key={d.key} className="px-1.5 py-2.5 text-center font-medium min-w-[44px]">
+                  <span className="block">{d.label}</span>
+                  {d.dateLabel ? (
+                    <span className="block text-text-muted font-normal normal-case tracking-normal">
+                      {d.dateLabel}
+                    </span>
+                  ) : null}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const name = `${row.user.first_name} ${row.user.last_name}`;
-              const dept = (row.user.departments || []).join(', ') || '—';
+            {week.rows.map((row) => {
+              const name = `${row.user.first_name} ${row.user.last_name}`.trim();
+              const days = row.days.slice(0, WORK_DAY_COUNT);
               return (
                 <tr
                   key={row.user.id}
@@ -68,10 +75,16 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = ''
                       <span className="truncate text-text-primary text-xs font-medium">{name}</span>
                     </div>
                   </td>
-                  <td className="px-2 py-2 text-xs text-text-muted truncate max-w-[120px]">{dept}</td>
-                  {row.days.map((cell) => (
-                    <td key={cell.date} className="px-2 py-2 text-center">
-                      <span className="inline-flex justify-center" title={statusLabel(cell.status)}>
+                  {days.map((cell) => (
+                    <td key={cell.date} className="px-1.5 py-2 text-center">
+                      <span
+                        className="inline-flex justify-center"
+                        title={
+                          cell.status
+                            ? `${statusLabel(cell.status)}${cell.recorded_at ? ` · ${format(parseISO(cell.recorded_at), 'h:mm a')}` : ''}`
+                            : 'Not marked'
+                        }
+                      >
                         <AttendanceStatusDot status={cell.status} recordedAt={cell.recorded_at} size="md" />
                       </span>
                     </td>
@@ -79,10 +92,10 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, search = ''
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {week.rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-text-muted">
-                  No employees match your filters.
+                <td colSpan={1 + WORK_DAY_COUNT} className="px-4 py-8 text-center text-sm text-text-muted">
+                  No employees found.
                 </td>
               </tr>
             )}

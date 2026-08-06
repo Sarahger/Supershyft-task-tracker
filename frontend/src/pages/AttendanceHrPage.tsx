@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { format, isAfter, startOfDay } from 'date-fns';
+import { format, isAfter, startOfDay, startOfWeek, addDays } from 'date-fns';
 import { CalendarDays, Download, X } from 'lucide-react';
 import clsx from 'clsx';
 import { attendanceApi } from '../services/endpoints';
 import { AttendanceHrStats, ATTENDANCE_HR_STAT_LABELS } from '../components/attendance/AttendanceHrStats';
 import { AttendanceHrPeopleModal } from '../components/attendance/AttendanceHrPeopleModal';
 import { AttendanceHrDayTable } from '../components/attendance/AttendanceHrDayTable';
+import { AttendanceHrWeekTable } from '../components/attendance/AttendanceHrWeekTable';
 import { AttendanceEmployeeDrawer } from '../components/attendance/AttendanceEmployeeDrawer';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -24,15 +25,24 @@ export default function AttendanceHrPage() {
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfDay(new Date()));
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [view, setView] = useState<'day' | 'week'>('day');
   const [drawerUserId, setDrawerUserId] = useState<number | null>(null);
   const [statKey, setStatKey] = useState<AttendanceTodayStatKey | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const dayIso = toIsoDate(selectedDay);
+  const weekStart = startOfWeek(selectedDay, { weekStartsOn: 1 });
+  const weekStartIso = toIsoDate(weekStart);
 
   const { data, isLoading } = useQuery({
     queryKey: ['attendance', 'day', dayIso],
     queryFn: () => attendanceApi.day({ day: dayIso }).then((r) => r.data.data),
+  });
+
+  const { data: weekData, isLoading: weekLoading } = useQuery({
+    queryKey: ['attendance', 'week', weekStartIso],
+    queryFn: () => attendanceApi.week({ week_start: weekStartIso }).then((r) => r.data.data),
+    enabled: view === 'week',
   });
 
   const handleExport = async () => {
@@ -72,12 +82,13 @@ export default function AttendanceHrPage() {
     ? `${ATTENDANCE_HR_STAT_LABELS[statKey]} · ${people.length}`
     : '';
   const dayLabel = format(selectedDay, 'EEE, MMM d');
+  const weekLabel = `${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 5), 'MMM d')}`;
 
   return (
     <div className="w-full pb-12" data-testid="attendance-hr-page">
       <PageHeader
         title="Attendance — HR"
-        subtitle="Daily organization overview."
+        subtitle="Daily and weekly organization overview."
         onMobileBack={() => navigate('/attendance')}
         action={
           <Button
@@ -101,14 +112,44 @@ export default function AttendanceHrPage() {
       />
 
       <div className="sticky top-0 z-20 mt-6 mb-4 py-3 bg-dark-bg border-b border-dark-border">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-medium text-text-secondary">Day</p>
+            <p className="text-xs font-medium text-text-secondary">
+              {view === 'day' ? 'Day' : 'Week'}
+            </p>
             <p className="text-sm font-semibold text-text-primary truncate" data-testid="hr-selected-day">
-              {dayLabel}
+              {view === 'day' ? dayLabel : weekLabel}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <div className="flex rounded-lg border border-dark-border overflow-hidden bg-dark-card">
+              <button
+                type="button"
+                onClick={() => setView('day')}
+                data-testid="hr-view-day"
+                className={clsx(
+                  'px-3 py-2 text-xs font-medium min-h-[36px] transition-colors duration-hover',
+                  view === 'day'
+                    ? 'bg-surface-highlight text-text-primary'
+                    : 'text-text-muted hover:text-text-secondary',
+                )}
+              >
+                Day
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('week')}
+                data-testid="hr-view-week"
+                className={clsx(
+                  'px-3 py-2 text-xs font-medium min-h-[36px] transition-colors duration-hover',
+                  view === 'week'
+                    ? 'bg-surface-highlight text-text-primary'
+                    : 'text-text-muted hover:text-text-secondary',
+                )}
+              >
+                Week
+              </button>
+            </div>
             <Button
               type="button"
               variant="secondary"
@@ -119,22 +160,32 @@ export default function AttendanceHrPage() {
                 setCalendarOpen(true);
               }}
               data-testid="hr-open-calendar"
-              aria-label="Pick a day"
+              aria-label={view === 'day' ? 'Pick a day' : 'Pick a week'}
             >
               <CalendarDays className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Change day</span>
+              <span className="hidden sm:inline">{view === 'day' ? 'Change day' : 'Change week'}</span>
             </Button>
           </div>
         </div>
       </div>
 
       <section className="workspace-section !mb-0">
-        <h2 className="workspace-section-title">Attendance · {dayLabel}</h2>
-        <AttendanceHrDayTable
-          rows={data?.rows ?? []}
-          loading={isLoading}
-          onSelectUser={setDrawerUserId}
-        />
+        <h2 className="workspace-section-title">
+          Attendance · {view === 'day' ? dayLabel : weekLabel}
+        </h2>
+        {view === 'day' ? (
+          <AttendanceHrDayTable
+            rows={data?.rows ?? []}
+            loading={isLoading}
+            onSelectUser={setDrawerUserId}
+          />
+        ) : (
+          <AttendanceHrWeekTable
+            week={weekData}
+            loading={weekLoading}
+            onSelectUser={setDrawerUserId}
+          />
+        )}
       </section>
 
       {calendarOpen && (
@@ -151,11 +202,13 @@ export default function AttendanceHrPage() {
             )}
             role="dialog"
             aria-modal="true"
-            aria-label="Select day"
+            aria-label={view === 'day' ? 'Select day' : 'Select week'}
             data-testid="hr-calendar-popup"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border">
-              <h2 className="text-base font-semibold text-text-primary">Select day</h2>
+              <h2 className="text-base font-semibold text-text-primary">
+                {view === 'day' ? 'Select day' : 'Select a day in the week'}
+              </h2>
               <button
                 type="button"
                 onClick={() => setCalendarOpen(false)}

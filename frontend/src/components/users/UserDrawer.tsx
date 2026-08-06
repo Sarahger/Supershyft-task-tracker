@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { CheckCircle2, ClipboardList, Clock, Pencil, Trash2, TrendingUp } from 'lucide-react';
-import { departmentsApi, usersApi } from '../../services/endpoints';
+import { format } from 'date-fns';
+import { CalendarCheck, CheckCircle2, ClipboardList, Clock, Pencil, Trash2 } from 'lucide-react';
+import { attendanceApi, departmentsApi, usersApi } from '../../services/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { canDeleteUser, canEditUser } from '../../lib/roles';
@@ -13,6 +14,8 @@ import { Button } from '../ui/Button';
 import { Skeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
+import { AttendanceStatusDot } from '../attendance/AttendanceStatusDot';
+import { formatRecordedTime, statusLabel } from '../attendance/attendanceUtils';
 import { UserFormModal, emptyUserForm, userToForm, type UserFormState } from './UserFormModal';
 import { STATUS_LABELS, USER_STATUS_LABELS, type UserProfile } from '../../types';
 
@@ -48,11 +51,98 @@ function StatCard({
   );
 }
 
-function performanceLabel(utilization: number | null) {
-  if (utilization == null) return { text: 'No time data yet', tone: 'text-text-muted' };
-  if (utilization <= 100) return { text: 'On or under estimate', tone: 'metric-emerald' };
-  if (utilization <= 120) return { text: 'Slightly over estimate', tone: 'metric-amber' };
-  return { text: 'Over estimate', tone: 'metric-red' };
+function UserAttendanceSection({ userId }: { userId: number }) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['attendance', 'user', userId, year, month],
+    queryFn: () =>
+      attendanceApi.userDetail(userId, { year, month }).then((r) => r.data.data),
+  });
+
+  const todayIso = format(now, 'yyyy-MM-dd');
+  const todayRecord = data?.records.find((r) => r.attendance_date === todayIso) ?? null;
+  const summary = data?.summary;
+
+  return (
+    <section className="rounded-lg border border-dark-border p-4" data-testid="user-attendance-section">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-sm font-medium text-text-primary">Attendance</h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            {format(now, 'MMMM yyyy')}
+          </p>
+        </div>
+        <CalendarCheck className="h-4 w-4 text-text-muted shrink-0" />
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-3 animate-pulse">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-16 rounded-md bg-dark-muted" />
+          ))}
+        </div>
+      ) : isError || !summary ? (
+        <p className="text-sm text-text-muted">Could not load attendance for this user.</p>
+      ) : (
+        <>
+          <div className="rounded-md border border-dark-border bg-surface-subtle p-3 mb-3 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-2xs uppercase tracking-wider text-text-muted">Today</p>
+              <p className="text-sm font-medium text-text-primary mt-0.5 truncate">
+                {statusLabel(todayRecord?.status)}
+              </p>
+              {todayRecord?.recorded_at && (
+                <p className="text-2xs text-text-muted mt-0.5">
+                  Marked at {formatRecordedTime(todayRecord.recorded_at)}
+                </p>
+              )}
+            </div>
+            <AttendanceStatusDot
+              status={todayRecord?.status ?? null}
+              recordedAt={todayRecord?.recorded_at}
+              size="md"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
+              <p className="text-2xs uppercase tracking-wider text-text-muted">WFO</p>
+              <p className="text-lg font-semibold metric-emerald mt-0.5 tabular-nums">
+                {summary.wfo_count}
+              </p>
+            </div>
+            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
+              <p className="text-2xs uppercase tracking-wider text-text-muted">WFH</p>
+              <p className="text-lg font-semibold metric-sky mt-0.5 tabular-nums">
+                {summary.wfh_count}
+              </p>
+            </div>
+            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
+              <p className="text-2xs uppercase tracking-wider text-text-muted">Leave / half / camp</p>
+              <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">
+                {summary.leave_count + (summary.half_day_count ?? 0) + (summary.camp_count ?? 0)}
+              </p>
+              <p className="text-2xs text-text-muted mt-0.5">
+                {summary.leave_count}L · {summary.half_day_count ?? 0}H · {summary.camp_count ?? 0}C
+              </p>
+            </div>
+            <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
+              <p className="text-2xs uppercase tracking-wider text-text-muted">Attendance %</p>
+              <p className="text-lg font-semibold metric-emerald mt-0.5 tabular-nums">
+                {summary.attendance_percent}%
+              </p>
+              <p className="text-2xs text-text-muted mt-0.5">
+                {summary.present_count}/{summary.working_days} working days
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
 
 function UserProfileContent({
@@ -72,7 +162,6 @@ function UserProfileContent({
 }) {
   const { openTask } = useTaskDrawer();
   const stats = profile.task_stats;
-  const perf = performanceLabel(stats.time_utilization_percent);
 
   return (
     <div className="px-6 pt-14 pb-8 space-y-6">
@@ -147,62 +236,13 @@ function UserProfileContent({
         </div>
       </section>
 
-      <section className="rounded-lg border border-dark-border p-4">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h2 className="text-sm font-medium text-text-primary">Time performance</h2>
-            <p className="text-xs text-text-muted mt-0.5">Time taken vs time required</p>
-          </div>
-          <TrendingUp className="h-4 w-4 text-text-muted shrink-0" />
-        </div>
+      <UserAttendanceSection userId={profile.id} />
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-            <p className="text-2xs uppercase tracking-wider text-text-muted">Required</p>
-            <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">{stats.total_estimated_hours}h</p>
-          </div>
-          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-            <p className="text-2xs uppercase tracking-wider text-text-muted">Taken</p>
-            <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">{stats.total_actual_hours}h</p>
-          </div>
-          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-            <p className="text-2xs uppercase tracking-wider text-text-muted">Utilization</p>
-            <p className={clsx('text-lg font-semibold mt-0.5 tabular-nums', perf.tone)}>
-              {stats.time_utilization_percent != null ? `${stats.time_utilization_percent}%` : '—'}
-            </p>
-            <p className={clsx('text-2xs mt-0.5', perf.tone)}>{perf.text}</p>
-          </div>
-          <div className="rounded-md border border-dark-border bg-surface-subtle p-3">
-            <p className="text-2xs uppercase tracking-wider text-text-muted">On track</p>
-            <p className="text-lg font-semibold text-text-primary mt-0.5 tabular-nums">
-              {stats.on_track_count}/{stats.tasks_with_time_data || 0}
-            </p>
-            <p className="text-2xs text-text-muted mt-0.5">{stats.over_budget_count} over</p>
-          </div>
-        </div>
-
-        {stats.time_utilization_percent != null && (
-          <div className="h-1.5 rounded-full bg-dark-muted overflow-hidden">
-            <div
-              className={clsx(
-                'h-full rounded-full',
-                stats.time_utilization_percent <= 100
-                  ? 'bg-emerald-500'
-                  : stats.time_utilization_percent <= 120
-                    ? 'bg-amber-500'
-                    : 'bg-red-500',
-              )}
-              style={{ width: `${Math.min(stats.time_utilization_percent, 150) / 150 * 100}%` }}
-            />
-          </div>
-        )}
-
-        {profile.pending_reviews_count > 0 && (
-          <p className="text-xs text-text-secondary mt-3">
-            Reviewing {profile.pending_reviews_count} task{profile.pending_reviews_count === 1 ? '' : 's'} now
-          </p>
-        )}
-      </section>
+      {profile.pending_reviews_count > 0 && (
+        <p className="text-xs text-text-secondary -mt-3">
+          Reviewing {profile.pending_reviews_count} task{profile.pending_reviews_count === 1 ? '' : 's'} now
+        </p>
+      )}
 
       <section>
         <h2 className="text-2xs font-medium uppercase tracking-wider text-text-muted mb-2">
