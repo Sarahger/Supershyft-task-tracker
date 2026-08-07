@@ -14,6 +14,10 @@ class AttendanceMarkRequest(BaseModel):
         None,
         description="Calendar day in company timezone. Defaults to today. Only today and yesterday allowed.",
     )
+    user_id: int | None = Field(
+        None,
+        description="Target user. Managers/admins may set attendance for another active user.",
+    )
 
 
 class AttendanceUserBrief(BaseModel):

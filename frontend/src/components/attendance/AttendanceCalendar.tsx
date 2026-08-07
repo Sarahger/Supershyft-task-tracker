@@ -41,11 +41,11 @@ export function AttendanceCalendar({
 
   if (loading) {
     return (
-      <div className="card h-full p-3 animate-pulse flex flex-col">
-        <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-3" />
-        <div className="flex-1 grid grid-cols-7 gap-1">
+      <div className="card h-full p-4 animate-pulse flex flex-col">
+        <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-4" />
+        <div className="flex-1 grid grid-cols-7 gap-2">
           {Array.from({ length: 35 }).map((_, i) => (
-            <div key={i} className="rounded-md bg-dark-muted" />
+            <div key={i} className="rounded-lg bg-dark-muted min-h-[3rem]" />
           ))}
         </div>
       </div>
@@ -53,8 +53,8 @@ export function AttendanceCalendar({
   }
 
   return (
-    <section className="card h-full min-h-0 p-3 flex flex-col">
-      <div className="flex items-center justify-between shrink-0 mb-2">
+    <section className="card h-full min-h-0 p-4 sm:p-5 flex flex-col">
+      <div className="flex items-center justify-between shrink-0 mb-3">
         <button
           type="button"
           onClick={() => onMonthChange(subMonths(month, 1))}
@@ -75,16 +75,16 @@ export function AttendanceCalendar({
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1 shrink-0 mb-1">
+      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 shrink-0 mb-2">
         {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
-          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-0.5">
+          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-1">
             {d}
           </div>
         ))}
       </div>
       <div
-        className="flex-1 min-h-0 grid grid-cols-7 gap-1"
-        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
+        className="flex-1 min-h-0 grid grid-cols-7 gap-1.5 sm:gap-2"
+        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(2.75rem, 1fr))` }}
         key={format(month, 'yyyy-MM')}
       >
         {days.map((day) => {
@@ -104,7 +104,8 @@ export function AttendanceCalendar({
                   : statusLabel(null)
               }
               className={clsx(
-                'relative flex flex-col items-center justify-center rounded-md text-sm transition-colors duration-hover min-h-0',
+                'relative flex flex-col items-center justify-center gap-1.5 rounded-lg text-sm',
+                'transition-colors duration-hover min-h-[2.75rem] py-1.5 px-0.5',
                 selectedDay && 'bg-surface-active text-text-primary',
                 !selectedDay && inMonth && 'text-text-primary hover:bg-dark-hover',
                 !selectedDay && !inMonth && 'text-text-muted/40',
@@ -112,12 +113,12 @@ export function AttendanceCalendar({
               )}
               aria-label={`${format(day, 'MMMM d')}: ${statusLabel(status)}`}
             >
-              <span className="text-xs tabular-nums leading-none">{format(day, 'd')}</span>
+              <span className="text-sm tabular-nums leading-none">{format(day, 'd')}</span>
               <span
                 className={clsx(
-                  'mt-1 h-1.5 w-1.5 rounded-full',
+                  'h-2 w-2 rounded-full shrink-0',
                   status ? statusDotClass(status) : 'bg-transparent',
-                  !inMonth && 'opacity-40',
+                  !inMonth && status && 'opacity-40',
                 )}
                 aria-hidden
               />

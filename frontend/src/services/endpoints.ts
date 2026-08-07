@@ -189,10 +189,12 @@ export const attendanceApi = {
   mark: (
     status: import('../types').AttendanceStatus,
     attendance_date?: string,
+    user_id?: number,
   ) =>
     api.post<APIResponse<import('../types').AttendanceRecord>>('/attendance', {
       status,
       ...(attendance_date ? { attendance_date } : {}),
+      ...(user_id != null ? { user_id } : {}),
     }),
   me: (params?: { month?: number; year?: number }) =>
     api.get<APIResponse<import('../types').AttendanceMe>>('/attendance/me', { params }),

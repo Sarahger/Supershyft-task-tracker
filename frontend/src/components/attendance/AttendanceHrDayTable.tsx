@@ -1,16 +1,33 @@
-import type { AttendanceDayRow } from '../../types';
+import clsx from 'clsx';
+import type { AttendanceDayRow, AttendanceStatus } from '../../types';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
-import { formatRecordedTime, statusLabel } from './attendanceUtils';
+import { formatRecordedTime, isAttendanceEditableDay, statusLabel } from './attendanceUtils';
 import { EmptyState } from '../ui/Skeleton';
 import { Avatar } from '../ui/Avatar';
+import { parseISO, startOfDay } from 'date-fns';
 
 interface Props {
   rows: AttendanceDayRow[];
   loading?: boolean;
+  selectedDay: Date;
   onSelectUser?: (userId: number) => void;
+  onMarkUser?: (payload: {
+    userId: number;
+    userName: string;
+    day: Date;
+    status: AttendanceStatus | null;
+  }) => void;
 }
 
-export function AttendanceHrDayTable({ rows, loading, onSelectUser }: Props) {
+export function AttendanceHrDayTable({
+  rows,
+  loading,
+  selectedDay,
+  onSelectUser,
+  onMarkUser,
+}: Props) {
+  const dayEditable = isAttendanceEditableDay(selectedDay);
+
   if (loading) {
     return (
       <div className="task-table animate-pulse" data-testid="hr-attendance-table">
@@ -43,6 +60,10 @@ export function AttendanceHrDayTable({ rows, loading, onSelectUser }: Props) {
           <tbody>
             {rows.map((row) => {
               const name = `${row.user.first_name} ${row.user.last_name}`.trim();
+              const day =
+                row.attendance_date != null
+                  ? startOfDay(parseISO(row.attendance_date))
+                  : selectedDay;
               return (
                 <tr
                   key={row.user.id}
@@ -55,8 +76,43 @@ export function AttendanceHrDayTable({ rows, loading, onSelectUser }: Props) {
                       <span className="truncate text-text-primary text-xs font-medium">{name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5">
-                    <AttendanceStatusDot status={row.status} showLabel recordedAt={row.recorded_at} />
+                  <td
+                    className="px-4 py-2.5"
+                    onClick={(e) => {
+                      if (!dayEditable || !onMarkUser) return;
+                      e.stopPropagation();
+                      onMarkUser({
+                        userId: row.user.id,
+                        userName: name,
+                        day,
+                        status: row.status,
+                      });
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={!dayEditable || !onMarkUser}
+                      className={clsx(
+                        'inline-flex items-center gap-2 rounded-md text-left',
+                        dayEditable && onMarkUser
+                          ? 'hover:bg-dark-muted/60 px-1.5 py-1 -mx-1.5 -my-1 cursor-pointer'
+                          : 'cursor-default',
+                      )}
+                      title={
+                        dayEditable
+                          ? row.status
+                            ? 'Click to edit attendance'
+                            : 'Click to mark attendance'
+                          : undefined
+                      }
+                      data-testid={`hr-day-mark-${row.user.id}`}
+                    >
+                      {row.status ? (
+                        <AttendanceStatusDot status={row.status} showLabel recordedAt={row.recorded_at} />
+                      ) : (
+                        <span className="text-xs text-accent-primary font-medium">Mark</span>
+                      )}
+                    </button>
                     <span className="sr-only">{statusLabel(row.status)}</span>
                   </td>
                   <td className="px-4 py-2.5 text-text-muted tabular-nums">

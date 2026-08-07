@@ -6,6 +6,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
+from app.core.constants import UserRole, UserStatus
 from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import User
@@ -26,6 +27,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
+_MANAGER_ROLES = {UserRole.ADMIN.value, UserRole.MANAGER.value}
+
 
 @router.post("", response_model=APIResponse[AttendanceRecordResponse])
 def mark_attendance(
@@ -33,8 +36,16 @@ def mark_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    target_user = current_user
+    if body.user_id is not None and body.user_id != current_user.id:
+        if current_user.role not in _MANAGER_ROLES:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        target_user = db.query(User).filter(User.id == body.user_id).first()
+        if not target_user or target_user.status == UserStatus.INACTIVE.value:
+            raise HTTPException(status_code=404, detail="User not found")
+
     data = AttendanceService(db).upsert(
-        current_user,
+        target_user,
         body.status,
         attendance_date=body.attendance_date,
     )

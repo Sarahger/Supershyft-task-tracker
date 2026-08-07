@@ -181,6 +181,52 @@ def test_employee_cannot_access_hr_endpoints(client, users):
     assert client.post("/api/attendance/export/csv", json={}, headers=headers).status_code == 403
 
 
+def test_employee_cannot_mark_for_other_user(client, users):
+    headers = auth_header(users["employee"])
+    r = client.post(
+        "/api/attendance",
+        json={"status": "WFO", "user_id": users["other"].id},
+        headers=headers,
+    )
+    assert r.status_code == 403
+
+
+def test_manager_can_mark_for_other_user(client, users):
+    mgr = auth_header(users["manager"])
+    target_id = users["employee"].id
+    r = client.post(
+        "/api/attendance",
+        json={"status": "WFH", "user_id": target_id},
+        headers=mgr,
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["user_id"] == target_id
+    assert r.json()["data"]["status"] == "WFH"
+
+    # Edit again
+    r2 = client.post(
+        "/api/attendance",
+        json={"status": "LEAVE", "user_id": target_id},
+        headers=mgr,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["data"]["status"] == "LEAVE"
+
+
+def test_manager_cannot_mark_inactive_user(client, users, db_session):
+    inactive = users["other"]
+    inactive.status = "inactive"
+    db_session.commit()
+
+    mgr = auth_header(users["manager"])
+    r = client.post(
+        "/api/attendance",
+        json={"status": "WFO", "user_id": inactive.id},
+        headers=mgr,
+    )
+    assert r.status_code == 404
+
+
 def test_employee_me_only_own_records(client, users, db_session):
     from app.services.attendance_service import today_local, now_utc
 

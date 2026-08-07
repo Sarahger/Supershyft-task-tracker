@@ -15,6 +15,8 @@ interface Props {
   date?: string | Date | null;
   currentStatus?: AttendanceStatus | null;
   isEdit?: boolean;
+  /** When marking on behalf of someone else (HR) */
+  personName?: string | null;
 }
 
 const ICONS = {
@@ -40,6 +42,7 @@ export function AttendanceMarkModal({
   date,
   currentStatus,
   isEdit,
+  personName,
 }: Props) {
   const [glow, setGlow] = useState<AttendanceStatus | null>(null);
   const [greeting] = useState(() => greetingForNow());
@@ -52,13 +55,22 @@ export function AttendanceMarkModal({
 
   if (!open) return null;
 
+  const forPerson = personName?.trim() || null;
   const title = isEdit
     ? today
-      ? "Update today's attendance"
-      : `Update ${format(day, 'MMM d')}`
+      ? forPerson
+        ? `Update ${forPerson}'s attendance`
+        : "Update today's attendance"
+      : forPerson
+        ? `Update ${forPerson} · ${format(day, 'MMM d')}`
+        : `Update ${format(day, 'MMM d')}`
     : today
-      ? "Mark today's attendance"
-      : `Mark ${format(day, 'MMM d, yyyy')}`;
+      ? forPerson
+        ? `Mark ${forPerson}'s attendance`
+        : "Mark today's attendance"
+      : forPerson
+        ? `Mark ${forPerson} · ${format(day, 'MMM d, yyyy')}`
+        : `Mark ${format(day, 'MMM d, yyyy')}`;
 
   return (
     <div
@@ -94,7 +106,7 @@ export function AttendanceMarkModal({
                 {isEdit ? 'Attendance Updated' : 'Attendance Recorded'}
               </p>
               <p className="text-sm text-text-muted">
-                {today ? 'See you today' : format(day, 'EEEE, MMM d')}
+                {forPerson ? forPerson : today ? 'See you today' : format(day, 'EEEE, MMM d')}
               </p>
             </div>
           ) : (
@@ -104,12 +116,14 @@ export function AttendanceMarkModal({
                   <Check className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  {today && <p className="text-xs text-text-muted mb-0.5">{greeting}</p>}
+                  {today && !forPerson && (
+                    <p className="text-xs text-text-muted mb-0.5">{greeting}</p>
+                  )}
                   <h2 id="attendance-mark-title" className="text-base font-semibold text-text-primary">
                     {title}
                   </h2>
                   <p className="text-sm text-text-muted mt-0.5">
-                    {isEdit ? 'Pick a new status — saves immediately.' : 'One tap. That\'s it.'}
+                    {isEdit ? 'Pick a new status — saves immediately.' : "One tap. That's it."}
                   </p>
                 </div>
               </div>

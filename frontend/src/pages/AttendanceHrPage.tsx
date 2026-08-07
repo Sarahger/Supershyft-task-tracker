@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, isAfter, startOfDay, startOfWeek, addDays } from 'date-fns';
 import { CalendarDays, Download, X } from 'lucide-react';
 import clsx from 'clsx';
@@ -11,17 +11,27 @@ import { AttendanceHrDayTable } from '../components/attendance/AttendanceHrDayTa
 import { AttendanceHrWeekTable } from '../components/attendance/AttendanceHrWeekTable';
 import { AttendanceEmployeeDrawer } from '../components/attendance/AttendanceEmployeeDrawer';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
+import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
+import { isAttendanceEditableDay } from '../components/attendance/attendanceUtils';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { toast } from '../components/ui/Toast';
-import type { AttendanceTodayStatKey } from '../types';
+import type { AttendanceStatus, AttendanceTodayStatKey } from '../types';
 
 function toIsoDate(d: Date): string {
   return format(d, 'yyyy-MM-dd');
 }
 
+type MarkTarget = {
+  userId: number;
+  userName: string;
+  day: Date;
+  status: AttendanceStatus | null;
+};
+
 export default function AttendanceHrPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [selectedDay, setSelectedDay] = useState(() => startOfDay(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfDay(new Date()));
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -29,6 +39,8 @@ export default function AttendanceHrPage() {
   const [drawerUserId, setDrawerUserId] = useState<number | null>(null);
   const [statKey, setStatKey] = useState<AttendanceTodayStatKey | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [markTarget, setMarkTarget] = useState<MarkTarget | null>(null);
+  const [markSuccess, setMarkSuccess] = useState(false);
 
   const dayIso = toIsoDate(selectedDay);
   const weekStart = startOfWeek(selectedDay, { weekStartsOn: 1 });
@@ -44,6 +56,41 @@ export default function AttendanceHrPage() {
     queryFn: () => attendanceApi.week({ week_start: weekStartIso }).then((r) => r.data.data),
     enabled: view === 'week',
   });
+
+  const markMutation = useMutation({
+    mutationFn: ({
+      status,
+      date,
+      userId,
+    }: {
+      status: AttendanceStatus;
+      date: string;
+      userId: number;
+    }) => attendanceApi.mark(status, date, userId).then((r) => r.data.data),
+    onSuccess: () => {
+      setMarkSuccess(true);
+      toast.success('Attendance saved');
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
+      setTimeout(() => {
+        setMarkSuccess(false);
+        setMarkTarget(null);
+      }, 900);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Could not save attendance';
+      toast.error(typeof msg === 'string' ? msg : 'Could not save attendance');
+    },
+  });
+
+  const openMark = (target: MarkTarget) => {
+    if (!isAttendanceEditableDay(target.day)) {
+      toast.info('You can only mark or edit today and yesterday.');
+      return;
+    }
+    setMarkTarget(target);
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -88,7 +135,7 @@ export default function AttendanceHrPage() {
     <div className="w-full pb-12" data-testid="attendance-hr-page">
       <PageHeader
         title="Attendance — HR"
-        subtitle="Daily and weekly organization overview."
+        subtitle="Daily and weekly organization overview. Mark or edit today and yesterday for anyone."
         onMobileBack={() => navigate('/attendance')}
         action={
           <Button
@@ -177,13 +224,16 @@ export default function AttendanceHrPage() {
           <AttendanceHrDayTable
             rows={data?.rows ?? []}
             loading={isLoading}
+            selectedDay={selectedDay}
             onSelectUser={setDrawerUserId}
+            onMarkUser={openMark}
           />
         ) : (
           <AttendanceHrWeekTable
             week={weekData}
             loading={weekLoading}
             onSelectUser={setDrawerUserId}
+            onMarkCell={openMark}
           />
         )}
       </section>
@@ -240,6 +290,25 @@ export default function AttendanceHrPage() {
       />
 
       <AttendanceEmployeeDrawer userId={drawerUserId} onClose={() => setDrawerUserId(null)} />
+
+      <AttendanceMarkModal
+        open={!!markTarget}
+        loading={markMutation.isPending}
+        success={markSuccess}
+        date={markTarget?.day}
+        currentStatus={markTarget?.status}
+        isEdit={!!markTarget?.status}
+        personName={markTarget?.userName}
+        onSelect={(status) =>
+          markTarget &&
+          markMutation.mutate({
+            status,
+            date: toIsoDate(markTarget.day),
+            userId: markTarget.userId,
+          })
+        }
+        onClose={() => setMarkTarget(null)}
+      />
     </div>
   );
 }

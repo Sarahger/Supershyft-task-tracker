@@ -1,19 +1,26 @@
-import { format, parseISO } from 'date-fns';
-import type { AttendanceWeek } from '../../types';
+import { format, parseISO, startOfDay } from 'date-fns';
+import clsx from 'clsx';
+import type { AttendanceStatus, AttendanceWeek } from '../../types';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
-import { statusLabel } from './attendanceUtils';
+import { isAttendanceEditableDay, statusLabel } from './attendanceUtils';
 import { Avatar } from '../ui/Avatar';
 
 interface Props {
   week: AttendanceWeek | undefined;
   loading?: boolean;
   onSelectUser: (userId: number) => void;
+  onMarkCell?: (payload: {
+    userId: number;
+    userName: string;
+    day: Date;
+    status: AttendanceStatus | null;
+  }) => void;
 }
 
 /** Monday–Saturday only (indices 0–5 of Mon-based week). */
 const WORK_DAY_COUNT = 6;
 
-export function AttendanceHrWeekTable({ week, loading, onSelectUser }: Props) {
+export function AttendanceHrWeekTable({ week, loading, onSelectUser, onMarkCell }: Props) {
   if (loading || !week) {
     return (
       <div className="task-table p-4 animate-pulse space-y-2" data-testid="hr-week-table">
@@ -75,20 +82,52 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser }: Props) {
                       <span className="truncate text-text-primary text-xs font-medium">{name}</span>
                     </div>
                   </td>
-                  {days.map((cell) => (
-                    <td key={cell.date} className="px-1.5 py-2 text-center">
-                      <span
-                        className="inline-flex justify-center"
-                        title={
-                          cell.status
-                            ? `${statusLabel(cell.status)}${cell.recorded_at ? ` · ${format(parseISO(cell.recorded_at), 'h:mm a')}` : ''}`
-                            : 'Not marked'
-                        }
-                      >
-                        <AttendanceStatusDot status={cell.status} recordedAt={cell.recorded_at} size="md" />
-                      </span>
-                    </td>
-                  ))}
+                  {days.map((cell) => {
+                    const day = startOfDay(parseISO(cell.date));
+                    const editable = isAttendanceEditableDay(day);
+                    return (
+                      <td key={cell.date} className="px-1.5 py-2 text-center">
+                        <button
+                          type="button"
+                          disabled={!editable || !onMarkCell}
+                          data-testid={`hr-week-mark-${row.user.id}-${cell.date}`}
+                          title={
+                            editable
+                              ? cell.status
+                                ? `${statusLabel(cell.status)} — click to edit`
+                                : 'Click to mark'
+                              : cell.status
+                                ? statusLabel(cell.status)
+                                : 'Not marked'
+                          }
+                          onClick={(e) => {
+                            if (!editable || !onMarkCell) return;
+                            e.stopPropagation();
+                            onMarkCell({
+                              userId: row.user.id,
+                              userName: name,
+                              day,
+                              status: cell.status,
+                            });
+                          }}
+                          className={clsx(
+                            'inline-flex justify-center items-center min-h-[32px] min-w-[32px] rounded-md mx-auto',
+                            editable && onMarkCell
+                              ? 'hover:bg-dark-muted/70 cursor-pointer'
+                              : 'cursor-default',
+                          )}
+                        >
+                          {cell.status ? (
+                            <AttendanceStatusDot status={cell.status} recordedAt={cell.recorded_at} size="md" />
+                          ) : editable ? (
+                            <span className="text-2xs text-accent-primary font-medium">+</span>
+                          ) : (
+                            <AttendanceStatusDot status={null} size="md" />
+                          )}
+                        </button>
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
