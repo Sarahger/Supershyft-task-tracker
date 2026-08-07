@@ -328,6 +328,7 @@ export function UserDrawer({ userId, onClose }: UserDrawerProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      queryClient.invalidateQueries({ queryKey: ['users-meetings-invite'] });
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       if (profile) queryClient.invalidateQueries({ queryKey: ['user', profile.id] });
       setShowEdit(false);
@@ -346,6 +347,7 @@ export function UserDrawer({ userId, onClose }: UserDrawerProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      queryClient.invalidateQueries({ queryKey: ['users-meetings-invite'] });
       toast.success('User deleted permanently');
       onClose();
     },

@@ -62,8 +62,20 @@ class UserRepository(BaseRepository):
     def get_by_email(self, email: str) -> User | None:
         return self.db.query(User).filter(User.email == email).first()
 
-    def get_all(self, skip: int = 0, limit: int = 100, search: str | None = None) -> tuple[list[User], int]:
+    def get_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        search: str | None = None,
+        *,
+        status: str | None = None,
+        include_inactive: bool = False,
+    ) -> tuple[list[User], int]:
         query = self.db.query(User).options(joinedload(User.departments))
+        if status:
+            query = query.filter(User.status == status)
+        elif not include_inactive:
+            query = query.filter(User.status != "inactive")
         if search:
             term = f"%{search}%"
             query = query.filter(

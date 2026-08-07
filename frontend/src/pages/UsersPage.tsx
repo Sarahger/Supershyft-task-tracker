@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
@@ -17,7 +17,7 @@ import {
   canEditUser,
   canManageUsers,
 } from '../lib/roles';
-import { USER_STATUSES, USER_STATUS_LABELS } from '../types';
+import { USER_STATUSES, USER_STATUS_LABELS, type User } from '../types';
 import { resolveUserDepartmentIds } from '../lib/userForm';
 
 const STATUS_CHIP: Record<string, string> = {
@@ -69,7 +69,116 @@ function UserStatusControl({
   );
 }
 
-import type { User } from '../types';
+function UsersTable({
+  users,
+  canManageStatus,
+  canAddOrRemoveUsers,
+  currentUser,
+  onOpenUser,
+  onStatusChange,
+  onEdit,
+  onDelete,
+  statusPendingUserId,
+  deletePending,
+  rowClassName,
+}: {
+  users: User[];
+  canManageStatus: boolean;
+  canAddOrRemoveUsers: boolean;
+  currentUser: User | null | undefined;
+  onOpenUser: (id: number) => void;
+  onStatusChange: (userId: number, status: string) => void;
+  onEdit: (user: User) => void;
+  onDelete: (user: User) => void;
+  statusPendingUserId: number | undefined;
+  deletePending: boolean;
+  rowClassName?: string;
+}) {
+  return (
+    <div className="card overflow-hidden">
+      <table className="w-full">
+        <thead>
+          <tr className="border-b border-dark-border">
+            <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">User</th>
+            <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Role</th>
+            <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Departments</th>
+            <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Status</th>
+            <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Job Title</th>
+            {canAddOrRemoveUsers && (
+              <th className="text-right px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Actions</th>
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr
+              key={u.id}
+              onClick={() => onOpenUser(u.id)}
+              className={clsx(
+                'border-b border-dark-border hover:bg-dark-hover transition-colors duration-hover cursor-pointer',
+                rowClassName,
+              )}
+            >
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Avatar name={`${u.first_name} ${u.last_name}`} src={u.profile_picture} size="sm" />
+                  <div>
+                    <p className="text-sm font-medium text-text-primary">
+                      {u.first_name} {u.last_name}
+                    </p>
+                    <p className="text-xs text-text-muted">{u.email}</p>
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-3">
+                <span className="chip bg-dark-muted text-text-secondary capitalize">{u.role}</span>
+              </td>
+              <td className="px-4 py-3 text-sm text-text-secondary">
+                {u.departments?.map((d) => d.name).join(', ') || '—'}
+              </td>
+              <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                <UserStatusControl
+                  user={u}
+                  canEdit={canManageStatus}
+                  onChange={onStatusChange}
+                  isPending={statusPendingUserId === u.id}
+                />
+              </td>
+              <td className="px-4 py-3 text-sm text-text-secondary">{u.job_title || '—'}</td>
+              {canAddOrRemoveUsers && (
+                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-1">
+                    {canEditUser(currentUser, u) && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(u)}
+                        className="toolbar-btn text-text-muted hover:text-text-primary"
+                        title="Edit user"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {canDeleteUser(currentUser, u) && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(u)}
+                        disabled={deletePending}
+                        className="toolbar-btn text-text-muted hover:text-red-400"
+                        title="Delete user permanently"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth();
@@ -96,9 +205,19 @@ export default function UsersPage() {
   const [newDeptInput, setNewDeptInput] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
+    queryKey: ['users', { include_inactive: true }],
+    queryFn: () =>
+      usersApi.list({ page_size: 100, include_inactive: true }).then((r) => r.data.data.items),
   });
+
+  const activeUsers = useMemo(
+    () => (data ?? []).filter((u) => u.status !== 'inactive'),
+    [data],
+  );
+  const inactiveUsers = useMemo(
+    () => (data ?? []).filter((u) => u.status === 'inactive'),
+    [data],
+  );
 
   const { data: departments } = useQuery({
     queryKey: ['departments'],
@@ -106,12 +225,17 @@ export default function UsersPage() {
     enabled: showCreate || !!editingUser,
   });
 
+  const invalidateUserLists = () => {
+    queryClient.invalidateQueries({ queryKey: ['users'] });
+    queryClient.invalidateQueries({ queryKey: ['users-list'] });
+    queryClient.invalidateQueries({ queryKey: ['users-meetings-invite'] });
+  };
+
   const statusMutation = useMutation({
     mutationFn: ({ userId, status }: { userId: number; status: string }) =>
       usersApi.update(userId, { status }),
     onSuccess: (_res, { status }) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      invalidateUserLists();
       toast.success(`Status updated to ${USER_STATUS_LABELS[status] || status}`);
     },
     onError: () => toast.error('Could not update user status'),
@@ -130,8 +254,7 @@ export default function UsersPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      invalidateUserLists();
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       setShowCreate(false);
       setCreateForm(emptyUserForm());
@@ -157,8 +280,7 @@ export default function UsersPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      invalidateUserLists();
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       if (editingUser) queryClient.invalidateQueries({ queryKey: ['user', editingUser.id] });
       setEditingUser(null);
@@ -175,8 +297,7 @@ export default function UsersPage() {
   const deleteMutation = useMutation({
     mutationFn: (userId: number) => usersApi.remove(userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['users-list'] });
+      invalidateUserLists();
       toast.success('User deleted permanently');
     },
     onError: (err: unknown) => {
@@ -218,6 +339,18 @@ export default function UsersPage() {
     setNewDeptInput('');
   };
 
+  const tableProps = {
+    canManageStatus,
+    canAddOrRemoveUsers,
+    currentUser,
+    onOpenUser: openUser,
+    onStatusChange: handleStatusChange,
+    onEdit: openEdit,
+    onDelete: handleDelete,
+    statusPendingUserId: statusMutation.isPending ? statusMutation.variables?.userId : undefined,
+    deletePending: deleteMutation.isPending,
+  };
+
   if (isLoading) return <div className="animate-pulse h-64 bg-dark-muted rounded-lg" />;
 
   return (
@@ -225,7 +358,7 @@ export default function UsersPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <PageHeader
           title="Users"
-          subtitle={`${data?.length ?? 0} people · click a row for details`}
+          subtitle={`${activeUsers.length} people · click a row for details`}
         />
         {canAddOrRemoveUsers && (
           <Button size="sm" onClick={() => setShowCreate(true)} className="gap-1.5 shrink-0">
@@ -234,85 +367,27 @@ export default function UsersPage() {
         )}
       </div>
 
-      {!data?.length ? (
+      {!activeUsers.length && !inactiveUsers.length ? (
         <EmptyState title="No users found" />
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-dark-border">
-                <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">User</th>
-                <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Role</th>
-                <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Departments</th>
-                <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Status</th>
-                <th className="text-left px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Job Title</th>
-                {canAddOrRemoveUsers && (
-                  <th className="text-right px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider">Actions</th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((u) => (
-                <tr
-                  key={u.id}
-                  onClick={() => openUser(u.id)}
-                  className="border-b border-dark-border hover:bg-dark-hover transition-colors duration-hover cursor-pointer"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={`${u.first_name} ${u.last_name}`} src={u.profile_picture} size="sm" />
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">{u.first_name} {u.last_name}</p>
-                        <p className="text-xs text-text-muted">{u.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="chip bg-dark-muted text-text-secondary capitalize">{u.role}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-text-secondary">
-                    {u.departments?.map((d) => d.name).join(', ') || '—'}
-                  </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <UserStatusControl
-                      user={u}
-                      canEdit={canManageStatus}
-                      onChange={handleStatusChange}
-                      isPending={statusMutation.isPending && statusMutation.variables?.userId === u.id}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm text-text-secondary">{u.job_title || '—'}</td>
-                  {canAddOrRemoveUsers && (
-                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1">
-                        {canEditUser(currentUser, u) && (
-                          <button
-                            type="button"
-                            onClick={() => openEdit(u)}
-                            className="toolbar-btn text-text-muted hover:text-text-primary"
-                            title="Edit user"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        {canDeleteUser(currentUser, u) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(u)}
-                            disabled={deleteMutation.isPending}
-                            className="toolbar-btn text-text-muted hover:text-red-400"
-                            title="Delete user permanently"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-8">
+          {activeUsers.length ? (
+            <UsersTable users={activeUsers} {...tableProps} />
+          ) : (
+            <EmptyState title="No active users" />
+          )}
+
+          {inactiveUsers.length > 0 && (
+            <section>
+              <div className="mb-3">
+                <h2 className="text-sm font-medium text-text-secondary">Inactive</h2>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Hidden from tasks, updates, attendance, and invites until reactivated
+                </p>
+              </div>
+              <UsersTable users={inactiveUsers} {...tableProps} rowClassName="opacity-70" />
+            </section>
+          )}
         </div>
       )}
 

@@ -3,6 +3,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.constants import UserStatus
 from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import User
@@ -19,12 +20,25 @@ def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
+    status: str | None = Query(None, description="Filter by exact status (e.g. active)"),
+    include_inactive: bool = Query(
+        False,
+        description="When true and status is omitted, include inactive users (Users admin tab)",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if status is not None and status not in {s.value for s in UserStatus}:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
     repo = UserRepository(db)
     skip = (page - 1) * page_size
-    users, total = repo.get_all(skip=skip, limit=page_size, search=search)
+    users, total = repo.get_all(
+        skip=skip,
+        limit=page_size,
+        search=search,
+        status=status,
+        include_inactive=include_inactive,
+    )
     items = [_format_user(u, db) for u in users]
     return APIResponse(
         data=PaginatedData(
