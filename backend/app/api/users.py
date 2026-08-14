@@ -11,6 +11,7 @@ from app.repositories.base import UserRepository
 from app.schemas.common import APIResponse, PaginatedData
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.auth_service import UserService
+from app.services.task_service import compute_time_taken_hours
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -180,13 +181,14 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
         cancelled_tasks = [t for t in tasks if t.status == "cancelled"]
 
         total_estimated = sum(t.estimated_hours for t in tasks if t.estimated_hours is not None)
-        total_actual = sum(t.actual_hours for t in tasks if t.actual_hours is not None)
+        actual_by_id = {t.id: compute_time_taken_hours(t) for t in tasks}
+        total_actual = sum(h for h in actual_by_id.values() if h is not None)
 
         timed_completed = [
             t for t in completed_tasks
-            if t.estimated_hours is not None and t.actual_hours is not None and t.estimated_hours > 0
+            if t.estimated_hours is not None and actual_by_id.get(t.id) is not None and t.estimated_hours > 0
         ]
-        on_track = sum(1 for t in timed_completed if t.actual_hours <= t.estimated_hours)
+        on_track = sum(1 for t in timed_completed if (actual_by_id.get(t.id) or 0) <= t.estimated_hours)
         over_budget = len(timed_completed) - on_track
         utilization = round((total_actual / total_estimated) * 100, 1) if total_estimated > 0 else None
 
@@ -216,8 +218,10 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
                     "priority": t.priority,
                     "project_name": t.project.name if t.project else None,
                     "due_date": t.due_date,
+                    "start_date": t.start_date,
+                    "end_date": t.end_date,
                     "estimated_hours": t.estimated_hours,
-                    "actual_hours": t.actual_hours,
+                    "actual_hours": actual_by_id.get(t.id),
                     "updated_at": t.updated_at,
                 }
                 for t in tasks

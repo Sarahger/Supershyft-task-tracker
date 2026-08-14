@@ -86,6 +86,7 @@ class TaskBase(BaseModel):
     estimated_hours: float | None = None
     actual_hours: float | None = None
     start_date: datetime | None = None
+    end_date: datetime | None = None
     due_date: datetime | None = None
     project_id: int | None = None
     client_id: int | None = None
@@ -113,6 +114,7 @@ class TaskUpdate(BaseModel):
     estimated_hours: float | None = None
     actual_hours: float | None = None
     start_date: datetime | None = None
+    end_date: datetime | None = None
     due_date: datetime | None = None
     project_id: int | None = None
     client_id: int | None = None

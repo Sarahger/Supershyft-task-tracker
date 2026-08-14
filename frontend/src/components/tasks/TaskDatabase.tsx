@@ -9,6 +9,7 @@ import type { Task } from '../../types';
 import { statusStyles, priorityStyles } from '../ui/Badge';
 import { AvatarGroup } from '../ui/Avatar';
 import { STATUS_LABELS, PRIORITY_LABELS } from '../../types';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
 
 const INLINE_SELECT_CLASS =
   'chip cursor-pointer appearance-none pl-2 pr-7 max-w-full truncate text-xs leading-tight border border-transparent hover:border-dark-border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--focus-ring)]';
@@ -35,7 +36,7 @@ interface TaskDatabaseProps {
   onColumnsChange?: React.Dispatch<React.SetStateAction<ColumnDef[]>>;
 }
 
-export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'estimated_hours' | 'actual_hours' | 'indicators';
+export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'start_date' | 'end_date' | 'actual_hours' | 'indicators';
 
 export interface ColumnDef {
   id: ColumnId;
@@ -52,7 +53,8 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'due_date', label: 'Due date', width: 110, minWidth: 90, visible: true, sortable: true },
   { id: 'status', label: 'Status', width: 150, minWidth: 120, visible: true, sortable: true },
   { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
-  { id: 'estimated_hours', label: 'Time req', width: 90, minWidth: 70, visible: false },
+  { id: 'start_date', label: 'Start', width: 120, minWidth: 100, visible: false },
+  { id: 'end_date', label: 'End', width: 120, minWidth: 100, visible: false },
   { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: false },
   { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
 ];
@@ -366,14 +368,23 @@ export function TaskDatabase({
                         onStatusChange={onStatusChange}
                       />
                     )}
-                    {col.id === 'estimated_hours' && (
+                    {col.id === 'start_date' && (
                       <span className="text-sm text-text-muted tabular-nums">
-                        {task.estimated_hours != null ? `${task.estimated_hours}h` : '—'}
+                        {task.start_date
+                          ? format(new Date(task.start_date), 'MMM d, HH:mm')
+                          : '—'}
+                      </span>
+                    )}
+                    {col.id === 'end_date' && (
+                      <span className="text-sm text-text-muted tabular-nums">
+                        {task.end_date
+                          ? format(new Date(task.end_date), 'MMM d, HH:mm')
+                          : '—'}
                       </span>
                     )}
                     {col.id === 'actual_hours' && (
                       <span className="text-sm text-text-muted tabular-nums">
-                        {task.actual_hours != null ? `${task.actual_hours}h` : '—'}
+                        {formatTimeTakenHours(task.actual_hours) ?? '—'}
                       </span>
                     )}
                     {col.id === 'indicators' && <RowIndicators task={task} />}

@@ -205,6 +205,7 @@ class Task(Base):
     estimated_hours = Column(Float, nullable=True)
     actual_hours = Column(Float, nullable=True)
     start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)
     due_date = Column(DateTime(timezone=True), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)

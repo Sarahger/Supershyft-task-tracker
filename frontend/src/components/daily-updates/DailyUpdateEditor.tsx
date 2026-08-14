@@ -8,6 +8,7 @@ import {
   type MentionUser,
 } from '../../lib/mentions';
 import { matchEmojis, type EmojiItem } from '../../lib/emojiShortcodes';
+import { VoiceNoteButton, appendVoiceTranscript } from './VoiceNoteButton';
 
 interface DailyUpdateEditorProps {
   value: string;
@@ -348,9 +349,15 @@ export function DailyUpdateEditor({
       )}
 
       {!disabled && (
-        <p className="mt-2 text-2xs text-text-muted">
-          Type @ to mention · : for emoji (e.g. :fire) · Enter continues lists · Tab indents
-        </p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-2xs text-text-muted">
+            Type @ to mention · : for emoji · Voice note appends English text you can edit
+          </p>
+          <VoiceNoteButton
+            disabled={disabled}
+            onTranscript={(chunk) => onChange(appendVoiceTranscript(value, chunk))}
+          />
+        </div>
       )}
     </div>
   );

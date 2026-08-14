@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { canDeleteUser, canEditUser } from '../../lib/roles';
 import { resolveUserDepartmentIds } from '../../lib/userForm';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
 import { Drawer } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
@@ -222,10 +223,6 @@ function UserProfileContent({
         ) : (
           <div className="rounded-lg border border-dark-border overflow-hidden divide-y divide-dark-border">
             {profile.assigned_tasks.map((task) => {
-              const taskUtil =
-                task.estimated_hours && task.actual_hours && task.estimated_hours > 0
-                  ? Math.round((task.actual_hours / task.estimated_hours) * 100)
-                  : null;
               return (
                 <button
                   key={task.id}
@@ -247,20 +244,8 @@ function UserProfileContent({
                     </div>
                     <div className="text-right shrink-0 text-2xs tabular-nums">
                       <p className="text-text-muted">
-                        {task.estimated_hours != null ? `${task.estimated_hours}h` : '—'}
-                        {' / '}
-                        {task.actual_hours != null ? `${task.actual_hours}h` : '—'}
+                        {formatTimeTakenHours(task.actual_hours) ?? '—'}
                       </p>
-                      {taskUtil != null && (
-                        <p
-                          className={clsx(
-                            'mt-0.5',
-                            taskUtil <= 100 ? 'metric-emerald' : taskUtil <= 120 ? 'metric-amber' : 'metric-red',
-                          )}
-                        >
-                          {taskUtil}%
-                        </p>
-                      )}
                     </div>
                   </div>
                 </button>

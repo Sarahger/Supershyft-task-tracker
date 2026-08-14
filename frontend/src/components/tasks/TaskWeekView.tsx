@@ -13,6 +13,7 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
 import { STATUS_LABELS } from '../../types';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -66,11 +67,9 @@ function WeekTaskCard({
         {STATUS_LABELS[task.status] || task.status}
         {showProject && task.project_name ? ` · ${task.project_name}` : ''}
       </p>
-      {(task.estimated_hours != null || task.actual_hours != null) && (
+      {task.actual_hours != null && (
         <p className="text-2xs text-text-muted mt-0.5 tabular-nums">
-          {task.estimated_hours != null ? `${task.estimated_hours}h est` : ''}
-          {task.estimated_hours != null && task.actual_hours != null ? ' · ' : ''}
-          {task.actual_hours != null ? `${task.actual_hours}h done` : ''}
+          {formatTimeTakenHours(task.actual_hours)} taken
         </p>
       )}
     </button>

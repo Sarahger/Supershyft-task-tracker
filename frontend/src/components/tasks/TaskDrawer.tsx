@@ -21,6 +21,7 @@ import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { useAuth } from '../../contexts/AuthContext';
 import { canDeleteTasks } from '../../lib/roles';
 import { getChecklistProgress } from '../../lib/checklist';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
 import { startTaskCall, joinTaskCall, endTaskCall, openBlankMeetWindow, openMeetUrl } from '../../lib/meetings';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
@@ -1010,11 +1011,23 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           {/* Metadata — tertiary, always collapsed */}
           <DrawerSection title="Details" defaultOpen={false}>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {task.estimated_hours != null && (
-                <div><span className="text-text-muted">Estimated</span><p className="text-text-primary">{task.estimated_hours}h</p></div>
+              {task.start_date && (
+                <div>
+                  <span className="text-text-muted">Start</span>
+                  <p className="text-text-primary">{format(new Date(task.start_date), 'MMM d, yyyy h:mm a')}</p>
+                </div>
+              )}
+              {task.end_date && (
+                <div>
+                  <span className="text-text-muted">End</span>
+                  <p className="text-text-primary">{format(new Date(task.end_date), 'MMM d, yyyy h:mm a')}</p>
+                </div>
               )}
               {task.actual_hours != null && (
-                <div><span className="text-text-muted">Actual</span><p className="text-text-primary">{task.actual_hours}h</p></div>
+                <div>
+                  <span className="text-text-muted">Time taken</span>
+                  <p className="text-text-primary">{formatTimeTakenHours(task.actual_hours)}</p>
+                </div>
               )}
               {task.departments?.length ? (
                 <div className="col-span-2">

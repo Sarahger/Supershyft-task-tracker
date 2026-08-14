@@ -240,7 +240,7 @@ export default function MyTasksPage() {
           {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} {...listProps} /></Section>}
           {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} {...listProps} /></Section>}
           {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} {...listProps} /></Section>}
-          {groups.today.length > 0 && <Section title="Due today" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
+          {groups.today.length > 0 && <Section title="Today's tasks" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
           {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
           {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} {...listProps} /></Section>}
           {groups.completed.length > 0 && (

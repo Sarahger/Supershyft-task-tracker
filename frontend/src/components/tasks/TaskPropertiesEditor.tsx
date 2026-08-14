@@ -11,6 +11,7 @@ import { toast } from '../ui/Toast';
 import { AssigneeMentionInput } from './AssigneeMentionInput';
 import { STATUS_LABELS } from '../../types';
 import type { Task } from '../../types';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
 
 interface TaskFormState {
   title: string;
@@ -18,13 +19,13 @@ interface TaskFormState {
   priority: string;
   status: string;
   due_date: string;
+  start_date: string;
+  end_date: string;
   project_id: string;
   reviewer_id: string;
   assignee_ids: number[];
   review_required: boolean;
   testing_required: boolean;
-  estimated_hours: string;
-  actual_hours: string;
 }
 
 function toDateInputValue(date?: string | null) {
@@ -34,6 +35,21 @@ function toDateInputValue(date?: string | null) {
   return d.toISOString().slice(0, 10);
 }
 
+function toDateTimeLocalValue(date?: string | null) {
+  if (!date) return '';
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDateTimeLocalValue(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function taskToForm(task: Task): TaskFormState {
   return {
     title: task.title,
@@ -41,13 +57,13 @@ function taskToForm(task: Task): TaskFormState {
     priority: task.priority,
     status: task.status,
     due_date: toDateInputValue(task.due_date),
+    start_date: toDateTimeLocalValue(task.start_date),
+    end_date: toDateTimeLocalValue(task.end_date),
     project_id: task.project_id ? String(task.project_id) : '',
     reviewer_id: task.reviewer_id ? String(task.reviewer_id) : '',
     assignee_ids: task.assignees?.map((a) => a.user_id) ?? [],
     review_required: task.review_required,
     testing_required: task.testing_required,
-    estimated_hours: task.estimated_hours != null ? String(task.estimated_hours) : '',
-    actual_hours: task.actual_hours != null ? String(task.actual_hours) : '',
   };
 }
 
@@ -92,13 +108,13 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         priority: form.priority,
         status: form.status,
         due_date: form.due_date ? new Date(`${form.due_date}T12:00:00`).toISOString() : null,
+        start_date: fromDateTimeLocalValue(form.start_date),
+        end_date: fromDateTimeLocalValue(form.end_date),
         project_id: form.project_id ? Number(form.project_id) : null,
         reviewer_id: form.reviewer_id ? Number(form.reviewer_id) : null,
         assignee_ids: form.assignee_ids,
         review_required: form.review_required,
         testing_required: form.testing_required,
-        estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
-        actual_hours: form.actual_hours ? Number(form.actual_hours) : null,
       });
     },
     onSuccess: () => {
@@ -245,28 +261,29 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           ]}
         />
         <Input
+          label="Start date"
+          type="datetime-local"
+          value={form.start_date}
+          onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+        />
+        <Input
+          label="End date"
+          type="datetime-local"
+          value={form.end_date}
+          onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+        />
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1.5">Time taken</label>
+          <p className="text-sm text-text-primary px-3 py-2 rounded-md bg-surface-subtle border border-dark-border min-h-[38px] flex items-center">
+            {formatTimeTakenHours(task.actual_hours) ?? '—'}
+          </p>
+          <p className="text-2xs text-text-muted mt-1">Auto from start → end (or now while in progress)</p>
+        </div>
+        <Input
           label="Due date"
           type="date"
           value={form.due_date}
           onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-        />
-        <Input
-          label="Time required (hours)"
-          type="number"
-          min="0"
-          step="0.25"
-          value={form.estimated_hours}
-          onChange={(e) => setForm({ ...form, estimated_hours: e.target.value })}
-          placeholder="e.g. 4"
-        />
-        <Input
-          label="Time taken (hours)"
-          type="number"
-          min="0"
-          step="0.25"
-          value={form.actual_hours}
-          onChange={(e) => setForm({ ...form, actual_hours: e.target.value })}
-          placeholder="e.g. 3.5"
         />
         <Select
           label="Project"

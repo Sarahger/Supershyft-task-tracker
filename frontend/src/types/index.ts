@@ -71,6 +71,7 @@ export interface Task {
   severity?: string;
   due_date?: string;
   start_date?: string;
+  end_date?: string;
   project_id?: number;
   project_name?: string;
   client_id?: number;

@@ -11,6 +11,7 @@ import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './Tas
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
 import { DeletedTasksList } from './DeletedTasksList';
+import { groupTasksByDueSections } from './TaskCard';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
@@ -47,11 +48,11 @@ interface TasksWorkspaceProps {
 
 function groupTasks(tasks: Task[], groupBy: GroupBy): { label: string; tasks: Task[] }[] {
   if (groupBy === 'none') return [{ label: '', tasks }];
+  if (groupBy === 'status') return groupTasksByDueSections(tasks);
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
     let key = 'Other';
-    if (groupBy === 'status') key = t.status;
-    else if (groupBy === 'priority') key = t.priority;
+    if (groupBy === 'priority') key = t.priority;
     else if (groupBy === 'project') key = t.project_name || 'No project';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
@@ -90,7 +91,7 @@ export function TasksWorkspace({
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [groupBy, setGroupBy] = useState<GroupBy>(() => (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'project' : 'none'));
+  const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [viewMode, setViewMode] = useState<ViewMode>(() => normalizeView(defaultView));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [calendarWeek, setCalendarWeek] = useState(() => new Date());

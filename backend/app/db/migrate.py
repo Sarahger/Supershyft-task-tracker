@@ -60,12 +60,14 @@ def run_lightweight_migrations(engine) -> None:
                 ("deletion_reason", "TEXT"),
                 ("deleted_by_id", "INTEGER REFERENCES users(id)"),
                 ("deleted_at", "TIMESTAMP WITH TIME ZONE"),
+                ("end_date", "TIMESTAMP WITH TIME ZONE"),
             ]
         else:
             task_additions = [
                 ("deletion_reason", "TEXT"),
                 ("deleted_by_id", "INTEGER REFERENCES users(id)"),
                 ("deleted_at", "DATETIME"),
+                ("end_date", "DATETIME"),
             ]
         for col_name, col_def in task_additions:
             if col_name not in task_cols:

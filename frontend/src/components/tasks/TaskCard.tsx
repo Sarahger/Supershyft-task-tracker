@@ -99,3 +99,17 @@ export function groupTasksByDue(tasks: Task[]) {
   }
   return { overdue, today, thisWeek, later, completed, blocked, review };
 }
+
+/** My Tasks–style sections: overdue → today → this week → upcoming, plus blocked/review/completed. */
+export function groupTasksByDueSections(tasks: Task[]): { label: string; tasks: Task[] }[] {
+  const g = groupTasksByDue(tasks);
+  return [
+    { label: 'Overdue', tasks: g.overdue },
+    { label: 'Blocked', tasks: g.blocked },
+    { label: 'Waiting for review', tasks: g.review },
+    { label: "Today's tasks", tasks: g.today },
+    { label: 'This week', tasks: g.thisWeek },
+    { label: 'Upcoming', tasks: g.later },
+    { label: 'Completed', tasks: g.completed },
+  ].filter((s) => s.tasks.length > 0);
+}
