@@ -151,10 +151,12 @@ export default function MyTasksPage() {
     const blocked: Task[] = [];
     const review: Task[] = [];
     const completed: Task[] = [];
+    const cancelled: Task[] = [];
     const later: Task[] = [];
 
     for (const t of tasks || []) {
       if (t.status === 'completed') { completed.push(t); continue; }
+      if (t.status === 'cancelled') { cancelled.push(t); continue; }
       if (t.status === 'blocked') { blocked.push(t); continue; }
       if (['ready_for_review', 'in_review'].includes(t.status)) { review.push(t); continue; }
       if (t.due_date) {
@@ -165,7 +167,7 @@ export default function MyTasksPage() {
         else later.push(t);
       } else later.push(t);
     }
-    return { overdue, today, thisWeek, blocked, review, completed, later };
+    return { overdue, today, thisWeek, blocked, review, completed, cancelled, later };
   }, [tasks]);
 
   if (isLoading) return <TaskDatabaseSkeleton />;
@@ -237,15 +239,20 @@ export default function MyTasksPage() {
         />
       ) : (
         <>
+          {groups.today.length > 0 && <Section title="Today's tasks" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
+          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
           {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} {...listProps} /></Section>}
           {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} {...listProps} /></Section>}
           {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} {...listProps} /></Section>}
-          {groups.today.length > 0 && <Section title="Today's tasks" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
-          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
           {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} {...listProps} /></Section>}
           {groups.completed.length > 0 && (
             <CollapsibleSection title="Completed" count={groups.completed.length} defaultOpen={false}>
               <TaskList tasks={groups.completed} {...listProps} />
+            </CollapsibleSection>
+          )}
+          {groups.cancelled.length > 0 && (
+            <CollapsibleSection title="Cancelled" count={groups.cancelled.length} defaultOpen={false}>
+              <TaskList tasks={groups.cancelled} {...listProps} />
             </CollapsibleSection>
           )}
         </>

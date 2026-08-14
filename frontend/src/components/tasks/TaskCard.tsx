@@ -80,11 +80,13 @@ export function groupTasksByDue(tasks: Task[]) {
   const thisWeek: Task[] = [];
   const later: Task[] = [];
   const completed: Task[] = [];
+  const cancelled: Task[] = [];
   const blocked: Task[] = [];
   const review: Task[] = [];
 
   for (const task of tasks) {
     if (task.status === 'completed') { completed.push(task); continue; }
+    if (task.status === 'cancelled') { cancelled.push(task); continue; }
     if (task.status === 'blocked') { blocked.push(task); continue; }
     if (['ready_for_review', 'in_review'].includes(task.status)) { review.push(task); continue; }
     if (task.due_date) {
@@ -97,19 +99,20 @@ export function groupTasksByDue(tasks: Task[]) {
       later.push(task);
     }
   }
-  return { overdue, today, thisWeek, later, completed, blocked, review };
+  return { overdue, today, thisWeek, later, completed, cancelled, blocked, review };
 }
 
-/** My Tasks–style sections: overdue → today → this week → upcoming, plus blocked/review/completed. */
+/** Sections: today → this week → overdue → … → completed/cancelled at end. */
 export function groupTasksByDueSections(tasks: Task[]): { label: string; tasks: Task[] }[] {
   const g = groupTasksByDue(tasks);
   return [
+    { label: "Today's tasks", tasks: g.today },
+    { label: 'This week', tasks: g.thisWeek },
     { label: 'Overdue', tasks: g.overdue },
     { label: 'Blocked', tasks: g.blocked },
     { label: 'Waiting for review', tasks: g.review },
-    { label: "Today's tasks", tasks: g.today },
-    { label: 'This week', tasks: g.thisWeek },
     { label: 'Upcoming', tasks: g.later },
     { label: 'Completed', tasks: g.completed },
+    { label: 'Cancelled', tasks: g.cancelled },
   ].filter((s) => s.tasks.length > 0);
 }
