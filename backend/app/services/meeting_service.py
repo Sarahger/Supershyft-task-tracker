@@ -18,9 +18,6 @@ from app.services.meet_pool_service import (
 from app.services.notification_service import NotificationService, should_send_email
 from app.utils.email import send_plain_urgent_email_sync
 
-MORNING_START = time(9, 45)
-MORNING_END = time(11, 15)
-
 _TZ_FALLBACKS: dict[str, timedelta] = {
     "Asia/Kolkata": timedelta(hours=5, minutes=30),
 }
@@ -43,11 +40,6 @@ def _day_bounds(target: date) -> tuple[datetime, datetime]:
     start = datetime.combine(target, time.min, tzinfo=tz)
     end = datetime.combine(target, time.max, tzinfo=tz)
     return start, end
-
-
-def _in_morning_window(local_dt: datetime) -> bool:
-    t = local_dt.timetz().replace(tzinfo=None)
-    return MORNING_START <= t <= MORNING_END
 
 
 def _task_join_status(occupied_at: datetime, join_time: datetime) -> str:
@@ -92,9 +84,7 @@ class MeetingService:
     def can_join_morning_call(self, target: date | None = None) -> bool:
         now_local = _now_local()
         today = target or now_local.date()
-        if today != now_local.date():
-            return False
-        return _in_morning_window(now_local)
+        return today == now_local.date()
 
     def _get_open_morning_log_for_day(self, user_id: int, target: date) -> MeetingLog | None:
         start, end = _day_bounds(target)
@@ -129,13 +119,6 @@ class MeetingService:
     def join_morning_call(self, user: User) -> dict:
         now_utc = datetime.now(timezone.utc)
         now_local = _now_local()
-
-        if not _in_morning_window(now_local):
-            raise HTTPException(
-                status_code=400,
-                detail="Morning call is only available between 9:45 AM and 11:15 AM",
-            )
-
         today = now_local.date()
         open_log = self._get_open_morning_log_for_day(user.id, today)
         if open_log:

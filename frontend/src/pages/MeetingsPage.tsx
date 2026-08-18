@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
@@ -10,7 +10,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { canAccessManagerFeatures } from '../lib/roles';
 import {
   endInstantCall,
-  isInMorningCallWindow,
   joinMorningCall,
   openBlankMeetWindow,
   openMeetUrl,
@@ -132,16 +131,8 @@ export default function MeetingsPage() {
   const isManager = canAccessManagerFeatures(user);
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(todayIsoDate());
-  const [inMorningWindow, setInMorningWindow] = useState(isInMorningCallWindow());
   const [inviteUserIds, setInviteUserIds] = useState<number[]>([]);
   const isTodaySelected = selectedDate === todayIsoDate();
-
-  useEffect(() => {
-    const tick = () => setInMorningWindow(isInMorningCallWindow());
-    tick();
-    const id = window.setInterval(tick, 30_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   const { data: teamUsers } = useQuery({
     queryKey: ['users-meetings-invite'],
@@ -182,7 +173,7 @@ export default function MeetingsPage() {
   });
 
   const isToday = isTodaySelected;
-  const canJoinMorning = isToday && inMorningWindow;
+  const canJoinMorning = isToday;
   const activeInstant = data?.active_instant_call ?? null;
   const invitedCalls: InstantCallInvite[] = data?.invited_active_instant_calls ?? [];
 
@@ -223,7 +214,7 @@ export default function MeetingsPage() {
             <div className="flex-1">
               <h2 className="text-base font-semibold text-text-primary">Daily Morning Call</h2>
               <p className="text-sm text-text-muted mt-0.5">
-                Join between 9:45 AM – 11:15 AM · Click &quot;Left call&quot; when you leave
+                Always available · Click &quot;Left call&quot; when you leave
               </p>
             </div>
           </div>
