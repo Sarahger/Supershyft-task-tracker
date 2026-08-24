@@ -291,23 +291,92 @@ def test_injection_status_filter_rejected(client, users):
     assert r.status_code == 400
 
 
-def test_working_days_exclude_sundays_and_2nd_4th_saturdays():
+def test_working_days_exclude_weekends_and_company_holidays():
     from datetime import date
 
+    from app.core.company_holidays import (
+        is_listed_company_holiday,
+        is_non_working_day,
+        is_weekend_off,
+        is_working_day,
+    )
     from app.services.attendance_service import _is_company_holiday, _working_days_in_month
 
     # August 2026: Sat 8 = 2nd Sat, Sat 22 = 4th Sat
     assert _is_company_holiday(date(2026, 8, 2))  # Sunday
     assert _is_company_holiday(date(2026, 8, 8))  # 2nd Saturday
     assert _is_company_holiday(date(2026, 8, 22))  # 4th Saturday
-    assert not _is_company_holiday(date(2026, 8, 1))  # 1st Saturday
-    assert not _is_company_holiday(date(2026, 8, 15))  # 3rd Saturday
-    assert not _is_company_holiday(date(2026, 8, 3))  # Monday
+    assert is_working_day(date(2026, 8, 1))  # 1st Saturday
+    assert is_working_day(date(2026, 8, 3))  # Monday
 
-    # Full August 2026 has 31 days; exclude 5 Sundays + 2 holiday Saturdays = 24 working days
-    assert _working_days_in_month(2026, 8, date(2026, 8, 31)) == 24
+    # Company holidays
+    assert is_listed_company_holiday(date(2026, 8, 15))  # Independence Day (3rd Sat)
+    assert is_listed_company_holiday(date(2026, 8, 28))  # Raksha Bandhan (Fri)
+    assert is_non_working_day(date(2026, 8, 15))
+    assert is_non_working_day(date(2026, 8, 28))
+    assert not is_working_day(date(2026, 1, 1))  # New Year
+    assert not is_working_day(date(2026, 12, 25))  # Christmas
+
+    # Full August 2026: 31 − 5 Sundays − 2nd Sat − 4th Sat − Independence Day − Raksha Bandhan = 22
+    assert _working_days_in_month(2026, 8, date(2026, 8, 31)) == 22
+
+    # Overlap: weekend off without listed holiday still counts once
+    sunday = date(2026, 1, 4)
+    assert is_weekend_off(sunday)
+    assert is_non_working_day(sunday)
+    assert not is_listed_company_holiday(sunday)
 
 
+def test_attendance_percent_excludes_non_working_days(client, users, db_session):
+    """Unmarked Sunday/holiday must not reduce attendance %."""
+    from datetime import date, timedelta
+
+    from app.core.company_holidays import is_working_day
+    from app.services.attendance_service import AttendanceService, now_utc
+
+    employee = users["employee"]
+    db_session.add(
+        Attendance(
+            user_id=employee.id,
+            attendance_date=date(2026, 1, 2),  # Friday working day
+            status="WFO",
+            recorded_at=now_utc(),
+        )
+    )
+    db_session.commit()
+
+    working = 0
+    d = date(2026, 1, 1)
+    while d <= date(2026, 1, 31):
+        if is_working_day(d):
+            working += 1
+        d += timedelta(days=1)
+
+    summary = AttendanceService(db_session).get_me(employee, month=1, year=2026)["summary"]
+    assert summary["working_days"] == working
+    assert summary["present_count"] == 1
+    assert summary["attendance_percent"] == round((1 / working) * 100, 1)
+
+
+def test_leave_on_working_day_does_not_count_as_present(client, users, db_session):
+    from datetime import date
+
+    from app.services.attendance_service import AttendanceService, now_utc
+
+    employee = users["employee"]
+    db_session.add(
+        Attendance(
+            user_id=employee.id,
+            attendance_date=date(2026, 1, 2),
+            status="LEAVE",
+            recorded_at=now_utc(),
+        )
+    )
+    db_session.commit()
+    summary = AttendanceService(db_session).get_me(employee, month=1, year=2026)["summary"]
+    assert summary["leave_count"] == 1
+    assert summary["present_count"] == 0
+    assert summary["attendance_percent"] == 0.0
 def test_wfo_gps_verification(client, users, db_session):
     office = Office(
         name="Mumbai Office",

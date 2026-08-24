@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.constants import AttendanceFilterStatus, AttendanceStatus, UserStatus
+from app.core.company_holidays import is_non_working_day, is_working_day
 from app.models import Attendance, User, user_departments
 from app.repositories.base import user_to_brief_dict
 from app.services.geo_service import validate_wfo_location
@@ -152,19 +153,17 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
 
 
 def _is_company_holiday(d: date) -> bool:
-    """Sundays and the 2nd & 4th Saturdays of the month are holidays."""
-    if d.weekday() == 6:  # Sunday
-        return True
-    if d.weekday() == 5:  # Saturday
-        saturday_ordinal = (d.day - 1) // 7 + 1
-        return saturday_ordinal in (2, 4)
-    return False
+    """Backward-compatible alias: any day excluded from working-day counts."""
+    return is_non_working_day(d)
 
 
 def _working_days_in_month(year: int, month: int, today: date) -> int:
     """
-    Count company working days in the month (excludes Sundays and 2nd/4th Saturdays).
-    For the current month, only days up to today are counted.
+    Count actual working days in the month.
+
+    Excludes Sundays, 2nd & 4th Saturdays, and listed company holidays.
+    Overlapping exclusions count once. For the current month, only days
+    up to today are counted.
     """
     start, end = _month_bounds(year, month)
     if year == today.year and month == today.month:
@@ -172,12 +171,13 @@ def _working_days_in_month(year: int, month: int, today: date) -> int:
     count = 0
     d = start
     while d <= end:
-        if not _is_company_holiday(d):
+        if is_working_day(d):
             count += 1
         d += timedelta(days=1)
     return count
 
 
+# Present for attendance %: WFO, WFH, Half Day, Camp/site
 PRESENT_STATUSES = {
     AttendanceStatus.WFO.value,
     AttendanceStatus.WFH.value,
@@ -192,13 +192,16 @@ def _build_summary(records: list[Attendance], year: int, month: int, today: date
     leave = sum(1 for r in records if r.status == AttendanceStatus.LEAVE.value)
     half_day = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY.value)
     camp = sum(1 for r in records if r.status == AttendanceStatus.CAMP.value)
-    # Present days only count on company working days (holidays excluded from %)
+    # Present only on working days (marks on Sundays/holidays do not inflate %)
     present = sum(
         1
         for r in records
-        if r.status in PRESENT_STATUSES and not _is_company_holiday(r.attendance_date)
+        if r.status in PRESENT_STATUSES and is_working_day(r.attendance_date)
     )
     working = _working_days_in_month(year, month, today)
+    # Attendance % = Present Days ÷ Total Working Days × 100
+    # Leave and unmarked working days are not Present (they lower the %).
+    # Non-working days are excluded from the denominator entirely.
     percent = round(min(100.0, (present / working) * 100), 1) if working > 0 else 0.0
     return {
         "wfo_count": wfo,

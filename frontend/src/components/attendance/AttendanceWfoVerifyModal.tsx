@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Building2, Check, Loader2, MapPin, RefreshCw, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import type { AttendanceRecord } from '../../types';
@@ -19,7 +19,11 @@ interface Props {
   open: boolean;
   attendanceDate?: string;
   onClose: () => void;
-  onSubmit: (coords: { latitude: number; longitude: number; gps_accuracy: number }) => Promise<AttendanceRecord>;
+  onSubmit: (coords: {
+    latitude: number;
+    longitude: number;
+    gps_accuracy: number;
+  }) => Promise<AttendanceRecord>;
   onComplete: (record: AttendanceRecord) => void;
 }
 
@@ -34,9 +38,16 @@ export function AttendanceWfoVerifyModal({
   const [message, setMessage] = useState('');
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const runId = useRef(0);
+  const onSubmitRef = useRef(onSubmit);
+  const onCompleteRef = useRef(onComplete);
+  const completedRef = useRef(false);
 
-  const runVerification = useCallback(async () => {
+  onSubmitRef.current = onSubmit;
+  onCompleteRef.current = onComplete;
+
+  async function runVerification() {
     const id = ++runId.current;
+    completedRef.current = false;
     setRecord(null);
     setPhase('getting_location');
     setMessage('Getting your location...');
@@ -48,7 +59,7 @@ export function AttendanceWfoVerifyModal({
       setPhase('verifying');
       setMessage('Verifying office location...');
 
-      const saved = await onSubmit({
+      const saved = await onSubmitRef.current({
         latitude: coords.latitude,
         longitude: coords.longitude,
         gps_accuracy: coords.accuracy,
@@ -86,28 +97,37 @@ export function AttendanceWfoVerifyModal({
       const detail =
         (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       setPhase('error');
-      setMessage(typeof detail === 'string' ? detail : 'Could not verify your location. Please try again.');
+      setMessage(
+        typeof detail === 'string'
+          ? detail
+          : 'Could not verify your location. Please try again.',
+      );
     }
-  }, [onSubmit]);
+  }
 
+  // Run once when the modal opens — not on every parent re-render
   useEffect(() => {
     if (!open) {
       runId.current += 1;
+      completedRef.current = false;
       setPhase('getting_location');
       setMessage('Getting your location...');
       setRecord(null);
       return;
     }
     void runVerification();
-  }, [open, runVerification]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only on open
+  }, [open]);
 
   useEffect(() => {
-    if (phase === 'success' && record) {
-      const timer = window.setTimeout(() => onComplete(record), 2200);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [phase, record, onComplete]);
+    if (phase !== 'success' || !record || completedRef.current) return;
+    const timer = window.setTimeout(() => {
+      if (completedRef.current) return;
+      completedRef.current = true;
+      onCompleteRef.current(record);
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [phase, record]);
 
   if (!open) return null;
 
@@ -148,7 +168,9 @@ export function AttendanceWfoVerifyModal({
               </div>
               <div>
                 <h2 id="wfo-verify-title" className="text-base font-semibold text-text-primary">
-                  {phase === 'getting_location' ? 'Getting your location...' : 'Verifying office location...'}
+                  {phase === 'getting_location'
+                    ? 'Getting your location...'
+                    : 'Verifying office location...'}
                 </h2>
                 {formattedDate && (
                   <p className="text-xs text-text-muted mt-1">Marking WFO for {formattedDate}</p>
@@ -219,7 +241,15 @@ export function AttendanceWfoVerifyModal({
                 </Button>
               </div>
               {phase === 'not_verified' && record && !record.location_verified && (
-                <Button variant="secondary" className="w-full" onClick={() => onComplete(record)}>
+                <Button
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    if (completedRef.current) return;
+                    completedRef.current = true;
+                    onCompleteRef.current(record);
+                  }}
+                >
                   Done
                 </Button>
               )}
