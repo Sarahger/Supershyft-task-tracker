@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import type { AttendanceDayRow, AttendanceStatus } from '../../types';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
+import { AttendanceLocationBadge } from './AttendanceLocationBadge';
 import { formatRecordedTime, isAttendanceEditableDay, statusLabel } from './attendanceUtils';
 import { EmptyState } from '../ui/Skeleton';
 import { Avatar } from '../ui/Avatar';
@@ -55,6 +56,8 @@ export function AttendanceHrDayTable({
               <th className="px-4 py-2.5 font-medium">Employee</th>
               <th className="px-4 py-2.5 font-medium">Attendance</th>
               <th className="px-4 py-2.5 font-medium">Time</th>
+              <th className="px-4 py-2.5 font-medium">Office</th>
+              <th className="px-4 py-2.5 font-medium">Location</th>
             </tr>
           </thead>
           <tbody>
@@ -117,6 +120,12 @@ export function AttendanceHrDayTable({
                   </td>
                   <td className="px-4 py-2.5 text-text-muted tabular-nums">
                     {row.recorded_at ? formatRecordedTime(row.recorded_at) : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-text-secondary text-xs">
+                    {row.status === 'WFO' ? row.office_name || '—' : '—'}
+                  </td>
+                  <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <AttendanceLocationBadge row={row} showDetail />
                   </td>
                 </tr>
               );

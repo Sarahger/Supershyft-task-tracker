@@ -580,6 +580,20 @@ class DailyUpdateMention(Base):
     mentioned_user = relationship("User", foreign_keys=[mentioned_user_id])
 
 
+class Office(Base):
+    __tablename__ = "offices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    radius_meters = Column(Float, nullable=False, default=150.0)
+    max_gps_accuracy_meters = Column(Float, nullable=False, default=100.0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class Attendance(Base):
     __tablename__ = "attendances"
     __table_args__ = (UniqueConstraint("user_id", "attendance_date", name="uq_attendance_user_date"),)
@@ -590,5 +604,13 @@ class Attendance(Base):
     status = Column(String(50), nullable=False)
     recorded_at = Column(DateTime(timezone=True), nullable=False, default=utcnow)
     created_at = Column(DateTime(timezone=True), default=utcnow)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    gps_accuracy = Column(Float, nullable=True)
+    office_id = Column(Integer, ForeignKey("offices.id", ondelete="SET NULL"), nullable=True)
+    distance_from_office = Column(Float, nullable=True)
+    location_verified = Column(Boolean, nullable=True)
+    verification_method = Column(String(50), nullable=True)
 
     user = relationship("User", foreign_keys=[user_id])
+    office = relationship("Office", foreign_keys=[office_id])

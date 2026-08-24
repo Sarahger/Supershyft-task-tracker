@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.constants import AttendanceFilterStatus, AttendanceStatus, UserStatus
 from app.models import Attendance, User, user_departments
 from app.repositories.base import user_to_brief_dict
+from app.services.geo_service import validate_wfo_location
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def _user_brief(user: User | None) -> dict | None:
 def _format_record(record: Attendance, include_user: bool = False, editable: bool | None = None) -> dict:
     today = today_local()
     can_edit = is_editable_date(record.attendance_date, today) if editable is None else editable
+    office_name = record.office.name if getattr(record, "office", None) else None
     data = {
         "id": record.id,
         "user_id": record.user_id,
@@ -71,10 +73,77 @@ def _format_record(record: Attendance, include_user: bool = False, editable: boo
         "created_at": record.created_at,
         "editable": can_edit,
         "user": None,
+        "office_id": record.office_id,
+        "office_name": office_name,
+        "distance_from_office": record.distance_from_office,
+        "location_verified": record.location_verified,
+        "verification_method": record.verification_method,
+        "gps_accuracy": record.gps_accuracy,
     }
     if include_user and record.user:
         data["user"] = _user_brief(record.user)
     return data
+
+
+def _location_fields(record: Attendance | None) -> dict:
+    if not record or record.status != AttendanceStatus.WFO.value:
+        return {
+            "office_id": None,
+            "office_name": None,
+            "distance_from_office": None,
+            "location_verified": None,
+            "verification_method": None,
+            "gps_accuracy": None,
+        }
+    return {
+        "office_id": record.office_id,
+        "office_name": record.office.name if record.office else None,
+        "distance_from_office": record.distance_from_office,
+        "location_verified": record.location_verified,
+        "verification_method": record.verification_method,
+        "gps_accuracy": record.gps_accuracy,
+    }
+
+
+def _clear_location_fields(record: Attendance) -> None:
+    record.latitude = None
+    record.longitude = None
+    record.gps_accuracy = None
+    record.office_id = None
+    record.distance_from_office = None
+    record.location_verified = None
+    record.verification_method = None
+
+
+def _apply_wfo_location(
+    db: Session,
+    record: Attendance,
+    *,
+    latitude: float | None,
+    longitude: float | None,
+    gps_accuracy: float | None,
+    skip_gps: bool,
+) -> None:
+    if skip_gps:
+        _clear_location_fields(record)
+        record.location_verified = False
+        record.verification_method = "hr_override"
+        return
+
+    if latitude is None or longitude is None:
+        _clear_location_fields(record)
+        record.location_verified = False
+        record.verification_method = "missing_gps"
+        return
+
+    result = validate_wfo_location(db, latitude, longitude, gps_accuracy)
+    record.latitude = latitude
+    record.longitude = longitude
+    record.gps_accuracy = gps_accuracy
+    record.office_id = result.office.id if result.office else None
+    record.distance_from_office = result.distance_meters
+    record.location_verified = result.location_verified
+    record.verification_method = result.verification_method
 
 
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -160,7 +229,17 @@ class AttendanceService:
     def __init__(self, db: Session):
         self.db = db
 
-    def upsert(self, user: User, status: str, attendance_date: date | None = None) -> dict:
+    def upsert(
+        self,
+        user: User,
+        status: str,
+        attendance_date: date | None = None,
+        *,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        gps_accuracy: float | None = None,
+        skip_gps: bool = False,
+    ) -> dict:
         if status not in VALID_STATUSES:
             raise HTTPException(status_code=400, detail="Invalid attendance status")
 
@@ -174,14 +253,29 @@ class AttendanceService:
                 detail="Attendance can only be marked or edited for today and yesterday",
             )
 
+        def _apply_status(record: Attendance) -> None:
+            record.status = status
+            record.recorded_at = now_utc()
+            if status == AttendanceStatus.WFO.value:
+                _apply_wfo_location(
+                    self.db,
+                    record,
+                    latitude=latitude,
+                    longitude=longitude,
+                    gps_accuracy=gps_accuracy,
+                    skip_gps=skip_gps,
+                )
+            else:
+                _clear_location_fields(record)
+
         existing = (
             self.db.query(Attendance)
+            .options(joinedload(Attendance.office))
             .filter(Attendance.user_id == user.id, Attendance.attendance_date == target)
             .first()
         )
         if existing:
-            existing.status = status
-            existing.recorded_at = now_utc()
+            _apply_status(existing)
             self.db.commit()
             self.db.refresh(existing)
             existing.user = user
@@ -193,21 +287,29 @@ class AttendanceService:
             status=status,
             recorded_at=now_utc(),
         )
+        if status == AttendanceStatus.WFO.value:
+            _apply_wfo_location(
+                self.db,
+                record,
+                latitude=latitude,
+                longitude=longitude,
+                gps_accuracy=gps_accuracy,
+                skip_gps=skip_gps,
+            )
         self.db.add(record)
         try:
             self.db.commit()
         except IntegrityError:
             self.db.rollback()
-            # Race: another request inserted first — update instead
             existing = (
                 self.db.query(Attendance)
+                .options(joinedload(Attendance.office))
                 .filter(Attendance.user_id == user.id, Attendance.attendance_date == target)
                 .first()
             )
             if not existing:
                 raise HTTPException(status_code=409, detail="Could not save attendance")
-            existing.status = status
-            existing.recorded_at = now_utc()
+            _apply_status(existing)
             self.db.commit()
             self.db.refresh(existing)
             existing.user = user
@@ -223,6 +325,7 @@ class AttendanceService:
         today = today_local()
         record = (
             self.db.query(Attendance)
+            .options(joinedload(Attendance.office))
             .filter(Attendance.user_id == user.id, Attendance.attendance_date == today)
             .first()
         )
@@ -240,6 +343,7 @@ class AttendanceService:
         start, end = _month_bounds(year, month)
         records = (
             self.db.query(Attendance)
+            .options(joinedload(Attendance.office))
             .filter(
                 Attendance.user_id == user.id,
                 Attendance.attendance_date >= start,
@@ -322,7 +426,10 @@ class AttendanceService:
         if user_ids:
             records = (
                 self.db.query(Attendance)
-                .options(joinedload(Attendance.user).joinedload(User.departments))
+                .options(
+                    joinedload(Attendance.user).joinedload(User.departments),
+                    joinedload(Attendance.office),
+                )
                 .filter(
                     Attendance.user_id.in_(user_ids),
                     Attendance.attendance_date >= start,
@@ -424,7 +531,10 @@ class AttendanceService:
         if user_ids:
             records = (
                 self.db.query(Attendance)
-                .options(joinedload(Attendance.user).joinedload(User.departments))
+                .options(
+                    joinedload(Attendance.user).joinedload(User.departments),
+                    joinedload(Attendance.office),
+                )
                 .filter(
                     Attendance.user_id.in_(user_ids),
                     Attendance.attendance_date == target,
@@ -469,6 +579,7 @@ class AttendanceService:
                     "status": rec.status if rec else None,
                     "recorded_at": rec.recorded_at if rec else None,
                     "attendance_date": target,
+                    **_location_fields(rec),
                 }
             )
 
@@ -586,7 +697,7 @@ class AttendanceService:
             department_id=department_id,
             status=status if status != "NOT_MARKED" else "ALL",
         )
-        rows = [["Employee", "Department", "Date", "Status", "Time"]]
+        rows = [["Employee", "Department", "Date", "Status", "Time", "Office", "Location"]]
         for r in data["records"]:
             if status not in ("ALL", "NOT_MARKED") and r["status"] != status:
                 continue
@@ -595,6 +706,17 @@ class AttendanceService:
             depts = ", ".join(user.get("departments") or [])
             recorded = r.get("recorded_at")
             time_str = recorded.astimezone(_tz()).strftime("%H:%M") if recorded else ""
+            if r["status"] == AttendanceStatus.WFO.value:
+                office_name = r.get("office_name") or "—"
+                if r.get("location_verified"):
+                    location_str = "Verified"
+                elif r.get("location_verified") is False:
+                    location_str = "Not Verified"
+                else:
+                    location_str = "—"
+            else:
+                office_name = "—"
+                location_str = "—"
             rows.append(
                 [
                     name,
@@ -602,6 +724,8 @@ class AttendanceService:
                     str(r["attendance_date"]),
                     r["status"],
                     time_str,
+                    office_name,
+                    location_str,
                 ]
             )
         return rows

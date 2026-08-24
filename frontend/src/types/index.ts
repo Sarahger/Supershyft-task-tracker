@@ -488,6 +488,24 @@ export interface AttendanceRecord {
   created_at: string;
   editable: boolean;
   user?: AttendanceUserBrief | null;
+  office_id?: number | null;
+  office_name?: string | null;
+  distance_from_office?: number | null;
+  location_verified?: boolean | null;
+  verification_method?: string | null;
+  gps_accuracy?: number | null;
+}
+
+export interface Office {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+  max_gps_accuracy_meters: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AttendanceSummary {
@@ -553,6 +571,12 @@ export interface AttendanceDayRow {
   status: AttendanceStatus | null;
   recorded_at: string | null;
   attendance_date: string;
+  office_id?: number | null;
+  office_name?: string | null;
+  distance_from_office?: number | null;
+  location_verified?: boolean | null;
+  verification_method?: string | null;
+  gps_accuracy?: number | null;
 }
 
 export interface AttendanceDay {

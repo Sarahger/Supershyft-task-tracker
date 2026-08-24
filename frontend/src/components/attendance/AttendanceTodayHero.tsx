@@ -89,6 +89,15 @@ export function AttendanceTodayHero({
             <p className="mt-2 text-xs text-text-secondary">
               Recorded at {formatRecordedTime(todayRecord.recorded_at)}
             </p>
+            {todayRecord.status === 'WFO' && (
+              <p className="mt-1 text-xs text-text-muted">
+                {todayRecord.location_verified
+                  ? `✓ ${todayRecord.office_name || 'Office verified'}${todayRecord.distance_from_office != null ? ` · ${Math.round(todayRecord.distance_from_office)}m` : ''}`
+                  : todayRecord.location_verified === false
+                    ? 'Location not verified'
+                    : null}
+              </p>
+            )}
             {onOpenMark && (
               <Button
                 size="sm"

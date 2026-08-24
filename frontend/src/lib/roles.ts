@@ -6,6 +6,10 @@ export function canAccessManagerFeatures(user: User | null | undefined): boolean
   return !!user && MANAGER_ACCESS_ROLES.includes(user.role);
 }
 
+export function canAccessAdminFeatures(user: User | null | undefined): boolean {
+  return user?.role === 'administrator';
+}
+
 export function canDeleteTasks(user: User | null | undefined): boolean {
   return canAccessManagerFeatures(user);
 }

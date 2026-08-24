@@ -13,6 +13,7 @@ import { AttendanceWeekStrip } from '../components/attendance/AttendanceWeekStri
 import { AttendanceSummaryCard } from '../components/attendance/AttendanceSummaryCard';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
+import { AttendanceWfoVerifyModal } from '../components/attendance/AttendanceWfoVerifyModal';
 import type { AttendanceRecord, AttendanceStatus } from '../types';
 import { isAttendanceEditableDay } from '../components/attendance/attendanceUtils';
 
@@ -31,6 +32,7 @@ export default function AttendancePage() {
     day: Date;
     record: AttendanceRecord | null;
   } | null>(null);
+  const [wfoVerify, setWfoVerify] = useState<{ date?: string } | null>(null);
 
   const year = month.getFullYear();
   const monthNum = month.getMonth() + 1;
@@ -41,23 +43,37 @@ export default function AttendancePage() {
   });
 
   useEffect(() => {
-    if (data && !data.today_record && !markSuccess && !editTarget) {
+    if (data && !data.today_record && !markSuccess && !editTarget && !wfoVerify) {
       setShowTodayModal(true);
     }
-  }, [data, markSuccess, editTarget]);
+  }, [data, markSuccess, editTarget, wfoVerify]);
 
   const markMutation = useMutation({
-    mutationFn: ({ status, date }: { status: AttendanceStatus; date?: string }) =>
-      attendanceApi.mark(status, date).then((r) => r.data.data),
-    onSuccess: (_record, vars) => {
+    mutationFn: ({
+      status,
+      date,
+      gps,
+    }: {
+      status: AttendanceStatus;
+      date?: string;
+      gps?: { latitude: number; longitude: number; gps_accuracy: number };
+    }) => attendanceApi.mark(status, date, undefined, gps).then((r) => r.data.data),
+    onSuccess: (record, vars) => {
       const forToday = !vars.date || vars.date === (data?.today ?? toIsoDate(new Date()));
       setMarkSuccess(true);
-      toast.success(forToday ? 'Attendance saved — See you today' : 'Attendance saved');
+      if (record.status === 'WFO' && record.location_verified) {
+        toast.success('Office verified — attendance saved');
+      } else if (record.status === 'WFO') {
+        toast.success('WFO saved (location not verified)');
+      } else {
+        toast.success(forToday ? 'Attendance saved — See you today' : 'Attendance saved');
+      }
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
       setTimeout(() => {
         setMarkSuccess(false);
         setShowTodayModal(false);
         setEditTarget(null);
+        setWfoVerify(null);
       }, 1000);
     },
     onError: (err: unknown) => {
@@ -67,6 +83,15 @@ export default function AttendancePage() {
       toast.error(typeof msg === 'string' ? msg : 'Could not save attendance');
     },
   });
+
+  const handleMarkStatus = (status: AttendanceStatus, date?: string) => {
+    if (status === 'WFO') {
+      setShowTodayModal(false);
+      setWfoVerify({ date });
+      return;
+    }
+    markMutation.mutate({ status, date });
+  };
 
   const weekStart = data?.today
     ? startOfWeek(parseISO(data.today), { weekStartsOn: 1 })
@@ -95,7 +120,7 @@ export default function AttendancePage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-text-primary tracking-tight">Attendance</h1>
           <p className="text-xs text-text-muted mt-0.5 truncate">
-            Mark or edit today and yesterday only.
+            Mark or edit today and yesterday only. WFO requires office GPS verification.
           </p>
         </div>
         {canAccessAttendanceHr(user) && (
@@ -117,7 +142,7 @@ export default function AttendancePage() {
             showMarkModal={showTodayModal && !editTarget}
             markSuccess={markSuccess && !editTarget}
             marking={markMutation.isPending}
-            onMark={(status) => markMutation.mutate({ status })}
+            onMark={(status) => handleMarkStatus(status)}
             onOpenMark={() => {
               setEditTarget(null);
               setShowTodayModal(true);
@@ -154,10 +179,27 @@ export default function AttendancePage() {
         currentStatus={editTarget?.record?.status}
         isEdit={!!editTarget?.record}
         onSelect={(status) =>
-          editTarget &&
-          markMutation.mutate({ status, date: toIsoDate(editTarget.day) })
+          editTarget && handleMarkStatus(status, toIsoDate(editTarget.day))
         }
         onClose={() => setEditTarget(null)}
+      />
+
+      <AttendanceWfoVerifyModal
+        open={wfoVerify !== null}
+        attendanceDate={wfoVerify?.date}
+        onClose={() => setWfoVerify(null)}
+        onSubmit={(gps) =>
+          markMutation.mutateAsync({ status: 'WFO', date: wfoVerify?.date, gps })
+        }
+        onComplete={() => {
+          setWfoVerify(null);
+          setMarkSuccess(true);
+          queryClient.invalidateQueries({ queryKey: ['attendance'] });
+          setTimeout(() => {
+            setMarkSuccess(false);
+            setEditTarget(null);
+          }, 1000);
+        }}
       />
     </div>
   );

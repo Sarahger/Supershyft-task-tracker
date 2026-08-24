@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Camera, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
+import { Building2, Camera, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTaskViewPreferences } from '../contexts/TaskViewPreferencesContext';
 import { OPTIONAL_TASK_VIEWS } from '../lib/taskViewPreferences';
+import { canAccessAdminFeatures } from '../lib/roles';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
@@ -401,6 +402,22 @@ export default function SettingsPage() {
       <div className="card p-6">
         <NotificationSettingsSection />
       </div>
+
+      {canAccessAdminFeatures(user) && (
+        <div className="card p-6">
+          <h2 className="text-sm font-medium text-text-primary mb-1">Administration</h2>
+          <p className="text-sm text-text-secondary mb-4">
+            Manage office locations used for WFO GPS attendance verification.
+          </p>
+          <Link
+            to="/settings/offices"
+            className="inline-flex items-center gap-2 text-sm text-accent-primary hover:underline"
+          >
+            <Building2 className="h-4 w-4" />
+            Manage offices
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

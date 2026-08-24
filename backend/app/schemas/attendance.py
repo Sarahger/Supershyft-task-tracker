@@ -18,6 +18,9 @@ class AttendanceMarkRequest(BaseModel):
         None,
         description="Target user. Managers/admins may set attendance for another active user.",
     )
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+    gps_accuracy: float | None = Field(None, ge=0, description="GPS accuracy in meters from the browser.")
 
 
 class AttendanceUserBrief(BaseModel):
@@ -41,6 +44,12 @@ class AttendanceRecordResponse(BaseModel):
     created_at: datetime
     editable: bool = False
     user: AttendanceUserBrief | None = None
+    office_id: int | None = None
+    office_name: str | None = None
+    distance_from_office: float | None = None
+    location_verified: bool | None = None
+    verification_method: str | None = None
+    gps_accuracy: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -103,6 +112,12 @@ class AttendanceDayRow(BaseModel):
     status: AttendanceStatusValue | None = None
     recorded_at: datetime | None = None
     attendance_date: date
+    office_id: int | None = None
+    office_name: str | None = None
+    distance_from_office: float | None = None
+    location_verified: bool | None = None
+    verification_method: str | None = None
+    gps_accuracy: float | None = None
 
 
 class AttendanceDayResponse(BaseModel):

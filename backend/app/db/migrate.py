@@ -95,3 +95,69 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added meeting_logs.%s column", col_name)
+
+    dialect = engine.dialect.name
+    if "offices" not in tables:
+        if dialect == "postgresql":
+            sql = """
+                CREATE TABLE IF NOT EXISTS offices (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(200) NOT NULL,
+                    latitude DOUBLE PRECISION NOT NULL,
+                    longitude DOUBLE PRECISION NOT NULL,
+                    radius_meters DOUBLE PRECISION NOT NULL DEFAULT 150,
+                    max_gps_accuracy_meters DOUBLE PRECISION NOT NULL DEFAULT 100,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMP WITH TIME ZONE,
+                    updated_at TIMESTAMP WITH TIME ZONE
+                )
+            """
+        else:
+            sql = """
+                CREATE TABLE IF NOT EXISTS offices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name VARCHAR(200) NOT NULL,
+                    latitude REAL NOT NULL,
+                    longitude REAL NOT NULL,
+                    radius_meters REAL NOT NULL DEFAULT 150,
+                    max_gps_accuracy_meters REAL NOT NULL DEFAULT 100,
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+            """
+        with engine.begin() as conn:
+            conn.execute(text(sql))
+        logger.info("Created offices table")
+
+    if "attendances" in tables:
+        att_cols = {c["name"] for c in inspector.get_columns("attendances")}
+        if dialect == "postgresql":
+            att_additions = [
+                ("latitude", "DOUBLE PRECISION"),
+                ("longitude", "DOUBLE PRECISION"),
+                ("gps_accuracy", "DOUBLE PRECISION"),
+                ("office_id", "INTEGER REFERENCES offices(id)"),
+                ("distance_from_office", "DOUBLE PRECISION"),
+                ("location_verified", "BOOLEAN"),
+                ("verification_method", "VARCHAR(50)"),
+            ]
+        else:
+            att_additions = [
+                ("latitude", "REAL"),
+                ("longitude", "REAL"),
+                ("gps_accuracy", "REAL"),
+                ("office_id", "INTEGER REFERENCES offices(id)"),
+                ("distance_from_office", "REAL"),
+                ("location_verified", "BOOLEAN"),
+                ("verification_method", "VARCHAR(50)"),
+            ]
+        for col_name, col_def in att_additions:
+            if col_name not in att_cols:
+                if dialect == "postgresql":
+                    sql = f"ALTER TABLE attendances ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                else:
+                    sql = f"ALTER TABLE attendances ADD COLUMN {col_name} {col_def}"
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                logger.info("Added attendances.%s column", col_name)
