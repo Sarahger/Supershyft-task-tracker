@@ -47,18 +47,18 @@ export function AttendanceSummaryCard({ summary, loading }: Props) {
   );
 
   return (
-    <section className="card h-full min-h-0 p-4 flex flex-col">
-      <h2 className="workspace-section-title !mb-3 !px-0 shrink-0">Monthly summary</h2>
-      <div className="flex-1 min-h-0 flex flex-col justify-center space-y-2.5">
+    <section className="card h-full min-h-0 p-3 flex flex-col">
+      <h2 className="workspace-section-title !mb-2 !px-0 shrink-0">Monthly summary</h2>
+      <div className="flex-1 min-h-0 flex flex-col justify-center space-y-2 overflow-y-auto">
         <Bar label="Present (WFO)" value={summary.wfo_count} max={max} color="bg-emerald-500" />
         <Bar label="WFH" value={summary.wfh_count} max={max} color="bg-sky-500" />
         <Bar label="Leave" value={summary.leave_count} max={max} color="bg-amber-500" />
         <Bar label="Half Day" value={summary.half_day_count ?? 0} max={max} color="bg-violet-500" />
         <Bar label="Camp/Meeting" value={summary.camp_count ?? 0} max={max} color="bg-orange-500" />
       </div>
-      <div className="mt-3 pt-3 border-t border-dark-border flex items-center justify-between shrink-0">
+      <div className="mt-2 pt-2 border-t border-dark-border flex items-center justify-between shrink-0">
         <span className="text-xs text-text-muted">Attendance %</span>
-        <span className="text-lg font-semibold tabular-nums metric-emerald">
+        <span className="text-base font-semibold tabular-nums metric-emerald">
           {summary.attendance_percent}%
         </span>
       </div>

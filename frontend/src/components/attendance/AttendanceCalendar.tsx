@@ -41,11 +41,11 @@ export function AttendanceCalendar({
 
   if (loading) {
     return (
-      <div className="card h-full p-4 animate-pulse flex flex-col">
-        <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-4" />
-        <div className="flex-1 grid grid-cols-7 gap-2">
+      <div className="card h-full p-3 sm:p-4 animate-pulse flex flex-col">
+        <div className="h-5 w-32 bg-dark-muted rounded mx-auto mb-3" />
+        <div className="flex-1 grid grid-cols-7 gap-1.5">
           {Array.from({ length: 35 }).map((_, i) => (
-            <div key={i} className="rounded-lg bg-dark-muted min-h-[3rem]" />
+            <div key={i} className="rounded-lg bg-dark-muted min-h-0" />
           ))}
         </div>
       </div>
@@ -53,12 +53,12 @@ export function AttendanceCalendar({
   }
 
   return (
-    <section className="card h-full min-h-0 p-4 sm:p-5 flex flex-col">
-      <div className="flex items-center justify-between shrink-0 mb-3">
+    <section className="card h-full min-h-0 p-3 sm:p-4 flex flex-col">
+      <div className="flex items-center justify-between shrink-0 mb-2">
         <button
           type="button"
           onClick={() => onMonthChange(subMonths(month, 1))}
-          className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[36px] min-w-[36px] flex items-center justify-center transition-colors duration-hover"
+          className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[32px] min-w-[32px] flex items-center justify-center transition-colors duration-hover"
           aria-label="Previous month"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -69,22 +69,22 @@ export function AttendanceCalendar({
         <button
           type="button"
           onClick={() => onMonthChange(addMonths(month, 1))}
-          className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[36px] min-w-[36px] flex items-center justify-center transition-colors duration-hover"
+          className="p-1.5 rounded-md text-text-muted hover:bg-dark-hover hover:text-text-primary min-h-[32px] min-w-[32px] flex items-center justify-center transition-colors duration-hover"
           aria-label="Next month"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1.5 sm:gap-2 shrink-0 mb-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 shrink-0 mb-1">
         {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
-          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-1">
+          <div key={d} className="text-center text-2xs uppercase tracking-wider text-text-muted py-0.5">
             {d}
           </div>
         ))}
       </div>
       <div
-        className="flex-1 min-h-0 grid grid-cols-7 gap-1.5 sm:gap-2"
-        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(2.75rem, 1fr))` }}
+        className="flex-1 min-h-0 grid grid-cols-7 gap-1 sm:gap-1.5"
+        style={{ gridTemplateRows: `repeat(${weekCount}, minmax(0, 1fr))` }}
         key={format(month, 'yyyy-MM')}
       >
         {days.map((day) => {
@@ -104,8 +104,8 @@ export function AttendanceCalendar({
                   : statusLabel(null)
               }
               className={clsx(
-                'relative flex flex-col items-center justify-center gap-1.5 rounded-lg text-sm',
-                'transition-colors duration-hover min-h-[2.75rem] py-1.5 px-0.5',
+                'relative flex flex-col items-center justify-center gap-1 rounded-lg text-sm',
+                'transition-colors duration-hover min-h-0 py-1 px-0.5',
                 selectedDay && 'bg-surface-active text-text-primary',
                 !selectedDay && inMonth && 'text-text-primary hover:bg-dark-hover',
                 !selectedDay && !inMonth && 'text-text-muted/40',
@@ -116,7 +116,7 @@ export function AttendanceCalendar({
               <span className="text-sm tabular-nums leading-none">{format(day, 'd')}</span>
               <span
                 className={clsx(
-                  'h-2 w-2 rounded-full shrink-0',
+                  'h-1.5 w-1.5 rounded-full shrink-0',
                   status ? statusDotClass(status) : 'bg-transparent',
                   !inMonth && status && 'opacity-40',
                 )}

@@ -135,8 +135,8 @@ export default function AttendancePage() {
         )}
       </header>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 md:grid-rows-[minmax(0,0.9fr)_minmax(0,1.15fr)] gap-3 max-md:grid-rows-none max-md:auto-rows-min">
-        <div className="md:col-span-5 min-h-0 max-md:min-h-[8.5rem]">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 md:grid-rows-[auto_minmax(0,1fr)] gap-2.5 max-md:grid-rows-none max-md:auto-rows-min max-md:gap-3">
+        <div className="md:col-span-5 min-h-0">
           <AttendanceTodayHero
             todayRecord={data?.today_record}
             showMarkModal={showTodayModal && !editTarget}
@@ -152,7 +152,7 @@ export default function AttendancePage() {
           />
         </div>
 
-        <div className="md:col-span-7 min-h-0 max-md:min-h-[7.5rem]">
+        <div className="md:col-span-7 min-h-0">
           <AttendanceWeekStrip week={data?.week ?? []} weekStart={weekStart} loading={isLoading} />
         </div>
 
