@@ -7,6 +7,7 @@ from app.core.datetime_utils import as_utc, utcnow
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -29,6 +30,9 @@ class AuthService:
         self.db = db
         self.user_repo = UserRepository(db)
 
+    def _refresh_expiry(self) -> datetime:
+        return datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
     def _issue_tokens(self, user: User) -> dict:
         user.last_login = datetime.now(timezone.utc)
         self.db.commit()
@@ -39,7 +43,7 @@ class AuthService:
         refresh = RefreshToken(
             token=refresh_token_str,
             user_id=user.id,
-            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+            expires_at=self._refresh_expiry(),
         )
         self.db.add(refresh)
         self.db.commit()
@@ -114,6 +118,9 @@ class AuthService:
         user = self.user_repo.get_by_id(stored.user_id)
         if not user or user.status == "inactive":
             return None
+        # Keep session alive while the app is used
+        stored.expires_at = self._refresh_expiry()
+        self.db.commit()
         access_token = create_access_token({"sub": user.id})
         return {"access_token": access_token, "user": user}
 
