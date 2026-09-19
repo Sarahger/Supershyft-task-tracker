@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Calendar, ChevronDown, Flag, Folder, CornerDownLeft, X } from 'lucide-react';
+import { Calendar, ChevronDown, Flag, Folder, CornerDownLeft, ListPlus, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
@@ -26,6 +26,7 @@ import {
   type QuickPriority,
 } from '../../lib/quickTaskParse';
 import { format } from 'date-fns';
+import { PasteDailyTasksModal } from './PasteDailyTasksModal';
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -39,6 +40,8 @@ interface CreateTaskModalProps {
 export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   const { user: currentUser } = useAuth();
   const { createDefaultProjectId } = useTaskDrawer();
+  const [mode, setMode] = useState<'quick' | 'paste'>('quick');
+  const [pasteSeed, setPasteSeed] = useState('');
   const [text, setText] = useState('');
   const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [priority, setPriority] = useState<QuickPriority>('medium');
@@ -55,13 +58,13 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => projectsApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-    enabled: isOpen,
+    enabled: isOpen && mode === 'quick',
   });
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-    enabled: isOpen,
+    enabled: isOpen && mode === 'quick',
   });
 
   const mentionUsers: MentionUser[] = users ?? [];
@@ -106,7 +109,11 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   const suggestionCount = showingMentions ? mentionSuggestions.length : showingDates ? dateSuggestions.length : 0;
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setMode('quick');
+      setPasteSeed('');
+      return;
+    }
     setText('');
     setAssigneeIds(currentUser?.id ? [currentUser.id] : []);
     setPriority('medium');
@@ -117,9 +124,19 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     setTestingRequired(false);
     setMenuHighlight(0);
     setMenuOpen(false);
-    const t = window.setTimeout(() => textareaRef.current?.focus(), 50);
-    return () => window.clearTimeout(t);
+    if (mode === 'quick') {
+      const t = window.setTimeout(() => textareaRef.current?.focus(), 50);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+    // intentionally omit mode — switching to paste should not wipe quick fields mid-flight
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentUser?.id, createDefaultProjectId]);
+
+  const openPasteMode = (seed = '') => {
+    setPasteSeed(seed);
+    setMode('paste');
+  };
 
   useEffect(() => {
     setMenuHighlight(0);
@@ -142,6 +159,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   }, [parsed.assigneeIds]);
 
   const resetAndClose = () => {
+    setMode('quick');
     onClose();
   };
 
@@ -252,6 +270,20 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       : selectedProject.name
     : null;
 
+  if (mode === 'paste') {
+    return (
+      <PasteDailyTasksModal
+        isOpen={isOpen}
+        initialText={pasteSeed}
+        onClose={resetAndClose}
+        onBackToQuick={() => {
+          setPasteSeed('');
+          setMode('quick');
+        }}
+      />
+    );
+  }
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">
       <div className="relative -m-1">
@@ -271,6 +303,14 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
           <p className="text-sm text-text-muted mt-1.5">
             You&apos;re assigned by default. Use @ to add others, / for dates.
           </p>
+          <button
+            type="button"
+            onClick={() => openPasteMode()}
+            className="mt-2 inline-flex items-center gap-1.5 text-sm text-accent-primary hover:underline"
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+            Paste today&apos;s task list instead
+          </button>
         </div>
 
         <div
@@ -286,6 +326,17 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
               onChange={(e) => {
                 setText(e.target.value);
                 setMenuOpen(true);
+              }}
+              onPaste={(e) => {
+                const pasted = e.clipboardData.getData('text');
+                const lines = pasted.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+                const looksLikeList =
+                  lines.length >= 2
+                  && lines.some((l) => /^\d+[.)]\s+/.test(l));
+                if (looksLikeList) {
+                  e.preventDefault();
+                  openPasteMode(pasted);
+                }
               }}
               onFocus={() => setMenuOpen(true)}
               onBlur={() => window.setTimeout(() => setMenuOpen(false), 150)}
