@@ -223,6 +223,9 @@ function UserProfileContent({
         ) : (
           <div className="rounded-lg border border-dark-border overflow-hidden divide-y divide-dark-border">
             {profile.assigned_tasks.map((task) => {
+              const dueLabel = task.due_date
+                ? format(new Date(task.due_date), 'MMM d')
+                : null;
               return (
                 <button
                   key={task.id}
@@ -237,14 +240,17 @@ function UserProfileContent({
                         <span className="chip bg-surface-muted text-text-secondary text-2xs capitalize">
                           {STATUS_LABELS[task.status] || task.status.replace(/_/g, ' ')}
                         </span>
-                        {task.project_name && (
-                          <span className="text-2xs text-text-muted truncate">{task.project_name}</span>
+                        {dueLabel && (
+                          <span className="text-2xs text-text-muted tabular-nums">Due {dueLabel}</span>
                         )}
                       </div>
                     </div>
-                    <div className="text-right shrink-0 text-2xs tabular-nums">
+                    <div className="text-right shrink-0 text-2xs tabular-nums space-y-0.5">
+                      <p className="text-text-secondary">
+                        Req {formatTimeTakenHours(task.estimated_hours) ?? '—'}
+                      </p>
                       <p className="text-text-muted">
-                        {formatTimeTakenHours(task.actual_hours) ?? '—'}
+                        Taken {formatTimeTakenHours(task.actual_hours) ?? '—'}
                       </p>
                     </div>
                   </div>

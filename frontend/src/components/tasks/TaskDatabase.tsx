@@ -36,7 +36,7 @@ interface TaskDatabaseProps {
   onColumnsChange?: React.Dispatch<React.SetStateAction<ColumnDef[]>>;
 }
 
-export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'start_date' | 'end_date' | 'actual_hours' | 'indicators';
+export type ColumnId = 'title' | 'assignees' | 'priority' | 'due_date' | 'status' | 'start_date' | 'end_date' | 'estimated_hours' | 'actual_hours' | 'indicators';
 
 export interface ColumnDef {
   id: ColumnId;
@@ -53,9 +53,10 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'due_date', label: 'Due date', width: 110, minWidth: 90, visible: true, sortable: true },
   { id: 'status', label: 'Status', width: 150, minWidth: 120, visible: true, sortable: true },
   { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
+  { id: 'estimated_hours', label: 'Time required', width: 100, minWidth: 80, visible: true },
+  { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: true },
   { id: 'start_date', label: 'Start', width: 120, minWidth: 100, visible: false },
   { id: 'end_date', label: 'End', width: 120, minWidth: 100, visible: false },
-  { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: false },
   { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
 ];
 
@@ -380,6 +381,11 @@ export function TaskDatabase({
                         {task.end_date
                           ? format(new Date(task.end_date), 'MMM d, HH:mm')
                           : '—'}
+                      </span>
+                    )}
+                    {col.id === 'estimated_hours' && (
+                      <span className="text-sm text-text-muted tabular-nums">
+                        {formatTimeTakenHours(task.estimated_hours) ?? '—'}
                       </span>
                     )}
                     {col.id === 'actual_hours' && (
