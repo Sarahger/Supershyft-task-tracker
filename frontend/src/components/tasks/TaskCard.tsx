@@ -78,9 +78,9 @@ export function isClosedOrBlockedStatus(status: string): boolean {
   return ['completed', 'cancelled', 'blocked'].includes(status);
 }
 
-/** Overdue + still open (not completed / cancelled / blocked) — carry into Today's list. */
-export function isOverdueOpenTask(task: Task, now = new Date()): boolean {
-  if (!task.due_date || isClosedOrBlockedStatus(task.status)) return false;
+/** Overdue + in progress — carry into Today's list until status changes. */
+export function isOverdueInProgressTask(task: Task): boolean {
+  if (!task.due_date || task.status !== 'in_progress') return false;
   const d = new Date(task.due_date);
   return isPast(d) && !isToday(d);
 }
@@ -89,15 +89,15 @@ export function isDueTodayTask(task: Task): boolean {
   return !!task.due_date && isToday(new Date(task.due_date));
 }
 
-/** Today filter: due today, or overdue and still open. */
+/** Today filter: due today, or overdue and still in progress. */
 export function isVisibleInTodayList(task: Task): boolean {
-  if (!task.due_date || isClosedOrBlockedStatus(task.status)) return false;
-  const d = new Date(task.due_date);
-  return isToday(d) || (isPast(d) && !isToday(d));
+  if (!task.due_date) return false;
+  if (isDueTodayTask(task) && !isClosedOrBlockedStatus(task.status)) return true;
+  return isOverdueInProgressTask(task);
 }
 
 export function groupTasksByDue(tasks: Task[]) {
-  const overdue: Task[] = []; // kept for compatibility; open overdue now lives under today
+  const overdue: Task[] = [];
   const todayOverdue: Task[] = [];
   const todayDue: Task[] = [];
   const thisWeek: Task[] = [];
@@ -112,8 +112,8 @@ export function groupTasksByDue(tasks: Task[]) {
     if (task.status === 'cancelled') { cancelled.push(task); continue; }
     if (task.status === 'blocked') { blocked.push(task); continue; }
 
-    // Overdue open work stays on Today's list until completed / cancelled / blocked
-    if (isOverdueOpenTask(task)) {
+    // Only overdue + in_progress stays on Today's list
+    if (isOverdueInProgressTask(task)) {
       todayOverdue.push(task);
       continue;
     }
@@ -122,7 +122,8 @@ export function groupTasksByDue(tasks: Task[]) {
 
     if (task.due_date) {
       const d = new Date(task.due_date);
-      if (isToday(d)) todayDue.push(task);
+      if (isPast(d) && !isToday(d)) overdue.push(task);
+      else if (isToday(d)) todayDue.push(task);
       else if (isThisWeek(d)) thisWeek.push(task);
       else later.push(task);
     } else {
@@ -142,12 +143,13 @@ export function groupTasksByDue(tasks: Task[]) {
   };
 }
 
-/** Sections: today (incl. overdue open) → this week → … → completed/cancelled at end. */
+/** Sections: today (incl. overdue in progress) → this week → overdue → … */
 export function groupTasksByDueSections(tasks: Task[]): { label: string; tasks: Task[] }[] {
   const g = groupTasksByDue(tasks);
   return [
     { label: "Today's tasks", tasks: g.today },
     { label: 'This week', tasks: g.thisWeek },
+    { label: 'Overdue', tasks: g.overdue },
     { label: 'Blocked', tasks: g.blocked },
     { label: 'Waiting for review', tasks: g.review },
     { label: 'Upcoming', tasks: g.later },
