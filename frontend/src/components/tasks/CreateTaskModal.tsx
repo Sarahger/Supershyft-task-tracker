@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Calendar, ChevronDown, Flag, Folder, CornerDownLeft, ListPlus, X } from 'lucide-react';
+import { Calendar, ChevronDown, Clock, Flag, Folder, CornerDownLeft, ListPlus, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
@@ -19,7 +19,9 @@ import {
 import {
   formatDueForApi,
   getActiveDateQuery,
+  getActiveTimeQuery,
   matchDateSuggestions,
+  matchTimeSuggestions,
   nextPriority,
   parseQuickTask,
   PRIORITY_SHORT,
@@ -90,6 +92,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   }, [text]);
 
   const dateQuery = useMemo(() => getActiveDateQuery(text), [text]);
+  const timeQuery = useMemo(() => getActiveTimeQuery(text), [text]);
 
   const mentionSuggestions = useMemo(() => {
     if (mentionQuery === null) return [];
@@ -104,9 +107,23 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     return matchDateSuggestions(dateQuery).slice(0, 8);
   }, [dateQuery]);
 
+  const timeSuggestions = useMemo(() => {
+    if (timeQuery === null) return [];
+    return matchTimeSuggestions(timeQuery).slice(0, 8);
+  }, [timeQuery]);
+
   const showingMentions = menuOpen && mentionQuery !== null && mentionSuggestions.length > 0;
-  const showingDates = menuOpen && dateQuery !== null && !showingMentions && dateSuggestions.length > 0;
-  const suggestionCount = showingMentions ? mentionSuggestions.length : showingDates ? dateSuggestions.length : 0;
+  const showingDates =
+    menuOpen && dateQuery !== null && !showingMentions && dateSuggestions.length > 0;
+  const showingTimes =
+    menuOpen && timeQuery !== null && !showingMentions && !showingDates && timeSuggestions.length > 0;
+  const suggestionCount = showingMentions
+    ? mentionSuggestions.length
+    : showingDates
+      ? dateSuggestions.length
+      : showingTimes
+        ? timeSuggestions.length
+        : 0;
 
   useEffect(() => {
     if (!isOpen) {
@@ -140,7 +157,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
 
   useEffect(() => {
     setMenuHighlight(0);
-  }, [mentionQuery, dateQuery]);
+  }, [mentionQuery, dateQuery, timeQuery]);
 
   // Sync @mentions from the quick-input into assignee pills (additive only).
   useEffect(() => {
@@ -207,6 +224,13 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     textareaRef.current?.focus();
   };
 
+  const pickTime = (token: string) => {
+    setText((prev) => prev.replace(/#\s*[0-9]*\.?[0-9]*[a-zA-Z]*$/, `#${token} `));
+    setMenuOpen(false);
+    setMenuHighlight(0);
+    textareaRef.current?.focus();
+  };
+
   const ship = () => {
     const title = parsed.title.trim();
     if (!title) {
@@ -220,6 +244,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       status: assigneeIds.length ? 'to_do' : 'unassigned',
       project_id: projectId ? Number(projectId) : undefined,
       due_date: parsed.dueDate ? formatDueForApi(parsed.dueDate) : undefined,
+      estimated_hours: parsed.estimatedHours ?? undefined,
       assignee_ids: assigneeIds,
       review_required: reviewRequired,
       testing_required: testingRequired,
@@ -227,7 +252,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showingMentions || showingDates) {
+    if (showingMentions || showingDates || showingTimes) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
         setMenuHighlight((i) => Math.min(i + 1, suggestionCount - 1));
@@ -241,7 +266,8 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         if (showingMentions) pickUser(mentionSuggestions[menuHighlight]);
-        else pickDate(dateSuggestions[menuHighlight].token);
+        else if (showingDates) pickDate(dateSuggestions[menuHighlight].token);
+        else pickTime(timeSuggestions[menuHighlight].token);
         return;
       }
       if (e.key === 'Escape') {
@@ -258,6 +284,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   };
 
   const dueSummary = parsed.dueLabel ?? 'no due date';
+  const timeSummary = parsed.timeLabel ? `${parsed.timeLabel} required` : null;
 
   const selectedProject = useMemo(() => {
     if (!projectId || !projects) return null;
@@ -301,7 +328,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
             What&apos;s the move?
           </h2>
           <p className="text-sm text-text-muted mt-1.5">
-            You&apos;re assigned by default. Use @ to add others, / for dates.
+            You&apos;re assigned by default. Use @ for people, / for dates, # for time required.
           </p>
           <button
             type="button"
@@ -341,7 +368,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
               onFocus={() => setMenuOpen(true)}
               onBlur={() => window.setTimeout(() => setMenuOpen(false), 150)}
               onKeyDown={onKeyDown}
-              placeholder="ship the landing page @name /friday"
+              placeholder="ship the landing page @name /friday #2h"
               rows={3}
               className="w-full resize-none bg-transparent px-4 pt-4 pb-2 text-base text-text-primary placeholder:text-text-muted focus:outline-none"
             />
@@ -395,6 +422,30 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
                 ))}
               </ul>
             )}
+
+            {showingTimes && (
+              <ul className="absolute z-20 left-3 right-3 top-full mt-1 max-h-48 overflow-y-auto rounded-xl dropdown-panel border border-dark-border py-1 shadow-lg">
+                {timeSuggestions.map((s, idx) => (
+                  <li key={s.token}>
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pickTime(s.token)}
+                      className={clsx(
+                        'w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors',
+                        idx === menuHighlight
+                          ? 'bg-dark-hover text-text-primary'
+                          : 'text-text-secondary hover:bg-dark-hover',
+                      )}
+                    >
+                      <Clock className="h-3.5 w-3.5 text-text-muted shrink-0" />
+                      <span>#{s.token}</span>
+                      <span className="text-text-muted ml-auto text-xs">{s.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 px-4 pb-3">
@@ -416,6 +467,12 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
               </button>
 
               <span className="text-xs text-text-muted truncate">{dueSummary}</span>
+              {timeSummary && (
+                <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
+                  <Clock className="h-3 w-3 text-text-muted" />
+                  {timeSummary}
+                </span>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 min-h-[1.75rem]">

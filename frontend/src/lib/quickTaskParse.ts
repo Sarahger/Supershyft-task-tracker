@@ -34,6 +34,9 @@ const WEEKDAY_MAP: Record<string, Day> = {
 };
 
 const DATE_TOKEN_RE = /(?:^|\s)\/([a-zA-Z0-9._-]+)/g;
+/** `#1h`, `#15m`, `# 30min`, `#1.5hr` */
+const TIME_TOKEN_RE =
+  /(?:^|\s)#\s*(\d+(?:\.\d+)?)\s*(m|min|mins|minutes|h|hr|hrs|hour|hours)\b/gi;
 
 export type QuickPriority = 'low' | 'medium' | 'high' | 'critical';
 
@@ -75,9 +78,33 @@ export function parseRelativeDateToken(token: string, now = new Date()): Date | 
   return null;
 }
 
+/** Parse `#1h` / `#15m` style duration into hours. */
+export function parseTimeRequiredToken(value: string, unit: string): number | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  const u = unit.toLowerCase();
+  const hours = u.startsWith('h') ? amount : amount / 60;
+  return Math.round(hours * 100) / 100;
+}
+
+export function formatQuickTimeLabel(hours: number): string {
+  if (hours < 1) {
+    const mins = Math.round(hours * 60);
+    return mins <= 0 ? '0m' : `${mins}m`;
+  }
+  const rounded = Math.round(hours * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded}h`;
+}
+
 /** Active `/…` query at the end of the input (for suggestions). */
 export function getActiveDateQuery(text: string): string | null {
   const match = text.match(/(?:^|\s)\/([a-zA-Z0-9._-]*)$/);
+  return match ? match[1] : null;
+}
+
+/** Active `#…` query at the end of the input (for suggestions). */
+export function getActiveTimeQuery(text: string): string | null {
+  const match = text.match(/(?:^|\s)#\s*([0-9]*\.?[0-9]*[a-zA-Z]*)$/);
   return match ? match[1] : null;
 }
 
@@ -94,11 +121,30 @@ export const DATE_SUGGESTIONS = [
   { token: 'nextweek', label: 'Next week' },
 ] as const;
 
+export const TIME_SUGGESTIONS = [
+  { token: '15m', label: '15 minutes' },
+  { token: '30m', label: '30 minutes' },
+  { token: '45m', label: '45 minutes' },
+  { token: '1h', label: '1 hour' },
+  { token: '1.5h', label: '1.5 hours' },
+  { token: '2h', label: '2 hours' },
+  { token: '3h', label: '3 hours' },
+  { token: '4h', label: '4 hours' },
+] as const;
+
 export function matchDateSuggestions(query: string) {
   const q = query.trim().toLowerCase();
   if (!q) return [...DATE_SUGGESTIONS];
   return DATE_SUGGESTIONS.filter(
     (s) => s.token.startsWith(q) || s.label.toLowerCase().startsWith(q),
+  );
+}
+
+export function matchTimeSuggestions(query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...TIME_SUGGESTIONS];
+  return TIME_SUGGESTIONS.filter(
+    (s) => s.token.startsWith(q) || s.label.toLowerCase().includes(q),
   );
 }
 
@@ -109,6 +155,8 @@ export interface ParsedQuickTask {
   dueDate: Date | null;
   dueLabel: string | null;
   rawDateToken: string | null;
+  estimatedHours: number | null;
+  timeLabel: string | null;
 }
 
 export function parseQuickTask(text: string, users: MentionUser[], now = new Date()): ParsedQuickTask {
@@ -118,10 +166,12 @@ export function parseQuickTask(text: string, users: MentionUser[], now = new Dat
   let dueDate: Date | null = null;
   let dueLabel: string | null = null;
   let rawDateToken: string | null = null;
+  let estimatedHours: number | null = null;
+  let timeLabel: string | null = null;
   let cleaned = text;
 
-  const matches = [...text.matchAll(DATE_TOKEN_RE)];
-  for (const match of matches) {
+  const dateMatches = [...text.matchAll(DATE_TOKEN_RE)];
+  for (const match of dateMatches) {
     const token = match[1];
     const parsed = parseRelativeDateToken(token, now);
     if (!parsed) continue;
@@ -131,7 +181,15 @@ export function parseQuickTask(text: string, users: MentionUser[], now = new Dat
     cleaned = cleaned.replace(match[0], match[0].startsWith(' ') ? ' ' : '');
   }
 
-  // Strip full @Name tokens from title while keeping the readable task text
+  const timeMatches = [...cleaned.matchAll(TIME_TOKEN_RE)];
+  for (const match of timeMatches) {
+    const hours = parseTimeRequiredToken(match[1], match[2]);
+    if (hours == null) continue;
+    estimatedHours = hours;
+    timeLabel = formatQuickTimeLabel(hours);
+    cleaned = cleaned.replace(match[0], match[0].startsWith(' ') ? ' ' : '');
+  }
+
   for (const user of assignees) {
     const token = `@${mentionDisplayName(user)}`;
     cleaned = cleaned.split(token).join(' ');
@@ -146,6 +204,8 @@ export function parseQuickTask(text: string, users: MentionUser[], now = new Dat
     dueDate,
     dueLabel,
     rawDateToken,
+    estimatedHours,
+    timeLabel,
   };
 }
 
