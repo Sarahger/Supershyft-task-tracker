@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { isPast, isToday, isThisWeek } from 'date-fns';
 import { ChevronDown, Plus, X } from 'lucide-react';
 import clsx from 'clsx';
 import { tasksApi } from '../services/endpoints';
@@ -16,6 +15,7 @@ import { FloatingActionButton } from '../components/layout/FloatingActionButton'
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
+import { groupTasksByDue } from '../components/tasks/TaskCard';
 import { SELECTABLE_STATUS_OPTIONS, type Task } from '../types';
 
 function TaskList({
@@ -144,31 +144,7 @@ export default function MyTasksPage() {
     onError: () => toast.error('Could not update selected tasks'),
   });
 
-  const groups = useMemo(() => {
-    const overdue: Task[] = [];
-    const today: Task[] = [];
-    const thisWeek: Task[] = [];
-    const blocked: Task[] = [];
-    const review: Task[] = [];
-    const completed: Task[] = [];
-    const cancelled: Task[] = [];
-    const later: Task[] = [];
-
-    for (const t of tasks || []) {
-      if (t.status === 'completed') { completed.push(t); continue; }
-      if (t.status === 'cancelled') { cancelled.push(t); continue; }
-      if (t.status === 'blocked') { blocked.push(t); continue; }
-      if (['ready_for_review', 'in_review'].includes(t.status)) { review.push(t); continue; }
-      if (t.due_date) {
-        const d = new Date(t.due_date);
-        if (isPast(d) && !isToday(d)) overdue.push(t);
-        else if (isToday(d)) today.push(t);
-        else if (isThisWeek(d)) thisWeek.push(t);
-        else later.push(t);
-      } else later.push(t);
-    }
-    return { overdue, today, thisWeek, blocked, review, completed, cancelled, later };
-  }, [tasks]);
+  const groups = useMemo(() => groupTasksByDue(tasks || []), [tasks]);
 
   if (isLoading) return <TaskDatabaseSkeleton />;
 
@@ -241,7 +217,6 @@ export default function MyTasksPage() {
         <>
           {groups.today.length > 0 && <Section title="Today's tasks" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
           {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
-          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} {...listProps} /></Section>}
           {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} {...listProps} /></Section>}
           {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} {...listProps} /></Section>}
           {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} {...listProps} /></Section>}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { tasksApi, usersApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { useIsMobile } from '../../hooks/useMediaQuery';
@@ -11,7 +11,7 @@ import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './Tas
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
 import { DeletedTasksList } from './DeletedTasksList';
-import { groupTasksByDueSections } from './TaskCard';
+import { groupTasksByDueSections, isVisibleInTodayList } from './TaskCard';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
@@ -306,7 +306,7 @@ export function TasksWorkspace({
   const displayTasks = useMemo(() => {
     if (isDeletedView) return tasks;
     if (quickFilter === 'today') {
-      return tasks.filter((t) => t.due_date && isToday(new Date(t.due_date)));
+      return tasks.filter(isVisibleInTodayList);
     }
     if (quickFilter === 'completed') {
       return tasks.filter((t) => t.status === 'completed');

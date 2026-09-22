@@ -74,9 +74,32 @@ export function TaskCard({ task, onClick, compact }: TaskCardProps) {
   );
 }
 
+export function isClosedOrBlockedStatus(status: string): boolean {
+  return ['completed', 'cancelled', 'blocked'].includes(status);
+}
+
+/** Overdue + still open (not completed / cancelled / blocked) — carry into Today's list. */
+export function isOverdueOpenTask(task: Task, now = new Date()): boolean {
+  if (!task.due_date || isClosedOrBlockedStatus(task.status)) return false;
+  const d = new Date(task.due_date);
+  return isPast(d) && !isToday(d);
+}
+
+export function isDueTodayTask(task: Task): boolean {
+  return !!task.due_date && isToday(new Date(task.due_date));
+}
+
+/** Today filter: due today, or overdue and still open. */
+export function isVisibleInTodayList(task: Task): boolean {
+  if (!task.due_date || isClosedOrBlockedStatus(task.status)) return false;
+  const d = new Date(task.due_date);
+  return isToday(d) || (isPast(d) && !isToday(d));
+}
+
 export function groupTasksByDue(tasks: Task[]) {
-  const overdue: Task[] = [];
-  const today: Task[] = [];
+  const overdue: Task[] = []; // kept for compatibility; open overdue now lives under today
+  const todayOverdue: Task[] = [];
+  const todayDue: Task[] = [];
   const thisWeek: Task[] = [];
   const later: Task[] = [];
   const completed: Task[] = [];
@@ -88,27 +111,43 @@ export function groupTasksByDue(tasks: Task[]) {
     if (task.status === 'completed') { completed.push(task); continue; }
     if (task.status === 'cancelled') { cancelled.push(task); continue; }
     if (task.status === 'blocked') { blocked.push(task); continue; }
+
+    // Overdue open work stays on Today's list until completed / cancelled / blocked
+    if (isOverdueOpenTask(task)) {
+      todayOverdue.push(task);
+      continue;
+    }
+
     if (['ready_for_review', 'in_review'].includes(task.status)) { review.push(task); continue; }
+
     if (task.due_date) {
       const d = new Date(task.due_date);
-      if (isPast(d) && !isToday(d)) overdue.push(task);
-      else if (isToday(d)) today.push(task);
+      if (isToday(d)) todayDue.push(task);
       else if (isThisWeek(d)) thisWeek.push(task);
       else later.push(task);
     } else {
       later.push(task);
     }
   }
-  return { overdue, today, thisWeek, later, completed, cancelled, blocked, review };
+
+  return {
+    overdue,
+    today: [...todayOverdue, ...todayDue],
+    thisWeek,
+    later,
+    completed,
+    cancelled,
+    blocked,
+    review,
+  };
 }
 
-/** Sections: today → this week → overdue → … → completed/cancelled at end. */
+/** Sections: today (incl. overdue open) → this week → … → completed/cancelled at end. */
 export function groupTasksByDueSections(tasks: Task[]): { label: string; tasks: Task[] }[] {
   const g = groupTasksByDue(tasks);
   return [
     { label: "Today's tasks", tasks: g.today },
     { label: 'This week', tasks: g.thisWeek },
-    { label: 'Overdue', tasks: g.overdue },
     { label: 'Blocked', tasks: g.blocked },
     { label: 'Waiting for review', tasks: g.review },
     { label: 'Upcoming', tasks: g.later },
