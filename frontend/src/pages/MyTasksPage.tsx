@@ -16,7 +16,7 @@ import { FloatingActionButton } from '../components/layout/FloatingActionButton'
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
 import { toast } from '../components/ui/Toast';
-import { STATUS_LABELS, type Task } from '../types';
+import { SELECTABLE_STATUS_OPTIONS, type Task } from '../types';
 
 function TaskList({
   tasks,
@@ -212,8 +212,8 @@ export default function MyTasksPage() {
             }}
           >
             <option value="" disabled>Change status</option>
-            {Object.entries(STATUS_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
+            {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
             ))}
           </select>
           <button

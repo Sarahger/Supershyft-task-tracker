@@ -9,7 +9,7 @@ import { Modal } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
 import { toast } from '../ui/Toast';
 import { AssigneeMentionInput } from './AssigneeMentionInput';
-import { STATUS_LABELS } from '../../types';
+import { STATUS_LABELS, statusSelectOptions } from '../../types';
 import type { Task } from '../../types';
 import { formatTimeTakenHours } from '../../lib/taskTiming';
 
@@ -247,7 +247,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           label="Status"
           value={form.status}
           onChange={(e) => handleStatusChange(e.target.value)}
-          options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+          options={statusSelectOptions(form.status)}
         />
         <Select
           label="Priority"

@@ -29,14 +29,11 @@ class ProjectHealth(str, Enum):
 
 
 class TaskStatus(str, Enum):
-    UNASSIGNED = "unassigned"
-    BACKLOG = "backlog"
     TODO = "to_do"
     IN_PROGRESS = "in_progress"
     BLOCKED = "blocked"
     READY_FOR_REVIEW = "ready_for_review"
     IN_REVIEW = "in_review"
-    CHANGES_REQUESTED = "changes_requested"
     APPROVED = "approved"
     TESTING = "testing"
     BUGS_FOUND = "bugs_found"

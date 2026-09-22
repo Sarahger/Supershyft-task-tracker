@@ -241,7 +241,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       title,
       description: description.trim() || undefined,
       priority,
-      status: assigneeIds.length ? 'to_do' : 'unassigned',
+      status: 'to_do',
       project_id: projectId ? Number(projectId) : undefined,
       due_date: parsed.dueDate ? formatDueForApi(parsed.dueDate) : undefined,
       estimated_hours: parsed.estimatedHours ?? undefined,

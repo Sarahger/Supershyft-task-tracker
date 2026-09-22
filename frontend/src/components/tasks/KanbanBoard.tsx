@@ -14,7 +14,7 @@ import { toast } from '../ui/Toast';
 import { STATUS_LABELS } from '../../types';
 import type { Task } from '../../types';
 
-const KANBAN_COLUMNS = ['backlog', 'to_do', 'in_progress', 'blocked', 'in_review', 'testing', 'completed'];
+const KANBAN_COLUMNS = ['to_do', 'in_progress', 'blocked', 'in_review', 'testing', 'completed'];
 
 function SortableTask({ task, onClick }: { task: Task; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });

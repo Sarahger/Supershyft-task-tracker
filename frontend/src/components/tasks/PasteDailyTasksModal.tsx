@@ -23,13 +23,17 @@ interface Props {
   initialText?: string;
 }
 
-const PLACEHOLDER = `Sarah
+const PLACEHOLDER = `Yukti
 
-1. Meet with harshili to discuss options - 15-20 mins
-2. Blood collection partners flow - 15m
-3. Doc, nutritionist screens - 1 hr
-4. Diwali offer webpage design - 2 hr
-5. Task tracker changes - 2hrs`;
+1. Fix API error in Health Trends ( 45 minutes )
+2. Complete Lifestyle parameters (1.5 hours)
+3. Meeting with Rishi (30 minutes)
+
+— or —
+
+Harsh
+1) Updating copy in all forms
+2) Developing further flutter pages`;
 
 export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialText = '' }: Props) {
   const { user: currentUser } = useAuth();
@@ -152,7 +156,8 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
           </h2>
           <p className="text-sm text-text-muted mt-1.5">
             Paste your daily list. Tasks are created for <span className="text-text-secondary">{todayLabel}</span> (due EOD).
-            Names in a task (e.g. harshili) are added as assignees.
+            Names in a task are added as assignees. Use <span className="text-text-secondary">rest of the day</span> to
+            fill remaining time (10:30–18:00 workday).
           </p>
         </div>
 

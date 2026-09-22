@@ -349,11 +349,19 @@ export interface SearchResult {
 }
 
 export const TASK_STATUSES = [
-  'unassigned', 'backlog', 'to_do', 'in_progress', 'blocked',
-  'ready_for_review', 'in_review', 'changes_requested', 'approved',
-  'testing', 'bugs_found', 'completed', 'cancelled',
+  'to_do',
+  'in_progress',
+  'blocked',
+  'ready_for_review',
+  'in_review',
+  'approved',
+  'testing',
+  'bugs_found',
+  'completed',
+  'cancelled',
 ] as const;
 
+/** Display labels — includes legacy statuses so old records still render cleanly. */
 export const STATUS_LABELS: Record<string, string> = {
   unassigned: 'Unassigned',
   backlog: 'Backlog',
@@ -369,6 +377,22 @@ export const STATUS_LABELS: Record<string, string> = {
   completed: 'Completed',
   cancelled: 'Cancelled',
 };
+
+export const SELECTABLE_STATUS_OPTIONS = TASK_STATUSES.map((value) => ({
+  value,
+  label: STATUS_LABELS[value],
+}));
+
+/** Include the current status if it is a legacy value so selects don't blank out. */
+export function statusSelectOptions(currentStatus?: string) {
+  if (currentStatus && !(TASK_STATUSES as readonly string[]).includes(currentStatus)) {
+    return [
+      { value: currentStatus, label: STATUS_LABELS[currentStatus] || currentStatus },
+      ...SELECTABLE_STATUS_OPTIONS,
+    ];
+  }
+  return SELECTABLE_STATUS_OPTIONS;
+}
 
 export const PRIORITY_LABELS: Record<string, string> = {
   low: 'Low',

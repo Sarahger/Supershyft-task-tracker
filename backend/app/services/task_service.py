@@ -67,7 +67,7 @@ class TaskService:
             description=data.get("description"),
             task_type_id=data.get("task_type_id"),
             priority=data.get("priority", "medium"),
-            status=data.get("status", "unassigned"),
+            status=data.get("status", TaskStatus.TODO.value),
             severity=data.get("severity"),
             estimated_hours=data.get("estimated_hours"),
             actual_hours=data.get("actual_hours"),
@@ -88,7 +88,7 @@ class TaskService:
         if assignee_ids := data.get("assignee_ids"):
             for uid in assignee_ids:
                 task.assignees.append(TaskAssignee(user_id=uid))
-            if task.status == "unassigned":
+            if task.status in ("unassigned", "backlog"):
                 task.status = TaskStatus.TODO.value
 
         if dept_ids := data.get("department_ids"):

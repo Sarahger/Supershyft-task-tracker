@@ -200,7 +200,7 @@ class Task(Base):
     description = Column(Text, nullable=True)
     task_type_id = Column(Integer, ForeignKey("task_types.id"), nullable=True)
     priority = Column(String(50), nullable=False, default="medium")
-    status = Column(String(50), nullable=False, default="unassigned")
+    status = Column(String(50), nullable=False, default="to_do")
     severity = Column(String(50), nullable=True)
     estimated_hours = Column(Float, nullable=True)
     actual_hours = Column(Float, nullable=True)

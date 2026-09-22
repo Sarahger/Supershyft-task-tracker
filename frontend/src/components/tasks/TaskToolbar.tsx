@@ -4,7 +4,7 @@ import {
   ChevronDown, X, Bookmark, CalendarDays, CalendarRange,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { STATUS_LABELS } from '../../types';
+import { SELECTABLE_STATUS_OPTIONS } from '../../types';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
 import type { ColumnId } from './TaskDatabase';
 import { Button } from '../ui/Button';
@@ -135,8 +135,8 @@ export function TaskToolbar({
             defaultValue=""
           >
             <option value="" disabled>Change status</option>
-            {Object.entries(STATUS_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
+            {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
             ))}
           </select>
           <button onClick={onClearSelection} className="toolbar-btn ml-auto text-text-muted">
@@ -204,7 +204,9 @@ export function TaskToolbar({
                 <label className="text-2xs text-text-muted uppercase tracking-wider mb-1 block">Status</label>
                 <select className="input py-1 text-sm mb-3" value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)}>
                   <option value="">All</option>
-                  {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
                 <label className="text-2xs text-text-muted uppercase tracking-wider mb-1 block">Priority</label>
                 <select className="input py-1 text-sm mb-3" value={priorityFilter} onChange={(e) => onPriorityFilterChange(e.target.value)}>

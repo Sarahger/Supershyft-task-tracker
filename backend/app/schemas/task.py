@@ -98,7 +98,7 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    status: str = "unassigned"
+    status: str = "to_do"
     assignee_ids: list[int] = []
     department_ids: list[int] = []
     tag_ids: list[int] = []

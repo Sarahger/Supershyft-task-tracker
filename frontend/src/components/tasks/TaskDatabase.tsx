@@ -8,7 +8,7 @@ import clsx from 'clsx';
 import type { Task } from '../../types';
 import { statusStyles, priorityStyles } from '../ui/Badge';
 import { AvatarGroup } from '../ui/Avatar';
-import { STATUS_LABELS, PRIORITY_LABELS } from '../../types';
+import { STATUS_LABELS, PRIORITY_LABELS, statusSelectOptions } from '../../types';
 import { formatTimeTakenHours } from '../../lib/taskTiming';
 
 const INLINE_SELECT_CLASS =
@@ -91,8 +91,8 @@ function InlineStatusSelect({
       className={clsx(INLINE_SELECT_CLASS, statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}
       aria-label={`Status for ${task.title}`}
     >
-      {Object.entries(STATUS_LABELS).map(([v, l]) => (
-        <option key={v} value={v}>{l}</option>
+      {statusSelectOptions(task.status).map(({ value, label }) => (
+        <option key={value} value={value}>{label}</option>
       ))}
     </select>
   );
