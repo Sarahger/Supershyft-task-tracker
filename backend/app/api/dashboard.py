@@ -136,7 +136,7 @@ def get_dashboard(db: Session = Depends(get_db), current_user: User = Depends(ge
 
     pending_review_tasks = (
         db.query(Task)
-        .filter(Task.reviewer_id == current_user.id, Task.status.in_(["ready_for_review", "in_review"]))
+        .filter(Task.reviewer_id == current_user.id, Task.status == "in_review")
         .limit(10)
         .all()
     )

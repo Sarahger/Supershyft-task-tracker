@@ -95,3 +95,12 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added meeting_logs.%s column", col_name)
+
+    # Collapse legacy ready_for_review into the single Review status (in_review)
+    if "tasks" in tables:
+        with engine.begin() as conn:
+            result = conn.execute(
+                text("UPDATE tasks SET status = 'in_review' WHERE status = 'ready_for_review'")
+            )
+            if result.rowcount:
+                logger.info("Normalized %s tasks from ready_for_review → in_review", result.rowcount)

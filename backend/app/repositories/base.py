@@ -175,7 +175,7 @@ class TaskRepository(BaseRepository):
         if filters.get("blocked"):
             query = query.filter(Task.status == "blocked")
         if filters.get("awaiting_review"):
-            query = query.filter(Task.status.in_(["ready_for_review", "in_review"]))
+            query = query.filter(Task.status == "in_review")
         if filters.get("has_due_date") is True:
             query = query.filter(Task.due_date.isnot(None))
         elif filters.get("has_due_date") is False:

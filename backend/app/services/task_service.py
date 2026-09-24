@@ -239,7 +239,7 @@ class TaskService:
 
         if task.review_required and all(a.is_completed for a in task.assignees):
             if task.status == TaskStatus.IN_PROGRESS.value:
-                task.status = TaskStatus.READY_FOR_REVIEW.value
+                task.status = TaskStatus.IN_REVIEW.value
                 self.repo.update(task)
                 if task.reviewer_id:
                     self.notifications.notify(

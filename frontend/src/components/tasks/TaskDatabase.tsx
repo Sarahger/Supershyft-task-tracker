@@ -97,7 +97,7 @@ function InlineStatusSelect({
   }
   return (
     <select
-      value={task.status}
+      value={task.status === 'ready_for_review' ? 'in_review' : task.status}
       onClick={stopRowActivation}
       onMouseDown={stopRowActivation}
       onChange={(e) => {
@@ -106,7 +106,7 @@ function InlineStatusSelect({
       }}
       className={clsx(INLINE_SELECT_CLASS, statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}
       aria-label={`Status for ${task.title}`}
-      title={task.status.replace(/_/g, ' ')}
+      title={shortStatusLabel(task.status)}
     >
       {statusSelectOptions(task.status).map(({ value }) => (
         <option key={value} value={value}>{shortStatusLabel(value)}</option>

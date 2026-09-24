@@ -352,7 +352,6 @@ export const TASK_STATUSES = [
   'to_do',
   'in_progress',
   'blocked',
-  'ready_for_review',
   'in_review',
   'approved',
   'testing',
@@ -368,8 +367,8 @@ export const STATUS_LABELS: Record<string, string> = {
   to_do: 'To Do',
   in_progress: 'In Progress',
   blocked: 'Blocked',
-  ready_for_review: 'Ready for Review',
-  in_review: 'In Review',
+  ready_for_review: 'Review', // legacy → same as in_review
+  in_review: 'Review',
   changes_requested: 'Changes Requested',
   approved: 'Approved',
   testing: 'Testing',
@@ -385,7 +384,7 @@ export const STATUS_SHORT_LABELS: Record<string, string> = {
   to_do: 'To Do',
   in_progress: 'WIP',
   blocked: 'Blocked',
-  ready_for_review: 'RFR',
+  ready_for_review: 'Review', // legacy
   in_review: 'Review',
   changes_requested: 'Changes',
   approved: 'Approved',
@@ -400,15 +399,21 @@ export const SELECTABLE_STATUS_OPTIONS = TASK_STATUSES.map((value) => ({
   label: STATUS_LABELS[value],
 }));
 
-/** Include the current status if it is a legacy value so selects don't blank out. */
+/** Include the current status if it is a legacy value so selects don't blank out.
+ *  Legacy ready_for_review is shown as Review and maps to in_review as the selectable value. */
 export function statusSelectOptions(currentStatus?: string) {
-  if (currentStatus && !(TASK_STATUSES as readonly string[]).includes(currentStatus)) {
+  const options = [...SELECTABLE_STATUS_OPTIONS];
+  if (
+    currentStatus
+    && !(TASK_STATUSES as readonly string[]).includes(currentStatus)
+    && currentStatus !== 'ready_for_review'
+  ) {
     return [
       { value: currentStatus, label: STATUS_LABELS[currentStatus] || currentStatus },
-      ...SELECTABLE_STATUS_OPTIONS,
+      ...options,
     ];
   }
-  return SELECTABLE_STATUS_OPTIONS;
+  return options;
 }
 
 export const PRIORITY_LABELS: Record<string, string> = {

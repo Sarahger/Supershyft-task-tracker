@@ -189,7 +189,7 @@ def seed():
         ("Email newsletter template", "Marketing", "medium", "to_do", "Marketing Campaign Q2", ["Olivia"], "David", False, False, 6),
         ("Setup CI/CD pipeline", "Operations", "high", "completed", "Admin Dashboard", ["Liam"], "James", True, True, 12),
         ("Database migration script", "Feature", "critical", "blocked", "Admin Dashboard", ["Michael", "Liam"], "James", True, False, 8),
-        ("User profile page", "Feature", "medium", "ready_for_review", "Mobile App", ["Emily"], "James", True, False, 10),
+        ("User profile page", "Feature", "medium", "in_review", "Mobile App", ["Emily"], "James", True, False, 10),
         ("Payment integration", "Feature", "critical", "to_do", "Mobile App", ["Alex", "Michael"], "James", True, True, 24),
         ("Accessibility audit", "Testing", "medium", "testing", "Website Redesign", ["Daniel"], "Maria", True, True, 8),
         ("Performance optimization", "Feature", "high", "in_progress", "Website Redesign", ["Emily"], "James", True, False, 16),
@@ -246,7 +246,7 @@ def seed():
 
         for name in assignees:
             if name in user_map:
-                completed = status in ("ready_for_review", "in_review", "approved", "testing", "completed")
+                completed = status in ("in_review", "approved", "testing", "completed")
                 task.assignees.append(TaskAssignee(user_id=user_map[name].id, is_completed=completed))
 
         task.departments = [departments["Technology"]] if ttype in ("Feature", "Bug", "Testing") else [departments["Design"]] if ttype == "Design" else [departments["Marketing"]]

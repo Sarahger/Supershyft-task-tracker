@@ -29,7 +29,7 @@ export function TaskCard({ task, onClick, compact }: TaskCardProps) {
                 <AlertTriangle className="h-3 w-3" /> Blocked
               </span>
             )}
-            {task.review_required && task.status === 'in_review' && (
+            {task.review_required && (task.status === 'in_review' || task.status === 'ready_for_review') && (
               <span className="chip badge-review flex items-center gap-1">
                 <Eye className="h-3 w-3" /> Review
               </span>
