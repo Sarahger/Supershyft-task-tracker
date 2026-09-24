@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
 import { STATUS_LABELS } from '../../types';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
 
@@ -39,6 +40,7 @@ export function MobileTaskCard({ task, onClick }: MobileTaskCardProps) {
   const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !['completed', 'cancelled'].includes(task.status);
   const primaryAssignee = task.assignees?.[0]?.user;
   const accent = statusAccentClass(task.status);
+  const timeRequired = formatTimeTakenHours(task.estimated_hours);
 
   return (
     <button
@@ -57,7 +59,7 @@ export function MobileTaskCard({ task, onClick }: MobileTaskCardProps) {
           <StatusBadge status={task.status} />
           <PriorityBadge priority={task.priority} />
         </div>
-        <div className="flex items-center gap-2 mt-2 text-xs text-text-muted">
+        <div className="flex items-center gap-2 mt-2 text-xs text-text-muted flex-wrap">
           {task.due_date && (
             <span className={clsx(isOverdue && 'priority-critical font-medium')}>
               {isOverdue ? 'Overdue · ' : ''}{formatDueDate(task.due_date)}
@@ -65,6 +67,12 @@ export function MobileTaskCard({ task, onClick }: MobileTaskCardProps) {
           )}
           {!task.due_date && (
             <span>{STATUS_LABELS[task.status] || task.status.replace(/_/g, ' ')}</span>
+          )}
+          {timeRequired && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">{timeRequired}</span>
+            </>
           )}
         </div>
       </div>
