@@ -388,7 +388,10 @@ export function TasksWorkspace({
   };
 
   const deptTabOptions = useMemo(() => {
-    const depts = [...departments].sort((a, b) => a.name.localeCompare(b.name));
+    const HIDDEN_DEPT_TABS = new Set(['software development', 'hr']);
+    const depts = [...departments]
+      .filter((d) => !HIDDEN_DEPT_TABS.has(d.name.trim().toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name));
     const options: { id: string; label: string }[] = [
       { id: 'all', label: 'All' },
       ...depts.map((d) => ({ id: String(d.id), label: d.name })),

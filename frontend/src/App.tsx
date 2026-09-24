@@ -74,14 +74,17 @@ function ProtectedLayout() {
         || document.activeElement?.tagName === 'TEXTAREA'
         || (document.activeElement as HTMLElement | null)?.isContentEditable;
 
-      // Ctrl/Cmd+N — create task (overrides browser new-window)
-      if (mod && key === 'n' && !e.shiftKey && !e.altKey) {
+      // Ctrl/Cmd+C — create task when nothing is selected (so normal copy still works)
+      if (mod && key === 'c' && !e.shiftKey && !e.altKey) {
+        if (inField) return;
+        const selected = window.getSelection()?.toString() ?? '';
+        if (selected.length > 0) return;
         e.preventDefault();
         openNewTask();
         return;
       }
 
-      // Plain "c" when not typing — existing shortcut
+      // Plain "c" when not typing
       if (key === 'c' && !mod && !e.altKey && !inField) {
         openNewTask();
       }
