@@ -34,9 +34,10 @@ interface MobileTaskToolbarProps {
   viewMode: ViewMode;
   onViewModeChange: (v: ViewMode) => void;
   showViewSelector?: boolean;
-  quickFilter: string;
-  onQuickFilterChange: (v: string) => void;
-  quickFilterOptions: { id: string; label: string }[];
+  quickFilter?: string;
+  onQuickFilterChange?: (v: string) => void;
+  quickFilterOptions?: { id: string; label: string }[];
+  showQuickFilters?: boolean;
 }
 
 const sortOptions = [
@@ -73,9 +74,10 @@ export function MobileTaskToolbar({
   viewMode,
   onViewModeChange,
   showViewSelector = true,
-  quickFilter,
+  quickFilter = 'all',
   onQuickFilterChange,
-  quickFilterOptions,
+  quickFilterOptions = [],
+  showQuickFilters = false,
 }: MobileTaskToolbarProps) {
   const { enabledViewModes } = useTaskViewPreferences();
   const visibleViewOptions = viewOptions.filter((opt) => enabledViewModes.includes(opt.v));
@@ -117,24 +119,26 @@ export function MobileTaskToolbar({
         </div>
       </div>
 
-      {/* Horizontal scrollable filter chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
-        {quickFilterOptions.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => onQuickFilterChange(opt.id)}
-            className={clsx(
-              'shrink-0 px-3.5 py-2 rounded-full text-sm font-medium transition-colors min-h-[36px]',
-              quickFilter === opt.id
-                ? 'bg-accent-primary text-white'
-                : 'bg-dark-card border border-dark-border text-text-secondary hover:bg-dark-hover',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
+      {/* Horizontal scrollable department / tab chips */}
+      {showQuickFilters && quickFilterOptions.length > 0 && onQuickFilterChange && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+          {quickFilterOptions.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onQuickFilterChange(opt.id)}
+              className={clsx(
+                'shrink-0 px-3.5 py-2 rounded-full text-sm font-medium transition-colors min-h-[36px]',
+                quickFilter === opt.id
+                  ? 'bg-accent-primary text-white'
+                  : 'bg-dark-card border border-dark-border text-text-secondary hover:bg-dark-hover',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <BottomSheet isOpen={sheetOpen} onClose={() => setSheetOpen(false)} title="Filter & sort">
         {/* View */}

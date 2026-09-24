@@ -61,10 +61,29 @@ function ProtectedLayout() {
   const location = useLocation();
 
   useEffect(() => {
+    const openNewTask = () => {
+      const projectMatch = location.pathname.match(/^\/projects\/(\d+)/);
+      openCreate(projectMatch ? { projectId: Number(projectMatch[1]) } : undefined);
+    };
+
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'c' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        const projectMatch = location.pathname.match(/^\/projects\/(\d+)/);
-        openCreate(projectMatch ? { projectId: Number(projectMatch[1]) } : undefined);
+      const key = e.key.toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      const inField =
+        document.activeElement?.tagName === 'INPUT'
+        || document.activeElement?.tagName === 'TEXTAREA'
+        || (document.activeElement as HTMLElement | null)?.isContentEditable;
+
+      // Ctrl/Cmd+N — create task (overrides browser new-window)
+      if (mod && key === 'n' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        openNewTask();
+        return;
+      }
+
+      // Plain "c" when not typing — existing shortcut
+      if (key === 'c' && !mod && !e.altKey && !inField) {
+        openNewTask();
       }
     };
     document.addEventListener('keydown', handler);
@@ -101,9 +120,9 @@ export default function App() {
         <ThemeProvider>
         <TaskViewPreferencesProvider>
         <AuthProvider>
-          <TaskDrawerProvider>
-            <UserDrawerProvider>
             <BrowserRouter>
+              <TaskDrawerProvider>
+                <UserDrawerProvider>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route element={<ProtectedLayout />}>
@@ -201,9 +220,9 @@ export default function App() {
                 </Route>
               </Routes>
               <ToastContainer />
+                </UserDrawerProvider>
+              </TaskDrawerProvider>
             </BrowserRouter>
-            </UserDrawerProvider>
-          </TaskDrawerProvider>
         </AuthProvider>
         </TaskViewPreferencesProvider>
         </ThemeProvider>

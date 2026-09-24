@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
-import { tasksApi, usersApi } from '../../services/endpoints';
+import { tasksApi, usersApi, departmentsApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
@@ -11,7 +11,7 @@ import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './Tas
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
 import { DeletedTasksList } from './DeletedTasksList';
-import { groupTasksByDueSections, isVisibleInTodayList } from './TaskCard';
+import { groupTasksByDueSections } from './TaskCard';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
@@ -31,7 +31,8 @@ const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ 
 
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
-export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review' | 'completed' | 'deleted';
+/** Top pills: all departments, a specific department, or deleted. */
+export type DeptTab = 'all' | 'deleted' | number;
 
 interface TasksWorkspaceProps {
   title: string;
@@ -88,7 +89,7 @@ export function TasksWorkspace({
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState(() => searchParams.get('assignee') ?? '');
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [deptTab, setDeptTab] = useState<DeptTab>('all');
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
@@ -157,18 +158,17 @@ export function TasksWorkspace({
     };
   }, [calendarWeek]);
 
-  const isDeletedView = quickFilter === 'deleted' && showQuickFilters;
+  const isDeletedView = deptTab === 'deleted' && showQuickFilters;
+  const selectedDepartmentId = typeof deptTab === 'number' ? deptTab : undefined;
 
   const sharedListFilters = useMemo(() => ({
     search: search || undefined,
-    status: quickFilter === 'completed' ? 'completed' : (statusFilter || undefined),
+    status: statusFilter || undefined,
     priority: priorityFilter || undefined,
     assignee_id: assigneeFilter ? Number(assigneeFilter) : undefined,
-    overdue: quickFilter === 'overdue' ? true : undefined,
-    blocked: quickFilter === 'blocked' ? true : undefined,
-    awaiting_review: quickFilter === 'review' ? true : undefined,
+    department_id: selectedDepartmentId,
     archived: isDeletedView ? true : undefined,
-  }), [search, statusFilter, priorityFilter, assigneeFilter, quickFilter, isDeletedView]);
+  }), [search, statusFilter, priorityFilter, assigneeFilter, selectedDepartmentId, isDeletedView]);
 
   const filters = useMemo(() => {
     if (isDeletedView) {
@@ -284,6 +284,13 @@ export function TasksWorkspace({
     staleTime: REFERENCE_STALE_MS,
   });
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.list().then((r) => r.data.data),
+    enabled: showQuickFilters,
+    staleTime: REFERENCE_STALE_MS,
+  });
+
   const { data: savedFilters } = useQuery({
     queryKey: ['saved-filters'],
     queryFn: () => api.get('/saved-filters').then((r) => r.data.data),
@@ -303,16 +310,7 @@ export function TasksWorkspace({
   });
 
   const tasks = data?.items || [];
-  const displayTasks = useMemo(() => {
-    if (isDeletedView) return tasks;
-    if (quickFilter === 'today') {
-      return tasks.filter(isVisibleInTodayList);
-    }
-    if (quickFilter === 'completed') {
-      return tasks.filter((t) => t.status === 'completed');
-    }
-    return tasks;
-  }, [tasks, quickFilter, isDeletedView]);
+  const displayTasks = tasks;
 
   const showViewsEffective = showViews && !isDeletedView;
   const groups = groupTasks(displayTasks, groupBy);
@@ -389,15 +387,25 @@ export function TasksWorkspace({
     } catch { /* ignore */ }
   };
 
-  const quickFilterOptions: { id: QuickFilter; label: string }[] = [
-    { id: 'all', label: 'All' },
-    { id: 'overdue', label: 'Overdue' },
-    { id: 'today', label: 'Today' },
-    { id: 'blocked', label: 'Blocked' },
-    { id: 'review', label: 'Review' },
-    { id: 'completed', label: 'Completed' },
-    { id: 'deleted', label: 'Deleted' },
-  ];
+  const deptTabOptions = useMemo(() => {
+    const depts = [...departments].sort((a, b) => a.name.localeCompare(b.name));
+    const options: { id: string; label: string }[] = [
+      { id: 'all', label: 'All' },
+      ...depts.map((d) => ({ id: String(d.id), label: d.name })),
+      { id: 'deleted', label: 'Deleted' },
+    ];
+    return options;
+  }, [departments]);
+
+  const selectDeptTab = (id: string) => {
+    setPage(1);
+    if (id === 'all' || id === 'deleted') {
+      setDeptTab(id);
+      return;
+    }
+    const n = Number(id);
+    if (Number.isFinite(n) && n > 0) setDeptTab(n);
+  };
 
   return (
     <div className={clsx('flex flex-col min-h-0 pb-8', fullWidth ? 'w-full max-w-none' : 'max-w-workspace mx-auto', isMobile && 'pb-24')}>
@@ -410,23 +418,27 @@ export function TasksWorkspace({
         )}
       </div>
 
-      {/* Desktop quick filters */}
+      {/* Desktop department tabs */}
       {showQuickFilters && !isMobile && (
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto flex-nowrap pb-0.5 -mx-1 px-1">
-          {quickFilterOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => { setQuickFilter(opt.id); setPage(1); }}
-              className={clsx(
-                'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap',
-                quickFilter === opt.id
-                  ? 'bg-surface-highlight text-text-primary'
-                  : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+          {deptTabOptions.map((opt) => {
+            const active = String(deptTab) === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => selectDeptTab(opt.id)}
+                className={clsx(
+                  'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap',
+                  active
+                    ? 'bg-surface-highlight text-text-primary'
+                    : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -451,9 +463,10 @@ export function TasksWorkspace({
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
           showViewSelector={showViewsEffective}
-          quickFilter={quickFilter}
-          onQuickFilterChange={(v) => { setQuickFilter(v as QuickFilter); setPage(1); }}
-          quickFilterOptions={quickFilterOptions}
+          quickFilter={String(deptTab)}
+          onQuickFilterChange={selectDeptTab}
+          quickFilterOptions={deptTabOptions}
+          showQuickFilters={showQuickFilters}
         />
       )}
 
