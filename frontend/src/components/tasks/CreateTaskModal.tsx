@@ -237,6 +237,10 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       toast.error('Add a task title');
       return;
     }
+    if (parsed.estimatedHours == null || parsed.estimatedHours <= 0) {
+      toast.error('Add time required with # (e.g. #1h or #30m)');
+      return;
+    }
     mutation.mutate({
       title,
       description: description.trim() || undefined,
@@ -244,7 +248,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       status: 'to_do',
       project_id: projectId ? Number(projectId) : undefined,
       due_date: parsed.dueDate ? formatDueForApi(parsed.dueDate) : undefined,
-      estimated_hours: parsed.estimatedHours ?? undefined,
+      estimated_hours: parsed.estimatedHours,
       assignee_ids: assigneeIds,
       review_required: reviewRequired,
       testing_required: testingRequired,
@@ -328,7 +332,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
             What&apos;s the move?
           </h2>
           <p className="text-sm text-text-muted mt-1.5">
-            You&apos;re assigned by default. Use @ for people, / for dates, # for time required.
+            You&apos;re assigned by default. Use @ for people, / for dates, and # for time required (required).
           </p>
           <button
             type="button"
@@ -467,10 +471,15 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
               </button>
 
               <span className="text-xs text-text-muted truncate">{dueSummary}</span>
-              {timeSummary && (
+              {timeSummary ? (
                 <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
                   <Clock className="h-3 w-3 text-text-muted" />
                   {timeSummary}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs text-amber-400/90">
+                  <Clock className="h-3 w-3" />
+                  Time required — add #1h or #30m
                 </span>
               )}
             </div>
@@ -524,12 +533,12 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
           </div>
 
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-dark-border/80">
-            <p className="text-2xs text-text-muted">tips: @ to assign · / for date</p>
+            <p className="text-2xs text-text-muted">tips: @ to assign · / for date · # for time (required)</p>
             <Button
               type="button"
               onClick={ship}
               loading={mutation.isPending}
-              disabled={!parsed.title.trim()}
+              disabled={!parsed.title.trim() || parsed.estimatedHours == null || parsed.estimatedHours <= 0}
               className="gap-2 rounded-xl bg-[var(--accent-primary)] hover:opacity-90 border-transparent text-white"
             >
               Ship it
@@ -557,6 +566,17 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
                 <span className="inline-flex items-center gap-1">
                   <Calendar className="h-3.5 w-3.5" />
                   {parsed.dueLabel}
+                </span>
+              )}
+              {parsed.timeLabel ? (
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  {parsed.timeLabel}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-amber-400/90">
+                  <Clock className="h-3.5 w-3.5" />
+                  Time required
                 </span>
               )}
               <span className="inline-flex items-center gap-1 text-amber-300/90">

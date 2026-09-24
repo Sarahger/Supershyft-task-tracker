@@ -99,6 +99,7 @@ class TaskBase(BaseModel):
 
 class TaskCreate(TaskBase):
     status: str = "to_do"
+    estimated_hours: float = Field(..., gt=0, description="Time required in hours (required when creating)")
     assignee_ids: list[int] = []
     department_ids: list[int] = []
     tag_ids: list[int] = []

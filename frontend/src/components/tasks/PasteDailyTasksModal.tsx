@@ -74,6 +74,9 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
 
       const results = [];
       for (const item of parsed.items) {
+        if (item.estimatedHours == null || item.estimatedHours <= 0) {
+          throw new Error('Every task needs time required (e.g. 30 minutes or 1.5 hours)');
+        }
         const assigneeIds = [...new Set([ownerId, ...item.mentionedUserIds])];
         const res = await tasksApi.create({
           title: item.title,
@@ -81,7 +84,7 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
           status: 'to_do',
           due_date: due,
           assignee_ids: assigneeIds,
-          estimated_hours: item.estimatedHours ?? undefined,
+          estimated_hours: item.estimatedHours,
           review_required: false,
           testing_required: false,
         });
@@ -111,9 +114,18 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
     },
   });
 
+  const missingTimeCount = useMemo(
+    () => parsed.items.filter((i) => i.estimatedHours == null || i.estimatedHours <= 0).length,
+    [parsed.items],
+  );
+
   const ship = () => {
     if (!parsed.items.length) {
       toast.error('Paste a numbered task list first');
+      return;
+    }
+    if (missingTimeCount > 0) {
+      toast.error('Every task needs time required (e.g. 30 minutes or 1.5 hours)');
       return;
     }
     mutation.mutate();
@@ -156,8 +168,8 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
           </h2>
           <p className="text-sm text-text-muted mt-1.5">
             Paste your daily list. Tasks are created for <span className="text-text-secondary">{todayLabel}</span> (due EOD).
-            Names in a task are added as assignees. Use <span className="text-text-secondary">rest of the day</span> to
-            fill remaining time (10:30–18:00 workday).
+            Each line needs a time (e.g. 30 minutes). Names in a task are added as assignees. Use{' '}
+            <span className="text-text-secondary">rest of the day</span> to fill remaining time (10:30–18:00 workday).
           </p>
         </div>
 
@@ -200,15 +212,20 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-text-primary leading-snug">{item.title}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {item.timeLabel && (
+                      {item.estimatedHours != null && item.estimatedHours > 0 ? (
                         <span className="inline-flex items-center gap-1 text-2xs text-text-muted">
                           <Clock className="h-3 w-3" />
-                          {item.timeLabel}
-                          {item.estimatedHours != null && (
+                          {item.timeLabel ?? formatHoursLabel(item.estimatedHours)}
+                          {item.timeLabel && (
                             <span className="text-text-secondary">
                               ({formatHoursLabel(item.estimatedHours)})
                             </span>
                           )}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-2xs text-amber-400/90">
+                          <Clock className="h-3 w-3" />
+                          Time required missing
                         </span>
                       )}
                       {item.mentionedUsers.map((u) => (
@@ -242,7 +259,7 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
           <Button
             type="button"
             className="gap-1.5"
-            disabled={mutation.isPending || parsed.items.length === 0}
+            disabled={mutation.isPending || parsed.items.length === 0 || missingTimeCount > 0}
             onClick={ship}
           >
             <ListPlus className="h-4 w-4" />

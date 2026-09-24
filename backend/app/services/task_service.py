@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.constants import ActivityType, NotificationType, TaskStatus
@@ -62,6 +63,10 @@ class TaskService:
         self.notifications = NotificationService(db)
 
     def create_task(self, data: dict, creator: User) -> Task:
+        estimated = data.get("estimated_hours")
+        if estimated is None or estimated <= 0:
+            raise HTTPException(status_code=400, detail="Time required is mandatory when creating a task")
+
         task = Task(
             title=data["title"],
             description=data.get("description"),
@@ -69,7 +74,7 @@ class TaskService:
             priority=data.get("priority", "medium"),
             status=data.get("status", TaskStatus.TODO.value),
             severity=data.get("severity"),
-            estimated_hours=data.get("estimated_hours"),
+            estimated_hours=estimated,
             actual_hours=data.get("actual_hours"),
             start_date=data.get("start_date"),
             end_date=data.get("end_date"),
