@@ -378,6 +378,23 @@ export const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelled',
 };
 
+/** Compact labels for dense task list / table chips. */
+export const STATUS_SHORT_LABELS: Record<string, string> = {
+  unassigned: 'UA',
+  backlog: 'Backlog',
+  to_do: 'To Do',
+  in_progress: 'WIP',
+  blocked: 'Blocked',
+  ready_for_review: 'RFR',
+  in_review: 'Review',
+  changes_requested: 'Changes',
+  approved: 'Approved',
+  testing: 'Testing',
+  bugs_found: 'Bugs',
+  completed: 'Done',
+  cancelled: 'Cancel',
+};
+
 export const SELECTABLE_STATUS_OPTIONS = TASK_STATUSES.map((value) => ({
   value,
   label: STATUS_LABELS[value],

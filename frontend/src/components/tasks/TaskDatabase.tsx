@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
-import { statusStyles, priorityStyles } from '../ui/Badge';
+import { statusStyles } from '../ui/Badge';
 import { AvatarGroup } from '../ui/Avatar';
-import { STATUS_LABELS, PRIORITY_LABELS, statusSelectOptions } from '../../types';
+import { STATUS_SHORT_LABELS, PRIORITY_LABELS, statusSelectOptions } from '../../types';
 import { formatTimeTakenHours } from '../../lib/taskTiming';
 
 const INLINE_SELECT_CLASS =
@@ -47,21 +47,34 @@ export interface ColumnDef {
   sortable?: boolean;
 }
 
+/** Columns never shown in the list (assignee lives in title; priority is title bg). */
+const HIDDEN_COLUMN_IDS = new Set<ColumnId>(['assignees', 'priority']);
+
 const DEFAULT_COLUMNS: ColumnDef[] = [
-  { id: 'title', label: 'Task name', width: 320, minWidth: 200, visible: true, sortable: true },
-  { id: 'assignees', label: 'Assignee', width: 130, minWidth: 100, visible: true },
-  { id: 'due_date', label: 'Due date', width: 110, minWidth: 90, visible: true, sortable: true },
-  { id: 'status', label: 'Status', width: 150, minWidth: 120, visible: true, sortable: true },
-  { id: 'priority', label: 'Priority', width: 120, minWidth: 100, visible: true, sortable: true },
+  { id: 'title', label: 'Task name', width: 360, minWidth: 220, visible: true, sortable: true },
+  { id: 'due_date', label: 'Due date', width: 100, minWidth: 80, visible: true, sortable: true },
   { id: 'estimated_hours', label: 'Time required', width: 100, minWidth: 80, visible: true },
   { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: true },
+  { id: 'status', label: 'Status', width: 96, minWidth: 80, visible: true, sortable: true },
   { id: 'start_date', label: 'Start', width: 120, minWidth: 100, visible: false },
   { id: 'end_date', label: 'End', width: 120, minWidth: 100, visible: false },
   { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
 ];
 
+/** Soft priority tint behind the task name cell. */
+const TITLE_PRIORITY_BG: Record<string, string> = {
+  low: 'bg-sky-500/[0.08]',
+  medium: 'bg-amber-500/[0.10]',
+  high: 'bg-orange-500/[0.14]',
+  critical: 'bg-red-500/[0.16]',
+};
+
 export type SortField = 'title' | 'priority' | 'due_date' | 'status' | 'updated_at';
 export type SortDir = 'asc' | 'desc';
+
+function shortStatusLabel(status: string) {
+  return STATUS_SHORT_LABELS[status] || status.replace(/_/g, ' ');
+}
 
 function InlineStatusSelect({
   task,
@@ -74,8 +87,11 @@ function InlineStatusSelect({
 }) {
   if (!editable || !onStatusChange) {
     return (
-      <span className={clsx('chip', statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}>
-        {STATUS_LABELS[task.status] || task.status}
+      <span
+        className={clsx('chip', statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}
+        title={task.status.replace(/_/g, ' ')}
+      >
+        {shortStatusLabel(task.status)}
       </span>
     );
   }
@@ -90,44 +106,10 @@ function InlineStatusSelect({
       }}
       className={clsx(INLINE_SELECT_CLASS, statusStyles[task.status] || 'bg-surface-muted text-text-secondary')}
       aria-label={`Status for ${task.title}`}
+      title={task.status.replace(/_/g, ' ')}
     >
-      {statusSelectOptions(task.status).map(({ value, label }) => (
-        <option key={value} value={value}>{label}</option>
-      ))}
-    </select>
-  );
-}
-
-function InlinePrioritySelect({
-  task,
-  onPriorityChange,
-  editable,
-}: {
-  task: Task;
-  onPriorityChange?: (id: number, priority: string) => void;
-  editable?: boolean;
-}) {
-  if (!editable || !onPriorityChange) {
-    return (
-      <span className={clsx('chip bg-transparent px-0', priorityStyles[task.priority] || 'text-text-secondary')}>
-        {PRIORITY_LABELS[task.priority] || task.priority}
-      </span>
-    );
-  }
-  return (
-    <select
-      value={task.priority}
-      onClick={stopRowActivation}
-      onMouseDown={stopRowActivation}
-      onChange={(e) => {
-        stopRowActivation(e);
-        onPriorityChange(task.id, e.target.value);
-      }}
-      className={clsx(INLINE_SELECT_CLASS, priorityStyles[task.priority] || 'text-text-secondary', 'bg-surface-muted')}
-      aria-label={`Priority for ${task.title}`}
-    >
-      {Object.entries(PRIORITY_LABELS).map(([v, l]) => (
-        <option key={v} value={v}>{l}</option>
+      {statusSelectOptions(task.status).map(({ value }) => (
+        <option key={value} value={value}>{shortStatusLabel(value)}</option>
       ))}
     </select>
   );
@@ -180,7 +162,6 @@ export function TaskDatabase({
   onSelectionChange,
   focusedIndex = -1,
   onStatusChange,
-  onPriorityChange,
   onDeleteTask,
   editable = false,
   columns: columnsProp,
@@ -193,7 +174,10 @@ export function TaskDatabase({
   const [resizing, setResizing] = useState<{ colId: ColumnId; startX: number; startWidth: number } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  const visibleColumns = columns.filter((c) => c.visible);
+  const visibleColumns = useMemo(
+    () => columns.filter((c) => c.visible && !HIDDEN_COLUMN_IDS.has(c.id)),
+    [columns],
+  );
 
   const toggleSelect = (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -333,12 +317,33 @@ export function TaskDatabase({
                 {visibleColumns.map((col) => (
                   <div
                     key={col.id}
-                    className="db-cell overflow-hidden"
+                    className={clsx(
+                      'db-cell overflow-hidden',
+                      col.id === 'title' && TITLE_PRIORITY_BG[task.priority],
+                    )}
                     style={{ width: col.width }}
+                    title={
+                      col.id === 'title'
+                        ? `Priority: ${PRIORITY_LABELS[task.priority] || task.priority}`
+                        : undefined
+                    }
                   >
                     {col.id === 'title' && (
-                      <div className="min-w-0 flex items-center gap-2">
-                        {task.is_blocked && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />}
+                      <div className="min-w-0 flex items-center gap-2 w-full px-1 -mx-1 rounded-md">
+                        {task.assignees?.length > 0 ? (
+                          <AvatarGroup
+                            users={task.assignees.map((a) => a.user!).filter(Boolean)}
+                            max={2}
+                          />
+                        ) : (
+                          <span
+                            className="h-7 w-7 rounded-full bg-dark-muted shrink-0"
+                            aria-hidden
+                          />
+                        )}
+                        {task.is_blocked && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
+                        )}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-text-primary truncate">{task.title}</p>
                           {showProject && task.project_name && (
@@ -347,21 +352,17 @@ export function TaskDatabase({
                         </div>
                       </div>
                     )}
-                    {col.id === 'assignees' && (
-                      task.assignees?.length > 0 ? (
-                        <AvatarGroup users={task.assignees.map((a) => a.user!).filter(Boolean)} max={2} />
-                      ) : (
-                        <span className="text-2xs text-text-muted">—</span>
-                      )
-                    )}
-                    {col.id === 'priority' && (
-                      <InlinePrioritySelect
-                        task={task}
-                        editable={editable}
-                        onPriorityChange={onPriorityChange}
-                      />
-                    )}
                     {col.id === 'due_date' && <DueDate date={task.due_date} status={task.status} />}
+                    {col.id === 'estimated_hours' && (
+                      <span className="text-sm text-text-muted tabular-nums">
+                        {formatTimeTakenHours(task.estimated_hours) ?? '—'}
+                      </span>
+                    )}
+                    {col.id === 'actual_hours' && (
+                      <span className="text-sm text-text-muted tabular-nums">
+                        {formatTimeTakenHours(task.actual_hours) ?? '—'}
+                      </span>
+                    )}
                     {col.id === 'status' && (
                       <InlineStatusSelect
                         task={task}
@@ -381,16 +382,6 @@ export function TaskDatabase({
                         {task.end_date
                           ? format(new Date(task.end_date), 'MMM d, HH:mm')
                           : '—'}
-                      </span>
-                    )}
-                    {col.id === 'estimated_hours' && (
-                      <span className="text-sm text-text-muted tabular-nums">
-                        {formatTimeTakenHours(task.estimated_hours) ?? '—'}
-                      </span>
-                    )}
-                    {col.id === 'actual_hours' && (
-                      <span className="text-sm text-text-muted tabular-nums">
-                        {formatTimeTakenHours(task.actual_hours) ?? '—'}
                       </span>
                     )}
                     {col.id === 'indicators' && <RowIndicators task={task} />}
@@ -459,6 +450,7 @@ export function TaskDatabase({
 export function useColumnVisibility() {
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const toggleColumn = (id: ColumnId) => {
+    if (HIDDEN_COLUMN_IDS.has(id)) return;
     setColumns((cols) => cols.map((c) => (c.id === id ? { ...c, visible: !c.visible } : c)));
   };
   return { columns, toggleColumn, setColumns };
