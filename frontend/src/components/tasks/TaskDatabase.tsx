@@ -63,10 +63,10 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
 
 /** Soft priority tint behind the task name cell. */
 const TITLE_PRIORITY_BG: Record<string, string> = {
-  low: 'bg-sky-500/[0.08]',
-  medium: 'bg-amber-500/[0.10]',
-  high: 'bg-orange-500/[0.14]',
-  critical: 'bg-red-500/[0.16]',
+  low: 'bg-emerald-500/15',
+  medium: 'bg-sky-500/15',
+  high: 'bg-amber-400/20',
+  critical: 'bg-red-500/18',
 };
 
 export type SortField = 'title' | 'priority' | 'due_date' | 'status' | 'updated_at';
@@ -319,7 +319,10 @@ export function TaskDatabase({
                     key={col.id}
                     className={clsx(
                       'db-cell overflow-hidden',
-                      col.id === 'title' && TITLE_PRIORITY_BG[task.priority],
+                      col.id === 'title' && [
+                        'rounded-md my-0.5',
+                        TITLE_PRIORITY_BG[task.priority],
+                      ],
                     )}
                     style={{ width: col.width }}
                     title={
@@ -329,7 +332,7 @@ export function TaskDatabase({
                     }
                   >
                     {col.id === 'title' && (
-                      <div className="min-w-0 flex items-center gap-2 w-full px-1 -mx-1 rounded-md">
+                      <div className="min-w-0 flex items-center gap-2 w-full">
                         {task.assignees?.length > 0 ? (
                           <AvatarGroup
                             users={task.assignees.map((a) => a.user!).filter(Boolean)}

@@ -195,8 +195,19 @@ class TaskRepository(BaseRepository):
             else:
                 query = query.filter(or_(Task.title.ilike(term), Task.description.ilike(term)))
         if department_id := filters.get("department_id"):
-            from app.models import task_departments
-            query = query.join(task_departments).filter(task_departments.c.department_id == department_id)
+            # Tasks assigned to anyone in this department (not task.department tags)
+            from app.models import user_departments
+
+            assignee_in_dept = (
+                self.db.query(TaskAssignee.id)
+                .join(user_departments, user_departments.c.user_id == TaskAssignee.user_id)
+                .filter(
+                    TaskAssignee.task_id == Task.id,
+                    user_departments.c.department_id == department_id,
+                )
+                .exists()
+            )
+            query = query.filter(assignee_in_dept)
 
         sort_by = filters.get("sort_by", "updated_at")
         sort_order = filters.get("sort_order", "desc")
