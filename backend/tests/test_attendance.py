@@ -8,7 +8,7 @@ from app.core.security import create_access_token, get_password_hash
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
-from app.models import Attendance, Department, Office, User
+from app.models import Attendance, Department, User
 
 
 @pytest.fixture()
@@ -377,94 +377,3 @@ def test_leave_on_working_day_does_not_count_as_present(client, users, db_sessio
     assert summary["leave_count"] == 1
     assert summary["present_count"] == 0
     assert summary["attendance_percent"] == 0.0
-def test_wfo_gps_verification(client, users, db_session):
-    office = Office(
-        name="Mumbai Office",
-        latitude=19.0760,
-        longitude=72.8777,
-        radius_meters=150,
-        max_gps_accuracy_meters=100,
-        is_active=True,
-    )
-    db_session.add(office)
-    db_session.commit()
-
-    headers = auth_header(users["employee"])
-    r = client.post(
-        "/api/attendance",
-        json={
-            "status": "WFO",
-            "latitude": 19.07601,
-            "longitude": 72.87771,
-            "gps_accuracy": 25,
-        },
-        headers=headers,
-    )
-    assert r.status_code == 200
-    data = r.json()["data"]
-    assert data["status"] == "WFO"
-    assert data["location_verified"] is True
-    assert data["office_name"] == "Mumbai Office"
-    assert data["distance_from_office"] is not None
-
-
-def test_wfo_outside_radius_not_verified(client, users, db_session):
-    office = Office(
-        name="Mumbai Office",
-        latitude=19.0760,
-        longitude=72.8777,
-        radius_meters=150,
-        max_gps_accuracy_meters=100,
-        is_active=True,
-    )
-    db_session.add(office)
-    db_session.commit()
-
-    headers = auth_header(users["employee"])
-    r = client.post(
-        "/api/attendance",
-        json={
-            "status": "WFO",
-            "latitude": 19.0900,
-            "longitude": 72.8777,
-            "gps_accuracy": 25,
-        },
-        headers=headers,
-    )
-    assert r.status_code == 200
-    data = r.json()["data"]
-    assert data["location_verified"] is False
-    assert data["verification_method"] == "gps_outside_radius"
-
-
-def test_wfh_does_not_require_gps(client, users):
-    headers = auth_header(users["employee"])
-    r = client.post("/api/attendance", json={"status": "WFH"}, headers=headers)
-    assert r.status_code == 200
-    data = r.json()["data"]
-    assert data["location_verified"] is None
-    assert data["office_name"] is None
-
-
-def test_manager_wfo_override_skips_gps(client, users, db_session):
-    office = Office(
-        name="Mumbai Office",
-        latitude=19.0760,
-        longitude=72.8777,
-        radius_meters=150,
-        max_gps_accuracy_meters=100,
-        is_active=True,
-    )
-    db_session.add(office)
-    db_session.commit()
-
-    mgr = auth_header(users["manager"])
-    r = client.post(
-        "/api/attendance",
-        json={"status": "WFO", "user_id": users["employee"].id},
-        headers=mgr,
-    )
-    assert r.status_code == 200
-    data = r.json()["data"]
-    assert data["location_verified"] is False
-    assert data["verification_method"] == "hr_override"

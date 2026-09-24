@@ -8,7 +8,6 @@ import { TaskDrawerProvider, useTaskDrawer } from './contexts/TaskDrawerContext'
 import { UserDrawerProvider, useUserDrawer } from './contexts/UserDrawerContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { RequireManager } from './components/auth/RequireManager';
-import { RequireAdmin } from './components/auth/RequireAdmin';
 import { canAccessManagerFeatures } from './lib/roles';
 import { TaskDrawer } from './components/tasks/TaskDrawer';
 import { UserDrawer } from './components/users/UserDrawer';
@@ -29,7 +28,6 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage'));
 const AttendancePage = lazy(() => import('./pages/AttendancePage'));
 const AttendanceHrPage = lazy(() => import('./pages/AttendanceHrPage'));
-const OfficesPage = lazy(() => import('./pages/OfficesPage'));
 
 const STALE_REFERENCE_MS = 5 * 60 * 1000;
 
@@ -197,16 +195,6 @@ export default function App() {
                       <Suspense fallback={<PageLoader />}>
                         <SettingsPage />
                       </Suspense>
-                    }
-                  />
-                  <Route
-                    path="settings/offices"
-                    element={
-                      <RequireAdmin>
-                        <Suspense fallback={<PageLoader />}>
-                          <OfficesPage />
-                        </Suspense>
-                      </RequireAdmin>
                     }
                   />
                   <Route path="*" element={<NotFoundPage />} />

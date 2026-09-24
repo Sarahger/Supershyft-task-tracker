@@ -101,15 +101,6 @@ export function AttendanceTodayHero({
             <p className="text-xs text-text-secondary">
               Recorded at {formatRecordedTime(todayRecord.recorded_at)}
             </p>
-            {todayRecord.status === 'WFO' && (
-              <p className="text-xs text-text-muted w-full sm:w-auto">
-                {todayRecord.location_verified
-                  ? `✓ ${todayRecord.office_name || 'Office verified'}${todayRecord.distance_from_office != null ? ` · ${Math.round(todayRecord.distance_from_office)}m` : ''}`
-                  : todayRecord.location_verified === false
-                    ? 'Location not verified'
-                    : null}
-              </p>
-            )}
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">

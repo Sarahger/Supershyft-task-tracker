@@ -38,23 +38,17 @@ def mark_attendance(
     current_user: User = Depends(get_current_user),
 ):
     target_user = current_user
-    skip_gps = False
     if body.user_id is not None and body.user_id != current_user.id:
         if current_user.role not in _MANAGER_ROLES:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         target_user = db.query(User).filter(User.id == body.user_id).first()
         if not target_user or target_user.status == UserStatus.INACTIVE.value:
             raise HTTPException(status_code=404, detail="User not found")
-        skip_gps = True
 
     data = AttendanceService(db).upsert(
         target_user,
         body.status,
         attendance_date=body.attendance_date,
-        latitude=body.latitude,
-        longitude=body.longitude,
-        gps_accuracy=body.gps_accuracy,
-        skip_gps=skip_gps or body.status != "WFO",
     )
     return APIResponse(data=AttendanceRecordResponse(**data), message="Attendance saved")
 

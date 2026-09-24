@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, isToday, parseISO, startOfWeek } from 'date-fns';
@@ -13,7 +13,6 @@ import { AttendanceWeekStrip } from '../components/attendance/AttendanceWeekStri
 import { AttendanceSummaryCard } from '../components/attendance/AttendanceSummaryCard';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
-import { AttendanceWfoVerifyModal } from '../components/attendance/AttendanceWfoVerifyModal';
 import type { AttendanceRecord, AttendanceStatus } from '../types';
 import { isAttendanceEditableDay } from '../components/attendance/attendanceUtils';
 
@@ -32,7 +31,6 @@ export default function AttendancePage() {
     day: Date;
     record: AttendanceRecord | null;
   } | null>(null);
-  const [wfoVerify, setWfoVerify] = useState<{ date?: string } | null>(null);
 
   const year = month.getFullYear();
   const monthNum = month.getMonth() + 1;
@@ -43,38 +41,19 @@ export default function AttendancePage() {
   });
 
   useEffect(() => {
-    if (data && !data.today_record && !markSuccess && !editTarget && !wfoVerify) {
+    if (data && !data.today_record && !markSuccess && !editTarget) {
       setShowTodayModal(true);
     }
-  }, [data, markSuccess, editTarget, wfoVerify]);
+  }, [data, markSuccess, editTarget]);
 
   const markMutation = useMutation({
-    mutationFn: ({
-      status,
-      date,
-      gps,
-      silent,
-    }: {
-      status: AttendanceStatus;
-      date?: string;
-      gps?: { latitude: number; longitude: number; gps_accuracy: number };
-      silent?: boolean;
-    }) => attendanceApi.mark(status, date, undefined, gps).then((r) => r.data.data),
-    onSuccess: (record, vars) => {
+    mutationFn: ({ status, date }: { status: AttendanceStatus; date?: string }) =>
+      attendanceApi.mark(status, date).then((r) => r.data.data),
+    onSuccess: (_record, vars) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] });
-
-      // WFO GPS flow shows its own success UI — avoid duplicate toasts/modals
-      if (vars.silent) return;
-
       const forToday = !vars.date || vars.date === (data?.today ?? toIsoDate(new Date()));
       setMarkSuccess(true);
-      if (record.status === 'WFO' && record.location_verified) {
-        toast.success('Office verified — attendance saved');
-      } else if (record.status === 'WFO') {
-        toast.success('WFO saved (location not verified)');
-      } else {
-        toast.success(forToday ? 'Attendance saved — See you today' : 'Attendance saved');
-      }
+      toast.success(forToday ? 'Attendance saved — See you today' : 'Attendance saved');
       setTimeout(() => {
         setMarkSuccess(false);
         setShowTodayModal(false);
@@ -90,41 +69,8 @@ export default function AttendancePage() {
   });
 
   const handleMarkStatus = (status: AttendanceStatus, date?: string) => {
-    if (status === 'WFO') {
-      setShowTodayModal(false);
-      setWfoVerify({ date });
-      return;
-    }
     markMutation.mutate({ status, date });
   };
-
-  const submitWfoGps = useCallback(
-    (gps: { latitude: number; longitude: number; gps_accuracy: number }) =>
-      markMutation.mutateAsync({
-        status: 'WFO',
-        date: wfoVerify?.date,
-        gps,
-        silent: true,
-      }),
-    // markMutation.mutateAsync is stable enough; date from wfoVerify
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [wfoVerify?.date],
-  );
-
-  const finishWfoVerify = useCallback(
-    (record: AttendanceRecord) => {
-      setWfoVerify(null);
-      setShowTodayModal(false);
-      setEditTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['attendance'] });
-      if (record.location_verified) {
-        toast.success('Office verified — attendance saved');
-      } else {
-        toast.success('WFO saved (location not verified)');
-      }
-    },
-    [queryClient],
-  );
 
   const weekStart = data?.today
     ? startOfWeek(parseISO(data.today), { weekStartsOn: 1 })
@@ -153,7 +99,7 @@ export default function AttendancePage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-text-primary tracking-tight">Attendance</h1>
           <p className="text-xs text-text-muted mt-0.5 truncate">
-            Mark or edit today and yesterday only. WFO requires office GPS verification.
+            Mark or edit today and yesterday only.
           </p>
         </div>
         {canAccessAttendanceHr(user) && (
@@ -172,8 +118,8 @@ export default function AttendancePage() {
         <div className="md:col-span-5 min-h-0">
           <AttendanceTodayHero
             todayRecord={data?.today_record}
-            showMarkModal={showTodayModal && !editTarget && !wfoVerify}
-            markSuccess={markSuccess && !editTarget && !wfoVerify}
+            showMarkModal={showTodayModal && !editTarget}
+            markSuccess={markSuccess && !editTarget}
             marking={markMutation.isPending}
             onMark={(status) => handleMarkStatus(status)}
             onOpenMark={() => {
@@ -215,14 +161,6 @@ export default function AttendancePage() {
           editTarget && handleMarkStatus(status, toIsoDate(editTarget.day))
         }
         onClose={() => setEditTarget(null)}
-      />
-
-      <AttendanceWfoVerifyModal
-        open={wfoVerify !== null}
-        attendanceDate={wfoVerify?.date}
-        onClose={() => setWfoVerify(null)}
-        onSubmit={submitWfoGps}
-        onComplete={finishWfoVerify}
       />
     </div>
   );

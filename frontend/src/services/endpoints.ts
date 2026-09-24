@@ -190,19 +190,11 @@ export const attendanceApi = {
     status: import('../types').AttendanceStatus,
     attendance_date?: string,
     user_id?: number,
-    gps?: { latitude: number; longitude: number; gps_accuracy?: number },
   ) =>
     api.post<APIResponse<import('../types').AttendanceRecord>>('/attendance', {
       status,
       ...(attendance_date ? { attendance_date } : {}),
       ...(user_id != null ? { user_id } : {}),
-      ...(gps
-        ? {
-            latitude: gps.latitude,
-            longitude: gps.longitude,
-            ...(gps.gps_accuracy != null ? { gps_accuracy: gps.gps_accuracy } : {}),
-          }
-        : {}),
     }),
   me: (params?: { month?: number; year?: number }) =>
     api.get<APIResponse<import('../types').AttendanceMe>>('/attendance/me', { params }),
@@ -220,12 +212,4 @@ export const attendanceApi = {
     }),
   exportCsv: (filters: Record<string, unknown>) =>
     api.post('/attendance/export/csv', filters, { responseType: 'blob' }),
-};
-
-export const officesApi = {
-  list: () => api.get<APIResponse<import('../types').Office[]>>('/offices'),
-  create: (data: Omit<import('../types').Office, 'id' | 'created_at' | 'updated_at'>) =>
-    api.post<APIResponse<import('../types').Office>>('/offices', data),
-  update: (id: number, data: Partial<Omit<import('../types').Office, 'id' | 'created_at' | 'updated_at'>>) =>
-    api.put<APIResponse<import('../types').Office>>(`/offices/${id}`, data),
 };
