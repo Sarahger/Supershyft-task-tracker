@@ -46,3 +46,20 @@ def cron_task_retention(
             f"permanently deleted {result['purged_count']} old deleted task(s)"
         ),
     )
+
+
+@router.post("/telegram-daily-digest")
+@router.get("/telegram-daily-digest")
+def cron_telegram_daily_digest(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    """Daily job: send Telegram digests to opted-in managers."""
+    _verify_cron(authorization)
+    from app.services.telegram_digest_service import TelegramDigestService
+
+    result = TelegramDigestService(db).run()
+    return APIResponse(
+        data=result,
+        message=f"Telegram digests sent={result.get('sent', 0)} errors={result.get('errors', 0)}",
+    )

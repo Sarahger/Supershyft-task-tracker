@@ -71,6 +71,7 @@ Users sign in with a **one-time email code** (OTP). SMTP must be configured in `
 - Kanban board with drag-and-drop
 - Review and testing workflows, bug tracking, block/unblock, reopen
 - JWT auth, RBAC, email notifications, global search
+- Telegram bot (`@supershyftbot`) for `/today`, `/wip`, `/todos`, `/backlog`, `/w1`–`/w4`, manager `/user` filters, optional OpenRouter `/summary`
 
 ## Deploy to production (Vercel + Neon)
 

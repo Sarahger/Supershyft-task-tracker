@@ -38,6 +38,8 @@ def run_lightweight_migrations(engine) -> None:
             ("notify_reviews", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ("notify_comments", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ("notify_meetings", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("telegram_notifications_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("telegram_daily_digest_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
         ]
         dialect = engine.dialect.name
         for col_name, col_def in user_additions:
@@ -45,7 +47,8 @@ def run_lightweight_migrations(engine) -> None:
                 if dialect == "postgresql":
                     sql = f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
                 elif dialect == "sqlite":
-                    sql = f"ALTER TABLE users ADD COLUMN {col_name} INTEGER NOT NULL DEFAULT 1"
+                    default = "0" if "DEFAULT FALSE" in col_def.upper() else "1"
+                    sql = f"ALTER TABLE users ADD COLUMN {col_name} INTEGER NOT NULL DEFAULT {default}"
                 else:
                     sql = f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
                 with engine.begin() as conn:

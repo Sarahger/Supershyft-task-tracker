@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/archive-completed-tasks",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/telegram-daily-digest",
+      "schedule": "30 2 * * *"
     }
   ],
   "rewrites": [

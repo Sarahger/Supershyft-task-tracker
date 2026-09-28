@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Camera, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
+import { Camera, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange, MessageCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTaskViewPreferences } from '../contexts/TaskViewPreferencesContext';
@@ -11,8 +11,9 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { Avatar } from '../components/ui/Avatar';
 import { toast } from '../components/ui/Toast';
-import { authApi, notificationsApi } from '../services/endpoints';
-import type { NotificationPreferences } from '../types';
+import { authApi, notificationsApi, telegramApi } from '../services/endpoints';
+import type { NotificationPreferences, TelegramLinkCode, TelegramStatus } from '../types';
+import { canAccessManagerFeatures } from '../lib/roles';
 
 function ProfilePhotoSection() {
   const { user, updateUser } = useAuth();
@@ -130,6 +131,152 @@ function ProfilePhotoSection() {
         onChange={handleFileChange}
       />
     </div>
+  );
+}
+
+function TelegramSettingsSection() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['telegram-status'],
+    queryFn: () => telegramApi.status().then((r) => r.data.data),
+  });
+
+  const [linkCode, setLinkCode] = useState<TelegramLinkCode | null>(null);
+
+  const linkMutation = useMutation({
+    mutationFn: () => telegramApi.createLinkCode().then((r) => r.data.data),
+    onSuccess: (data) => {
+      setLinkCode(data);
+      toast.success('Link code generated — expires in 10 minutes');
+    },
+    onError: () => toast.error('Could not generate link code'),
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: () => telegramApi.unlink(),
+    onSuccess: () => {
+      setLinkCode(null);
+      qc.invalidateQueries({ queryKey: ['telegram-status'] });
+      toast.success('Telegram unlinked');
+    },
+    onError: () => toast.error('Could not unlink Telegram'),
+  });
+
+  const prefsMutation = useMutation({
+    mutationFn: (data: Partial<Pick<TelegramStatus, 'telegram_notifications_enabled' | 'telegram_daily_digest_enabled'>>) =>
+      telegramApi.updatePreferences(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['telegram-status'] });
+      toast.success('Telegram preferences saved');
+    },
+    onError: () => toast.error('Could not save Telegram preferences'),
+  });
+
+  if (isLoading || !status) {
+    return (
+      <>
+        <h2 className="text-sm font-medium text-text-primary mb-2">Telegram</h2>
+        <div className="h-24 bg-surface-subtle rounded animate-pulse" />
+      </>
+    );
+  }
+
+  const bot = status.bot_username || 'supershyftbot';
+  const isManager = canAccessManagerFeatures(user);
+
+  return (
+    <>
+      <h2 className="text-sm font-medium text-text-primary mb-1 flex items-center gap-2">
+        <MessageCircle className="h-4 w-4" />
+        Telegram
+      </h2>
+      <p className="text-sm text-text-secondary mb-4">
+        Link @{bot} to view your Work OS tasks from Telegram. Commands use the same task database as this app.
+      </p>
+
+      <div className="rounded-lg border border-dark-border bg-surface-subtle px-4 py-3 mb-4">
+        <p className="text-sm text-text-primary">
+          Status:{' '}
+          <span className="font-medium">{status.linked ? 'Linked' : 'Not linked'}</span>
+          {status.telegram_username ? ` (@${status.telegram_username})` : ''}
+        </p>
+        {status.linked_at && (
+          <p className="text-xs text-text-muted mt-1">Linked at {new Date(status.linked_at).toLocaleString()}</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Button size="sm" onClick={() => linkMutation.mutate()} loading={linkMutation.isPending}>
+          Generate link code
+        </Button>
+        {status.linked && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => unlinkMutation.mutate()}
+            loading={unlinkMutation.isPending}
+          >
+            Unlink
+          </Button>
+        )}
+      </div>
+
+      {linkCode && (
+        <div className="rounded-lg border border-dark-border bg-surface-highlight px-4 py-3 mb-4 space-y-2">
+          <p className="text-sm text-text-primary">
+            Send this in Telegram to <span className="font-medium">@{linkCode.bot_username}</span>:
+          </p>
+          <code className="block text-sm font-mono bg-surface-subtle px-3 py-2 rounded border border-dark-border">
+            /link {linkCode.code}
+          </code>
+          <p className="text-xs text-text-muted">
+            Expires {new Date(linkCode.expires_at).toLocaleString()}. Do not share this code.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-0 divide-y divide-dark-border border border-dark-border rounded-lg overflow-hidden">
+        <label className="flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle cursor-pointer hover:bg-dark-hover">
+          <div>
+            <p className="text-sm text-text-primary">Telegram notifications</p>
+            <p className="text-xs text-text-muted mt-0.5">Allow bot messages to this linked chat</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={status.telegram_notifications_enabled}
+            disabled={prefsMutation.isPending}
+            onChange={() =>
+              prefsMutation.mutate({
+                telegram_notifications_enabled: !status.telegram_notifications_enabled,
+              })
+            }
+            className="mt-1 rounded border-dark-border"
+          />
+        </label>
+        {isManager && (
+          <label className="flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle cursor-pointer hover:bg-dark-hover">
+            <div>
+              <p className="text-sm text-text-primary">Daily digest</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                Morning team snapshot (managers/admins only)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={status.telegram_daily_digest_enabled}
+              disabled={prefsMutation.isPending || !status.linked}
+              onChange={() =>
+                prefsMutation.mutate({
+                  telegram_daily_digest_enabled: !status.telegram_daily_digest_enabled,
+                })
+              }
+              className="mt-1 rounded border-dark-border"
+            />
+          </label>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -396,6 +543,10 @@ export default function SettingsPage() {
 
       <div className="card p-6">
         <TaskViewsSettingsSection />
+      </div>
+
+      <div className="card p-6">
+        <TelegramSettingsSection />
       </div>
 
       <div className="card p-6">

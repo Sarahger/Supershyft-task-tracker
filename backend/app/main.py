@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import attendance, auth, clients, cron, custom_fields, daily_updates, dashboard, departments, meetings, projects, tasks, users
+from app.api import attendance, auth, clients, cron, custom_fields, daily_updates, dashboard, departments, meetings, projects, tasks, telegram, users
 from app.core.config import settings
 from app.db.base import Base
 from app.db.database import engine
@@ -86,6 +86,7 @@ app.include_router(meetings.router, prefix="/api")
 app.include_router(daily_updates.router, prefix="/api")
 app.include_router(attendance.router, prefix="/api")
 app.include_router(cron.router, prefix="/api")
+app.include_router(telegram.router, prefix="/api")
 
 if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
     app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

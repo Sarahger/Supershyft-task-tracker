@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     DELETED_RETENTION_DAYS: int = 30
     CRON_SECRET: str = ""
 
+    # Telegram bot (set in Vercel / local .env — never commit real values)
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_BOT_USERNAME: str = "supershyftbot"
+
+    # OpenRouter (optional AI summaries)
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "openrouter/free"
+    OPENROUTER_TIMEOUT_SECONDS: float = 10.0
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]

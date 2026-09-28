@@ -63,6 +63,8 @@ class User(Base):
     notify_reviews = Column(Boolean, default=True, nullable=False)
     notify_comments = Column(Boolean, default=True, nullable=False)
     notify_meetings = Column(Boolean, default=True, nullable=False)
+    telegram_notifications_enabled = Column(Boolean, default=True, nullable=False)
+    telegram_daily_digest_enabled = Column(Boolean, default=False, nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -74,6 +76,12 @@ class User(Base):
     created_tasks = relationship("Task", back_populates="creator", foreign_keys="Task.created_by_id")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     saved_filters = relationship("SavedFilter", back_populates="user", cascade="all, delete-orphan")
+    telegram_account = relationship(
+        "TelegramAccount",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     @property
     def full_name(self) -> str:
@@ -592,3 +600,31 @@ class Attendance(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User", foreign_keys=[user_id])
+
+
+class TelegramAccount(Base):
+    __tablename__ = "telegram_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    telegram_user_id = Column(String(64), nullable=False, unique=True, index=True)
+    chat_id = Column(String(64), nullable=False, index=True)
+    telegram_username = Column(String(100), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    linked_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="telegram_account")
+
+
+class TelegramLinkCode(Base):
+    __tablename__ = "telegram_link_codes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code_hash = Column(String(255), nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    user = relationship("User")

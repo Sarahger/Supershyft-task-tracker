@@ -7,6 +7,22 @@ export interface NotificationPreferences {
   notify_meetings: boolean;
 }
 
+export interface TelegramStatus {
+  linked: boolean;
+  telegram_username?: string | null;
+  linked_at?: string | null;
+  bot_username: string;
+  telegram_notifications_enabled: boolean;
+  telegram_daily_digest_enabled: boolean;
+}
+
+export interface TelegramLinkCode {
+  code: string;
+  expires_at: string;
+  bot_username: string;
+  instructions: string;
+}
+
 export interface UserTaskStats {
   assigned_count: number;
   pending_count: number;

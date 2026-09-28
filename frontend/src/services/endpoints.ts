@@ -1,5 +1,5 @@
 import api from './api';
-import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, User, UserProfile } from '../types';
+import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile } from '../types';
 
 export const authApi = {
   requestOtp: (email: string) =>
@@ -130,6 +130,16 @@ export const notificationsApi = {
   updatePreferences: (data: Partial<NotificationPreferences>) =>
     api.patch<APIResponse<NotificationPreferences>>('/notifications/preferences', data),
   sendTestEmail: () => api.post<APIResponse<unknown>>('/notifications/test-email'),
+};
+
+export const telegramApi = {
+  status: () => api.get<APIResponse<TelegramStatus>>('/telegram/status'),
+  createLinkCode: () => api.post<APIResponse<TelegramLinkCode>>('/telegram/link-codes'),
+  unlink: () => api.delete<APIResponse<{ unlinked: boolean }>>('/telegram/link'),
+  updatePreferences: (data: {
+    telegram_notifications_enabled?: boolean;
+    telegram_daily_digest_enabled?: boolean;
+  }) => api.patch<APIResponse<TelegramStatus>>('/telegram/preferences', data),
 };
 
 export const miscApi = {
