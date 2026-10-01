@@ -1,5 +1,3 @@
-"""Telegram command parsing smoke tests (no Telegram network)."""
-
 from app.services.telegram_formatter import format_help, format_task_list
 
 
@@ -10,10 +8,12 @@ def test_format_help_mentions_link():
     assert "/w1" in text
     assert "/attendance" in text
     assert "/dailyupdates" in text
+    assert "/summary" not in text
+    assert "AI" not in text
 
 
 def test_format_empty_list():
-    text = format_task_list("Today — Test", [])
+    text = format_task_list("Today · Test", [])
     assert "No tasks found" in text
 
 
@@ -43,5 +43,6 @@ def test_format_attendance_day_empty_people():
             },
         }
     )
-    assert "Attendance — 01-10-26" in text
+    assert "Attendance · 01-10-26" in text
     assert "Sara H" in text
+    assert "WFO (1)" in text

@@ -13,7 +13,6 @@ from app.core.config import settings
 from app.models import User
 from app.services.attendance_service import AttendanceService, today_local
 from app.services.daily_update_service import DailyUpdateService
-from app.services.openrouter_service import OpenRouterService
 from app.services.telegram_client import TelegramClient
 from app.services.telegram_formatter import (
     format_attendance_day,
@@ -56,7 +55,6 @@ class TelegramCommandHandler:
         self.attendance = AttendanceService(db)
         self.daily_updates = DailyUpdateService(db)
         self.client = TelegramClient()
-        self.ai = OpenRouterService()
 
     def handle_update(self, update: dict) -> None:
         message = update.get("message") or update.get("edited_message")
@@ -102,21 +100,25 @@ class TelegramCommandHandler:
 
         if cmd == "/link":
             if not arg:
-                return "Usage: /link CODE\nGenerate a code in Supershyft Task Tracker → Settings → Telegram."
+                return (
+                    "Usage: /link CODE\n"
+                    "Generate a code in Settings → Telegram."
+                )
             return self._link(ctx, arg)
 
         if cmd == "/unlink":
             if not ctx.user:
-                return "You are not linked."
+                return "Not linked yet."
             self.link.unlink_user(ctx.user)
-            return "Telegram unlinked from your Supershyft Task Tracker account."
+            return "Unlinked. You can link again anytime from Settings → Telegram."
 
         # Remaining commands require link
         if not ctx.user:
             return (
-                "Your Telegram is not linked to Supershyft Task Tracker.\n"
-                "Open Supershyft Task Tracker → Settings → Telegram, generate a code, then send:\n"
-                "/link CODE"
+                "Account not linked.\n\n"
+                "1. Open Supershyft Task Tracker → Settings → Telegram\n"
+                "2. Generate a link code\n"
+                "3. Send: /link CODE"
             )
 
         if cmd == "/today":
@@ -137,9 +139,6 @@ class TelegramCommandHandler:
 
         if cmd == "/team":
             return self._team_command(ctx, arg)
-
-        if cmd == "/summary":
-            return self._summary_command(ctx, arg)
 
         if cmd == "/attendance":
             return self._attendance_command(ctx, arg)
@@ -166,29 +165,26 @@ class TelegramCommandHandler:
         if err:
             return err
         assert user is not None
-        return f"Linked as {user.full_name} ({user.role}). Try /today or /help."
+        return f"Linked as {user.full_name} ({user.role}).\nTry /today or /help."
 
     def _require_manager(self, user: User) -> str | None:
         if not self.tasks.is_manager(user):
-            return "Only managers and administrators can view other people's data."
+            return "Managers only."
         return None
 
     def _self_filter(self, user: User, kind: str) -> str:
         tasks, _ = self._query_filter(user.id, kind)
-        title = f"{kind.upper() if kind != 'today' else 'Today'} — {user.full_name}"
-        if kind == "today":
-            title = f"Today — {user.full_name}"
-        elif kind == "wip":
-            title = f"WIP — {user.full_name}"
-        elif kind == "todos":
-            title = f"TODOs — {user.full_name}"
-        elif kind == "backlog":
-            title = f"Backlog (overdue) — {user.full_name}"
-        return format_task_list(title, tasks)
+        labels = {
+            "today": f"Today · {user.full_name}",
+            "wip": f"WIP · {user.full_name}",
+            "todos": f"TODOs · {user.full_name}",
+            "backlog": f"Backlog · {user.full_name}",
+        }
+        return format_task_list(labels.get(kind, user.full_name), tasks)
 
     def _self_week(self, user: User, week: int) -> str:
         tasks, _ = self.tasks.tasks_month_week(user.id, week)
-        return format_task_list(f"Week {week} (this month) — {user.full_name}", tasks)
+        return format_task_list(f"Week {week} · {user.full_name}", tasks)
 
     def _query_filter(self, assignee_id: int, kind: str):
         if kind == "today":
@@ -231,10 +227,10 @@ class TelegramCommandHandler:
         assert target is not None
         tasks, _ = self._query_filter(target.id, kind)
         labels = {
-            "today": f"Today — {target.full_name}",
-            "wip": f"WIP — {target.full_name}",
-            "todos": f"TODOs — {target.full_name}",
-            "backlog": f"Backlog (overdue) — {target.full_name}",
+            "today": f"Today · {target.full_name}",
+            "wip": f"WIP · {target.full_name}",
+            "todos": f"TODOs · {target.full_name}",
+            "backlog": f"Backlog · {target.full_name}",
         }
         return format_task_list(labels[kind], tasks)
 
@@ -247,24 +243,6 @@ class TelegramCommandHandler:
             return "Usage: /team today"
         rows = self.tasks.team_today_snapshot()
         return format_team_snapshot(rows)
-
-    def _summary_command(self, ctx: CommandContext, arg: str) -> str:
-        assert ctx.user is not None
-        target = ctx.user
-        if arg.strip():
-            target, err = self._resolve_target(ctx.user, arg.strip())
-            if err:
-                return err
-            assert target is not None
-
-        tasks, _ = self.tasks.tasks_today(target.id)
-        title = f"Today summary — {target.full_name}"
-        fallback = format_task_list(title, tasks)
-        payload = self.tasks.tasks_to_summary_payload(tasks, assignee_name=target.full_name)
-        ai_text = self.ai.summarize_tasks(title=title, tasks=payload)
-        if ai_text:
-            return f"{title}\n\n{ai_text}"
-        return fallback + ("\n\n(AI summary unavailable — showing list.)" if tasks else "")
 
     def _attendance_command(self, ctx: CommandContext, arg: str) -> str:
         assert ctx.user is not None
@@ -288,7 +266,7 @@ class TelegramCommandHandler:
                 # Employees see only their own mark for today
                 me = self.attendance.get_today(ctx.user)
                 status = me.get("status") if me else "Not marked"
-                return f"Attendance today — {ctx.user.full_name}\n\n{status}"
+                return f"Attendance today · {ctx.user.full_name}\n\n{status}"
             data = self.attendance.get_day()
             return format_attendance_day(data)
 
@@ -334,7 +312,7 @@ class TelegramCommandHandler:
             data = self.daily_updates.get_day(ctx.user, day)
             own = data.get("own_update")
             updates = [own] if own else []
-            return format_daily_updates(f"Daily update — {ctx.user.full_name} ({day.strftime('%d-%m-%y')})", updates)
+            return format_daily_updates(f"Daily update · {ctx.user.full_name} · {day.strftime('%d-%m-%y')}", updates)
 
         if lower in ("today", "team"):
             denied = self._require_manager(ctx.user)
@@ -345,14 +323,14 @@ class TelegramCommandHandler:
             if data.get("own_update"):
                 updates.append(data["own_update"])
             updates.extend(data.get("team_updates") or [])
-            return format_daily_updates(f"Daily updates — {day.strftime('%d-%m-%y')}", updates)
+            return format_daily_updates(f"Daily updates · {day.strftime('%d-%m-%y')}", updates)
 
         if lower == "yesterday":
             day = day - timedelta(days=1)
             data = self.daily_updates.get_day(ctx.user, day)
             own = data.get("own_update")
             updates = [own] if own else []
-            return format_daily_updates(f"Daily update — {ctx.user.full_name} ({day.strftime('%d-%m-%y')})", updates)
+            return format_daily_updates(f"Daily update · {ctx.user.full_name} · {day.strftime('%d-%m-%y')}", updates)
 
         # Optional trailing today/yesterday: "sarah today"
         name_parts = token.split()
@@ -377,15 +355,15 @@ class TelegramCommandHandler:
         if target.id == ctx.user.id and data.get("own_update"):
             updates = [data["own_update"]]
         return format_daily_updates(
-            f"Daily update — {target.full_name} ({day.strftime('%d-%m-%y')})",
+            f"Daily update · {target.full_name} · {day.strftime('%d-%m-%y')}",
             updates,
         )
 
     def _handle_free_text(self, ctx: CommandContext, raw: str) -> str:
         if not ctx.user:
             return (
-                "Link your account first.\n"
-                "Supershyft Task Tracker → Settings → Telegram → generate code → /link CODE"
+                "Account not linked.\n\n"
+                "Open Settings → Telegram, generate a code, then send /link CODE"
             )
         lower = raw.lower().strip()
         if lower.startswith("attendance "):
@@ -396,6 +374,5 @@ class TelegramCommandHandler:
             return self._daily_updates_command(ctx, raw[len("daily update ") :].strip())
         parts = lower.split()
         if len(parts) >= 2 and parts[-1] in FILTER_ALIASES:
-            # "pratheek today"
             return self._user_command(ctx, raw)
-        return "Send /help for available commands."
+        return "Unknown request. Send /help."
