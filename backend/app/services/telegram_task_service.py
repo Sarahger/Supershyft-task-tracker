@@ -25,6 +25,29 @@ STATUS_LABELS = {
 }
 
 
+def format_estimated_duration(hours: float | int | None) -> str:
+    """
+    Format estimated hours for Telegram:
+    - < 1h → minutes only (e.g. 30m, 45m)
+    - whole hours → 2h
+    - mixed → 2h30m
+    """
+    if hours is None:
+        return "time n/a"
+    try:
+        total_minutes = int(round(float(hours) * 60))
+    except (TypeError, ValueError):
+        return "time n/a"
+    if total_minutes <= 0:
+        return "0m"
+    h, m = divmod(total_minutes, 60)
+    if h == 0:
+        return f"{m}m"
+    if m == 0:
+        return f"{h}h"
+    return f"{h}h{m}m"
+
+
 class TelegramTaskService:
     def __init__(self, db: Session):
         self.db = db
@@ -130,10 +153,7 @@ class TelegramTaskService:
             due = task.due_date.astimezone(get_app_timezone()).strftime("%d-%m-%y")
             parts.append(f"due {due}")
         if task.estimated_hours is not None:
-            hours = task.estimated_hours
-            # Prefer clean ints when whole hours (e.g. 2 not 2.0)
-            hours_label = str(int(hours)) if float(hours).is_integer() else str(hours)
-            parts.append(f"{hours_label}h")
+            parts.append(format_estimated_duration(task.estimated_hours))
         else:
             parts.append("time n/a")
         return " | ".join(parts)

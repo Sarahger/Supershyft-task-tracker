@@ -37,7 +37,7 @@ class OpenRouterService:
         )
         # Compact payload — no emails / tokens / long descriptions
         lines = [
-            f"- {t.get('title')} [{t.get('status')}] est={t.get('estimated_hours')}h due={t.get('due_date')}"
+            f"- {t.get('title')} [{t.get('status')}] time={t.get('estimated_hours')} due={t.get('due_date')}"
             for t in tasks
         ]
         user_content = f"{title}\n\nTasks:\n" + "\n".join(lines)
