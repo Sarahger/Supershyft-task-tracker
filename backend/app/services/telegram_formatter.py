@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from app.models import Task
-from app.services.telegram_task_service import STATUS_LABELS, format_estimated_duration
+from app.services.telegram_task_service import STATUS_LABELS, TelegramTaskService, format_estimated_duration
 from app.utils.month_weeks import get_app_timezone
 
 MAX_ITEMS = 15
@@ -20,7 +20,7 @@ def clamp_message(text: str, limit: int = MAX_MESSAGE_CHARS) -> str:
     return text[: limit - 20].rstrip() + "\n\n…(truncated)"
 
 
-def format_task_block(task: Task, index: int) -> str:
+def format_task_block(task: Task, index: int, *, show_assignee: bool = False) -> str:
     """One task as a compact multi-line block."""
     title = (task.title or "").strip() or f"Task #{task.id}"
     status = STATUS_LABELS.get(task.status, task.status)
@@ -29,16 +29,26 @@ def format_task_block(task: Task, index: int) -> str:
         due = task.due_date.astimezone(get_app_timezone()).strftime("%d-%m-%y")
         meta.append(f"due {due}")
     meta.append(format_estimated_duration(task.estimated_hours))
-    return f"{index}. {title}\n   {' · '.join(meta)}"
+    lines = [f"{index}. {title}"]
+    if show_assignee:
+        lines.append(f"   @{TelegramTaskService.assignee_names(task)}")
+    lines.append(f"   {' · '.join(meta)}")
+    return "\n".join(lines)
 
 
-def format_task_list(title: str, tasks: list[Task], *, empty_message: str | None = None) -> str:
+def format_task_list(
+    title: str,
+    tasks: list[Task],
+    *,
+    empty_message: str | None = None,
+    show_assignee: bool = False,
+) -> str:
     if not tasks:
         return clamp_message(empty_message or f"{title}\n\nNo tasks found.")
     lines = [title, f"{len(tasks)} task(s)", ""]
     shown = tasks[:MAX_ITEMS]
     for i, task in enumerate(shown, start=1):
-        lines.append(format_task_block(task, i))
+        lines.append(format_task_block(task, i, show_assignee=show_assignee))
         lines.append("")
     remaining = len(tasks) - len(shown)
     if remaining > 0:
@@ -75,7 +85,9 @@ def format_help(bot_username: str = "supershyftbot") -> str:
                 "",
                 "Managers",
                 "/user [name] today|wip|todos|backlog",
-                "/team today",
+                "/team today — everyone snapshot",
+                "/team design — Design department tasks",
+                "/team tech today — Technology tasks due today",
                 "",
                 "/help",
             ]

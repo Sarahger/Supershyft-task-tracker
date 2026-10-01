@@ -239,10 +239,50 @@ class TelegramCommandHandler:
         denied = self._require_manager(ctx.user)
         if denied:
             return denied
-        if arg.strip().lower() not in ("", "today"):
-            return "Usage: /team today"
-        rows = self.tasks.team_today_snapshot()
-        return format_team_snapshot(rows)
+
+        raw = arg.strip()
+        lower = raw.lower()
+        if lower in ("", "today", "snapshot"):
+            rows = self.tasks.team_today_snapshot()
+            return format_team_snapshot(rows)
+
+        # /team design | /team tech today | /team design wip
+        parts = raw.split()
+        filter_kind = None
+        if parts and parts[-1].lower() in FILTER_ALIASES:
+            filter_kind = FILTER_ALIASES[parts[-1].lower()]
+            dept_name = " ".join(parts[:-1]).strip()
+        else:
+            dept_name = raw
+
+        if not dept_name:
+            names = ", ".join(self.tasks.list_department_names()) or "(none)"
+            return (
+                "Usage:\n"
+                "/team today\n"
+                "/team DESIGN\n"
+                "/team tech today|wip|todos|backlog\n\n"
+                f"Departments: {names}"
+            )
+
+        dept, matches = self.tasks.resolve_department_by_name(dept_name)
+        if not dept:
+            if matches:
+                opts = ", ".join(d.name for d in matches[:8])
+                return f"Multiple departments match \"{dept_name}\": {opts}"
+            names = ", ".join(self.tasks.list_department_names()) or "(none)"
+            return f'No department matching "{dept_name}".\nAvailable: {names}'
+
+        tasks, _ = self.tasks.tasks_for_department(dept.id, kind=filter_kind)
+        kind_label = {
+            None: "Open tasks",
+            "today": "Today",
+            "wip": "WIP",
+            "todos": "TODOs",
+            "backlog": "Backlog",
+        }.get(filter_kind, "Tasks")
+        title = f"{dept.name} · {kind_label}"
+        return format_task_list(title, tasks, show_assignee=True)
 
     def _attendance_command(self, ctx: CommandContext, arg: str) -> str:
         assert ctx.user is not None

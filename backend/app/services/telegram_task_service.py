@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.constants import UserRole
-from app.models import Task, User
+from app.models import Department, Task, User
 from app.repositories.base import TaskRepository
 from app.utils.month_weeks import get_app_timezone, month_week_bounds, today_bounds
 
@@ -22,6 +22,21 @@ STATUS_LABELS = {
     "bugs_found": "Bugs",
     "completed": "Done",
     "cancelled": "Cancelled",
+}
+
+# Common short names → department name fragments for matching
+DEPARTMENT_ALIASES = {
+    "tech": "technology",
+    "technology": "technology",
+    "design": "design",
+    "sales": "sales",
+    "product": "product",
+    "marketing": "marketing",
+    "ops": "operations",
+    "operations": "operations",
+    "finance": "finance",
+    "hr": "hr",
+    "human resources": "hr",
 }
 
 
@@ -75,6 +90,80 @@ class TelegramTaskService:
             .limit(10)
             .all()
         )
+
+    def resolve_department_by_name(self, name: str) -> tuple[Department | None, list[Department]]:
+        """
+        Resolve a department by name / alias.
+        Returns (exact_or_single_match, all_partial_matches).
+        """
+        term = (name or "").strip()
+        if not term:
+            return None, []
+        alias = DEPARTMENT_ALIASES.get(term.lower(), term.lower())
+        depts = self.db.query(Department).order_by(Department.name.asc()).all()
+        exact = [d for d in depts if d.name.lower() == alias or d.name.lower() == term.lower()]
+        if len(exact) == 1:
+            return exact[0], exact
+        if exact:
+            return None, exact
+        partial = [d for d in depts if alias in d.name.lower() or term.lower() in d.name.lower()]
+        if len(partial) == 1:
+            return partial[0], partial
+        return None, partial
+
+    def list_department_names(self) -> list[str]:
+        return [d.name for d in self.db.query(Department).order_by(Department.name.asc()).all()]
+
+    def tasks_for_department(
+        self,
+        department_id: int,
+        *,
+        kind: str | None = None,
+        limit: int = 40,
+    ) -> tuple[list[Task], int]:
+        """Open tasks assigned to anyone in the department (optionally filtered)."""
+        filters: dict = {"department_id": department_id}
+        if kind == "today":
+            start, end = today_bounds()
+            filters["due_after"] = start.isoformat()
+            filters["due_before"] = (end - timedelta(microseconds=1)).isoformat()
+            tasks, _ = self._fetch(filters, limit=limit)
+            tasks = [t for t in tasks if t.status not in ("completed", "cancelled")]
+            # Also include overdue WIP for the dept (same spirit as personal /today)
+            overdue, _ = self._fetch(
+                {"department_id": department_id, "overdue": True, "status": "in_progress"},
+                limit=limit,
+            )
+            seen = {t.id for t in tasks}
+            for t in overdue:
+                if t.id not in seen:
+                    tasks.append(t)
+                    seen.add(t.id)
+            return tasks, len(tasks)
+        if kind == "wip":
+            filters["status"] = "in_progress"
+        elif kind == "todos":
+            filters["status"] = "to_do"
+        elif kind == "backlog":
+            filters["overdue"] = True
+        else:
+            # Default: open work only
+            filters["status"] = ["to_do", "in_progress", "blocked", "in_review", "approved", "testing", "bugs_found"]
+
+        tasks, total = self._fetch(filters, limit=limit)
+        if kind not in ("wip", "todos", "backlog") and "status" in filters:
+            tasks = [t for t in tasks if t.status not in ("completed", "cancelled")]
+            total = len(tasks)
+        return tasks, total
+
+    @staticmethod
+    def assignee_names(task: Task) -> str:
+        names: list[str] = []
+        for link in task.assignees or []:
+            user = getattr(link, "user", None)
+            if user:
+                names.append(user.full_name)
+        return ", ".join(names) if names else "Unassigned"
 
     def _fetch(self, filters: dict, *, limit: int = 25) -> tuple[list[Task], int]:
         return self.repo.get_filtered(skip=0, limit=limit, filters=filters)
