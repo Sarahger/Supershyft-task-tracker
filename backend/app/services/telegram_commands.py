@@ -5,14 +5,25 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models import User
+from app.services.attendance_service import AttendanceService, today_local
+from app.services.daily_update_service import DailyUpdateService
 from app.services.openrouter_service import OpenRouterService
 from app.services.telegram_client import TelegramClient
-from app.services.telegram_formatter import format_help, format_task_list, format_team_snapshot
+from app.services.telegram_formatter import (
+    format_attendance_day,
+    format_attendance_month,
+    format_attendance_week,
+    format_daily_updates,
+    format_help,
+    format_task_list,
+    format_team_snapshot,
+)
 from app.services.telegram_link_service import TelegramLinkService
 from app.services.telegram_task_service import TelegramTaskService
 
@@ -42,6 +53,8 @@ class TelegramCommandHandler:
         self.db = db
         self.link = TelegramLinkService(db)
         self.tasks = TelegramTaskService(db)
+        self.attendance = AttendanceService(db)
+        self.daily_updates = DailyUpdateService(db)
         self.client = TelegramClient()
         self.ai = OpenRouterService()
 
@@ -128,6 +141,19 @@ class TelegramCommandHandler:
         if cmd == "/summary":
             return self._summary_command(ctx, arg)
 
+        if cmd == "/attendance":
+            return self._attendance_command(ctx, arg)
+
+        if cmd in ("/dailyupdates", "/dailyupdate", "/daily"):
+            # Support: /daily updates sarah  → strip leading "updates"
+            cleaned = arg
+            lower = arg.lower()
+            if lower.startswith("updates "):
+                cleaned = arg[8:].strip()
+            elif lower == "updates":
+                cleaned = ""
+            return self._daily_updates_command(ctx, cleaned)
+
         return "Unknown command. Send /help for the list."
 
     def _link(self, ctx: CommandContext, code: str) -> str:
@@ -144,7 +170,7 @@ class TelegramCommandHandler:
 
     def _require_manager(self, user: User) -> str | None:
         if not self.tasks.is_manager(user):
-            return "Only managers and administrators can view other people's tasks."
+            return "Only managers and administrators can view other people's data."
         return None
 
     def _self_filter(self, user: User, kind: str) -> str:
@@ -240,13 +266,135 @@ class TelegramCommandHandler:
             return f"{title}\n\n{ai_text}"
         return fallback + ("\n\n(AI summary unavailable — showing list.)" if tasks else "")
 
+    def _attendance_command(self, ctx: CommandContext, arg: str) -> str:
+        assert ctx.user is not None
+        parts = arg.split()
+        if not parts:
+            return (
+                "Usage:\n"
+                "/attendance today\n"
+                "/attendance week [NAME]\n"
+                "/attendance month [NAME]"
+            )
+
+        scope = parts[0].lower()
+        name = " ".join(parts[1:]).strip()
+
+        if scope == "today":
+            if name:
+                return "Usage: /attendance today\n(For one person use /attendance week NAME or /attendance month NAME)"
+            denied = self._require_manager(ctx.user)
+            if denied:
+                # Employees see only their own mark for today
+                me = self.attendance.get_today(ctx.user)
+                status = me.get("status") if me else "Not marked"
+                return f"Attendance today — {ctx.user.full_name}\n\n{status}"
+            data = self.attendance.get_day()
+            return format_attendance_day(data)
+
+        if scope in ("week", "weekly"):
+            target = ctx.user
+            if name:
+                target, err = self._resolve_target(ctx.user, name)
+                if err:
+                    return err
+                assert target is not None
+            data = self.attendance.get_me(target)
+            week_start = data["today"] - timedelta(days=data["today"].weekday())
+            return format_attendance_week(target.full_name, data.get("week") or [], week_start=week_start)
+
+        if scope in ("month", "monthly"):
+            target = ctx.user
+            if name:
+                target, err = self._resolve_target(ctx.user, name)
+                if err:
+                    return err
+                assert target is not None
+            if target.id == ctx.user.id:
+                data = self.attendance.get_me(target)
+            else:
+                data = self.attendance.get_user_detail(target.id)
+            return format_attendance_month(target.full_name, data)
+
+        return (
+            "Usage:\n"
+            "/attendance today\n"
+            "/attendance week [NAME]\n"
+            "/attendance month [NAME]"
+        )
+
+    def _daily_updates_command(self, ctx: CommandContext, arg: str) -> str:
+        assert ctx.user is not None
+
+        day = today_local()
+        token = arg.strip()
+        lower = token.lower()
+
+        if not token:
+            data = self.daily_updates.get_day(ctx.user, day)
+            own = data.get("own_update")
+            updates = [own] if own else []
+            return format_daily_updates(f"Daily update — {ctx.user.full_name} ({day.strftime('%d-%m-%y')})", updates)
+
+        if lower in ("today", "team"):
+            denied = self._require_manager(ctx.user)
+            if denied:
+                return denied
+            data = self.daily_updates.get_day(ctx.user, day)
+            updates = []
+            if data.get("own_update"):
+                updates.append(data["own_update"])
+            updates.extend(data.get("team_updates") or [])
+            return format_daily_updates(f"Daily updates — {day.strftime('%d-%m-%y')}", updates)
+
+        if lower == "yesterday":
+            day = day - timedelta(days=1)
+            data = self.daily_updates.get_day(ctx.user, day)
+            own = data.get("own_update")
+            updates = [own] if own else []
+            return format_daily_updates(f"Daily update — {ctx.user.full_name} ({day.strftime('%d-%m-%y')})", updates)
+
+        # Optional trailing today/yesterday: "sarah today"
+        name_parts = token.split()
+        day_word = None
+        if name_parts and name_parts[-1].lower() in ("today", "yesterday"):
+            day_word = name_parts[-1].lower()
+            name_parts = name_parts[:-1]
+        if day_word == "yesterday":
+            day = today_local() - timedelta(days=1)
+        name = " ".join(name_parts).strip()
+        if not name:
+            return "Usage: /dailyupdates NAME"
+
+        target, err = self._resolve_target(ctx.user, name)
+        if err:
+            return err
+        assert target is not None
+
+        data = self.daily_updates.get_day(ctx.user, day, filter_user_id=target.id)
+        updates = list(data.get("team_updates") or [])
+        # When filtering self, own_update is populated instead
+        if target.id == ctx.user.id and data.get("own_update"):
+            updates = [data["own_update"]]
+        return format_daily_updates(
+            f"Daily update — {target.full_name} ({day.strftime('%d-%m-%y')})",
+            updates,
+        )
+
     def _handle_free_text(self, ctx: CommandContext, raw: str) -> str:
         if not ctx.user:
             return (
                 "Link your account first.\n"
                 "Supershyft Task Tracker → Settings → Telegram → generate code → /link CODE"
             )
-        parts = raw.lower().split()
+        lower = raw.lower().strip()
+        if lower.startswith("attendance "):
+            return self._attendance_command(ctx, raw[len("attendance ") :].strip())
+        if lower.startswith("daily updates "):
+            return self._daily_updates_command(ctx, raw[len("daily updates ") :].strip())
+        if lower.startswith("daily update "):
+            return self._daily_updates_command(ctx, raw[len("daily update ") :].strip())
+        parts = lower.split()
         if len(parts) >= 2 and parts[-1] in FILTER_ALIASES:
             # "pratheek today"
             return self._user_command(ctx, raw)
