@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    APP_NAME: str = "Internal Work Management System"
+    APP_NAME: str = "Supershyft Task Tracker"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
 

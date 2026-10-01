@@ -1,6 +1,6 @@
-# Work OS — Notion-Inspired Internal Task Platform
+# Supershyft Task Tracker
 
-An internal Work Operating System where **tasks are the product**. Everything else—projects, reports, analytics—exists to support getting work done.
+An internal task platform where **tasks are the product**. Everything else—projects, reports, analytics—exists to support getting work done.
 
 Built for startup teams (~15–100 employees) with full review workflows, dependencies, multi-assignee support, and role-based access.
 

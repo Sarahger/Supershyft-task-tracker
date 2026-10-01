@@ -89,20 +89,20 @@ class TelegramCommandHandler:
 
         if cmd == "/link":
             if not arg:
-                return "Usage: /link CODE\nGenerate a code in Work OS → Settings → Telegram."
+                return "Usage: /link CODE\nGenerate a code in Supershyft Task Tracker → Settings → Telegram."
             return self._link(ctx, arg)
 
         if cmd == "/unlink":
             if not ctx.user:
                 return "You are not linked."
             self.link.unlink_user(ctx.user)
-            return "Telegram unlinked from your Work OS account."
+            return "Telegram unlinked from your Supershyft Task Tracker account."
 
         # Remaining commands require link
         if not ctx.user:
             return (
-                "Your Telegram is not linked to Work OS.\n"
-                "Open Work OS → Settings → Telegram, generate a code, then send:\n"
+                "Your Telegram is not linked to Supershyft Task Tracker.\n"
+                "Open Supershyft Task Tracker → Settings → Telegram, generate a code, then send:\n"
                 "/link CODE"
             )
 
@@ -244,7 +244,7 @@ class TelegramCommandHandler:
         if not ctx.user:
             return (
                 "Link your account first.\n"
-                "Work OS → Settings → Telegram → generate code → /link CODE"
+                "Supershyft Task Tracker → Settings → Telegram → generate code → /link CODE"
             )
         parts = raw.lower().split()
         if len(parts) >= 2 and parts[-1] in FILTER_ALIASES:

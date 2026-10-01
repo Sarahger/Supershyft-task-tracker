@@ -24,9 +24,9 @@ def format_task_list(title: str, tasks: list[Task], *, empty_message: str | None
 def format_help(bot_username: str = "supershyftbot") -> str:
     return "\n".join(
         [
-            f"@{bot_username} — Work OS task bot",
+            f"@{bot_username} — Supershyft Task Tracker",
             "",
-            "Link your account (from Work OS Settings):",
+            "Link your account (from Settings):",
             "/link CODE",
             "",
             "Your tasks:",

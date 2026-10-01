@@ -192,7 +192,7 @@ function TelegramSettingsSection() {
         Telegram
       </h2>
       <p className="text-sm text-text-secondary mb-4">
-        Link @{bot} to view your Work OS tasks from Telegram. Commands use the same task database as this app.
+        Link @{bot} to view your Supershyft Task Tracker tasks from Telegram. Commands use the same task database as this app.
       </p>
 
       <div className="rounded-lg border border-dark-border bg-surface-subtle px-4 py-3 mb-4">

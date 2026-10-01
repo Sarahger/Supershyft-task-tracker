@@ -39,7 +39,7 @@ class TelegramDigestService:
 
         snapshot = self.tasks.team_today_snapshot()
         body = format_team_snapshot(snapshot)
-        header = "Daily Work OS digest\n\n"
+        header = "Daily Supershyft Task Tracker digest\n\n"
         text = header + body
 
         sent = skipped = errors = 0

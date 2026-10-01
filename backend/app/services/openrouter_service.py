@@ -46,7 +46,7 @@ class OpenRouterService:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": settings.FRONTEND_URL or "https://localhost",
-            "X-Title": "Work OS Telegram Bot",
+            "X-Title": "Supershyft Task Tracker Telegram Bot",
         }
         body = {
             "model": self.model,

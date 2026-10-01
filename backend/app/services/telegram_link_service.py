@@ -1,4 +1,4 @@
-"""Account linking between Telegram identities and Work OS users."""
+"""Account linking between Telegram identities and Supershyft Task Tracker users."""
 
 from __future__ import annotations
 
@@ -78,21 +78,20 @@ class TelegramLinkService:
                 matched = row
                 break
         if not matched:
-            return None, "Invalid or expired link code. Generate a new one in Work OS Settings."
-
+            return None, "Invalid or expired link code. Generate a new one in Supershyft Task Tracker Settings."
         user = self.db.query(User).filter(User.id == matched.user_id).first()
         if not user or user.status == "inactive":
-            return None, "Work OS account is inactive."
+            return None, "Supershyft Task Tracker account is inactive."
 
         tg_uid = str(telegram_user_id)
         chat = str(chat_id)
 
-        # One Telegram identity → one Work OS user
+        # One Telegram identity → one app user
         existing_tg = (
             self.db.query(TelegramAccount).filter(TelegramAccount.telegram_user_id == tg_uid).first()
         )
         if existing_tg and existing_tg.user_id != user.id:
-            return None, "This Telegram account is already linked to another Work OS user. Unlink first."
+            return None, "This Telegram account is already linked to another Supershyft Task Tracker user. Unlink first."
 
         existing_user = self.db.query(TelegramAccount).filter(TelegramAccount.user_id == user.id).first()
         if existing_user:
