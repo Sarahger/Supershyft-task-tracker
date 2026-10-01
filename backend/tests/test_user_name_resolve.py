@@ -2,8 +2,6 @@
 
 from types import SimpleNamespace
 
-from app.services.telegram_task_service import TelegramTaskService
-
 
 def _match_in_memory(users: list, name: str) -> list:
     """Mirror resolve_users_by_name rules without a DB session."""
