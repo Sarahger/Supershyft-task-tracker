@@ -11,7 +11,7 @@ import { toast } from '../ui/Toast';
 import { AssigneeMentionInput } from './AssigneeMentionInput';
 import { STATUS_LABELS, statusSelectOptions } from '../../types';
 import type { Task } from '../../types';
-import { formatTimeTakenHours } from '../../lib/taskTiming';
+import { formatTimeTakenHours, parseDurationInput } from '../../lib/taskTiming';
 
 interface TaskFormState {
   title: string;
@@ -26,6 +26,7 @@ interface TaskFormState {
   assignee_ids: number[];
   review_required: boolean;
   testing_required: boolean;
+  time_required: string;
 }
 
 function toDateInputValue(date?: string | null) {
@@ -64,6 +65,7 @@ function taskToForm(task: Task): TaskFormState {
     assignee_ids: task.assignees?.map((a) => a.user_id) ?? [],
     review_required: task.review_required,
     testing_required: task.testing_required,
+    time_required: formatTimeTakenHours(task.estimated_hours) ?? '',
   };
 }
 
@@ -78,6 +80,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
   const [savedForm, setSavedForm] = useState<TaskFormState>(() => taskToForm(task));
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [blockReasonInput, setBlockReasonInput] = useState('');
+  const [timeRequiredError, setTimeRequiredError] = useState('');
 
   useEffect(() => {
     const next = taskToForm(task);
@@ -101,7 +104,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
   );
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (estimatedHours: number | null) => {
       await tasksApi.update(taskId, {
         title: form.title.trim(),
         description: form.description.trim() || null,
@@ -115,6 +118,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         assignee_ids: form.assignee_ids,
         review_required: form.review_required,
         testing_required: form.testing_required,
+        estimated_hours: estimatedHours,
       });
     },
     onSuccess: () => {
@@ -122,10 +126,22 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
       setSavedForm(form);
+      setTimeRequiredError('');
       toast.success('Task updated');
     },
     onError: () => toast.error('Failed to save task'),
   });
+
+  const saveTask = () => {
+    const estimatedHours = parseDurationInput(form.time_required);
+    if (form.time_required.trim() && estimatedHours == null) {
+      setTimeRequiredError('Use a duration like 1h or 30m');
+      toast.error('Enter time required as 1h or 30m');
+      return;
+    }
+    setTimeRequiredError('');
+    saveMutation.mutate(estimatedHours);
+  };
 
   const blockMutation = useMutation({
     mutationFn: (reason: string) => tasksApi.block(taskId, reason),
@@ -221,7 +237,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
             >
               Discard
             </button>
-            <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+            <Button size="sm" onClick={saveTask} loading={saveMutation.isPending}>
               Save changes
             </Button>
           </div>
@@ -271,6 +287,16 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           type="datetime-local"
           value={form.end_date}
           onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+        />
+        <Input
+          label="Time required"
+          value={form.time_required}
+          onChange={(e) => {
+            setTimeRequiredError('');
+            setForm({ ...form, time_required: e.target.value });
+          }}
+          placeholder="e.g. 1h or 30m"
+          error={timeRequiredError || undefined}
         />
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1.5">Time taken</label>

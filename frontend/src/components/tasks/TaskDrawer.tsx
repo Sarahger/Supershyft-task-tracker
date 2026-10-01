@@ -467,6 +467,9 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <StatusBadge status={task.status} />
               <PriorityBadge priority={task.priority} />
+              <span className="text-sm text-text-secondary">
+                Time required {formatTimeTakenHours(task.estimated_hours) ?? '—'}
+              </span>
               {task.due_date && (
                 <span className="text-sm text-text-secondary">
                   Due {format(new Date(task.due_date), 'MMM d, yyyy')}
@@ -1023,6 +1026,10 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <p className="text-text-primary">{format(new Date(task.end_date), 'MMM d, yyyy h:mm a')}</p>
                 </div>
               )}
+              <div>
+                <span className="text-text-muted">Time required</span>
+                <p className="text-text-primary">{formatTimeTakenHours(task.estimated_hours) ?? '—'}</p>
+              </div>
               {task.actual_hours != null && (
                 <div>
                   <span className="text-text-muted">Time taken</span>

@@ -146,8 +146,10 @@ class TaskService:
 
         # Ignore client-sent actual_hours — always derived from start/end.
         data.pop("actual_hours", None)
-        # Stop writing estimated_hours from clients (field deprecated in UI).
-        data.pop("estimated_hours", None)
+        if "estimated_hours" in data:
+            estimated = data["estimated_hours"]
+            if estimated is not None and estimated <= 0:
+                raise HTTPException(status_code=400, detail="Time required must be greater than 0")
 
         old_status = task.status
         dates_touched = "start_date" in data or "end_date" in data
