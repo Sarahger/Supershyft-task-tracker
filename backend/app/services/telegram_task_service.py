@@ -168,6 +168,27 @@ class TelegramTaskService:
     def _fetch(self, filters: dict, *, limit: int = 25) -> tuple[list[Task], int]:
         return self.repo.get_filtered(skip=0, limit=limit, filters=filters)
 
+    def tasks_today_all(self, *, limit: int = 50) -> tuple[list[Task], int]:
+        """Everyone's tasks due today (+ overdue WIP), company-wide."""
+        start, end = today_bounds()
+        due_before = end - timedelta(microseconds=1)
+        due_today, _ = self._fetch(
+            {
+                "due_after": start.isoformat(),
+                "due_before": due_before.isoformat(),
+            },
+            limit=limit,
+        )
+        due_today = [t for t in due_today if t.status not in ("completed", "cancelled")]
+        overdue, _ = self._fetch({"overdue": True, "status": "in_progress"}, limit=limit)
+        seen = {t.id for t in due_today}
+        combined = list(due_today)
+        for t in overdue:
+            if t.id not in seen:
+                combined.append(t)
+                seen.add(t.id)
+        return combined, len(combined)
+
     def tasks_today(self, assignee_id: int) -> tuple[list[Task], int]:
         start, end = today_bounds()
         # due_before is inclusive in repo; use just before next midnight

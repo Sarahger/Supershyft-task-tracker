@@ -21,6 +21,7 @@ from app.services.telegram_formatter import (
     format_daily_updates,
     format_help,
     format_task_list,
+    format_tasks_grouped_by_assignee,
     format_team_snapshot,
 )
 from app.services.telegram_link_service import TelegramLinkService
@@ -80,7 +81,9 @@ class TelegramCommandHandler:
         )
         reply = self.dispatch(ctx)
         if reply:
-            self.client.send_message(chat_id, reply)
+            # HTML used for tables (<pre>) and bold headings
+            parse_mode = "HTML" if ("<pre>" in reply or "<b>" in reply) else None
+            self.client.send_message(chat_id, reply, parse_mode=parse_mode)
 
     def dispatch(self, ctx: CommandContext) -> str:
         raw = ctx.text.strip()
@@ -122,6 +125,10 @@ class TelegramCommandHandler:
             )
 
         if cmd == "/today":
+            if arg.strip().lower() in ("all", "everyone", "team"):
+                return self._today_all(ctx.user)
+            if arg.strip():
+                return "Usage: /today   or   /today all"
             return self._self_filter(ctx.user, "today")
         if cmd == "/wip":
             return self._self_filter(ctx.user, "wip")
@@ -185,6 +192,13 @@ class TelegramCommandHandler:
     def _self_week(self, user: User, week: int) -> str:
         tasks, _ = self.tasks.tasks_month_week(user.id, week)
         return format_task_list(f"Week {week} · {user.full_name}", tasks)
+
+    def _today_all(self, user: User) -> str:
+        denied = self._require_manager(user)
+        if denied:
+            return denied
+        tasks, _ = self.tasks.tasks_today_all()
+        return format_tasks_grouped_by_assignee("Today · All", tasks)
 
     def _query_filter(self, assignee_id: int, kind: str):
         if kind == "today":
