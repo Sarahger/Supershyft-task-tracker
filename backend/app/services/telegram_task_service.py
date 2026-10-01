@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.constants import UserRole
 from app.models import Task, User
 from app.repositories.base import TaskRepository
-from app.utils.month_weeks import month_week_bounds, today_bounds
+from app.utils.month_weeks import get_app_timezone, month_week_bounds, today_bounds
 
 STATUS_LABELS = {
     "to_do": "To Do",
@@ -125,14 +125,17 @@ class TelegramTaskService:
     @staticmethod
     def task_line(task: Task) -> str:
         status = STATUS_LABELS.get(task.status, task.status)
-        due = ""
-        if task.due_date:
-            due = task.due_date.astimezone(timezone.utc).strftime("%Y-%m-%d")
-        priority = task.priority or "medium"
         parts = [task.title.strip() or f"Task #{task.id}", status]
-        if due:
+        if task.due_date:
+            due = task.due_date.astimezone(get_app_timezone()).strftime("%d-%m-%y")
             parts.append(f"due {due}")
-        parts.append(priority)
+        if task.estimated_hours is not None:
+            hours = task.estimated_hours
+            # Prefer clean ints when whole hours (e.g. 2 not 2.0)
+            hours_label = str(int(hours)) if float(hours).is_integer() else str(hours)
+            parts.append(f"{hours_label}h")
+        else:
+            parts.append("time n/a")
         return " | ".join(parts)
 
     @staticmethod
@@ -143,7 +146,7 @@ class TelegramTaskService:
                 {
                     "title": t.title,
                     "status": t.status,
-                    "priority": t.priority,
+                    "estimated_hours": t.estimated_hours,
                     "due_date": t.due_date.isoformat() if t.due_date else None,
                     "assignee": assignee_name,
                 }

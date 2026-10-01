@@ -36,7 +36,10 @@ class OpenRouterService:
             "Do not mention emails, passwords, or secrets. Use plain text only."
         )
         # Compact payload — no emails / tokens / long descriptions
-        lines = [f"- {t.get('title')} [{t.get('status')}] priority={t.get('priority')} due={t.get('due_date')}" for t in tasks]
+        lines = [
+            f"- {t.get('title')} [{t.get('status')}] est={t.get('estimated_hours')}h due={t.get('due_date')}"
+            for t in tasks
+        ]
         user_content = f"{title}\n\nTasks:\n" + "\n".join(lines)
 
         headers = {
