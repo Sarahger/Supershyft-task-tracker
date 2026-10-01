@@ -214,10 +214,17 @@ class TelegramCommandHandler:
     def _resolve_target(self, requester: User, name: str) -> tuple[User | None, str]:
         matches = self.tasks.resolve_users_by_name(name)
         if not matches:
-            return None, f'No user matching "{name}".'
+            return None, (
+                f'No user with first name "{name.strip()}".\n'
+                "Tip: use the exact first name, or First Last if needed."
+            )
         if len(matches) > 1:
-            opts = ", ".join(u.full_name for u in matches[:5])
-            return None, f"Multiple matches: {opts}. Use a more specific name."
+            opts = "\n".join(f"• {u.full_name}" for u in matches[:8])
+            first = matches[0].first_name
+            return None, (
+                f'Multiple people named "{first}". Add the surname, e.g. /user {first} {matches[0].last_name} today\n\n'
+                f"{opts}"
+            )
         target = matches[0]
         if target.id != requester.id:
             denied = self._require_manager(requester)

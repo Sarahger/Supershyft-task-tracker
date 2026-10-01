@@ -72,19 +72,46 @@ class TelegramTaskService:
         return user.role in (UserRole.ADMIN.value, UserRole.MANAGER.value)
 
     def resolve_users_by_name(self, name: str) -> list[User]:
+        """
+        Resolve people by name with exact-first-name rules:
+        - One word  → exact first name only (case-insensitive).
+          "harsh" matches Harsh, not Harshili.
+        - Two+ words → exact first name + exact last name (then last-name prefix).
+          Use surname when multiple people share the same first name.
+        """
         term = (name or "").strip()
         if not term:
             return []
-        like = f"%{term}%"
+        parts = term.split()
+        active = self.db.query(User).filter(User.status != "inactive")
+
+        if len(parts) == 1:
+            token = parts[0].lower()
+            return (
+                active.filter(func.lower(User.first_name) == token)
+                .order_by(User.first_name, User.last_name)
+                .limit(20)
+                .all()
+            )
+
+        first = parts[0].lower()
+        last = " ".join(parts[1:]).lower()
+        exact = (
+            active.filter(
+                func.lower(User.first_name) == first,
+                func.lower(User.last_name) == last,
+            )
+            .order_by(User.first_name, User.last_name)
+            .limit(10)
+            .all()
+        )
+        if exact:
+            return exact
+        # Allow short surname typing: "Harsh Ku" → Harsh Kumar
         return (
-            self.db.query(User)
-            .filter(
-                User.status != "inactive",
-                or_(
-                    User.first_name.ilike(like),
-                    User.last_name.ilike(like),
-                    func.lower(func.concat(User.first_name, " ", User.last_name)).like(like.lower()),
-                ),
+            active.filter(
+                func.lower(User.first_name) == first,
+                User.last_name.ilike(f"{last}%"),
             )
             .order_by(User.first_name, User.last_name)
             .limit(10)
