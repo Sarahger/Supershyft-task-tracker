@@ -37,8 +37,8 @@ def test_format_task_table_one_line_no_pre():
     assert "COPY" not in text.upper()
     assert "Status" in text
     assert "..." in text  # long title truncated
-    # task row is a single line
-    data_lines = [ln for ln in text.splitlines() if ln.startswith("1 ")]
+    # task row is a single line (number + two spaces)
+    data_lines = [ln for ln in text.splitlines() if ln.startswith("1  ")]
     assert len(data_lines) == 1
 
 
