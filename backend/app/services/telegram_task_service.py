@@ -155,7 +155,8 @@ class TelegramTaskService:
             filters["due_after"] = start.isoformat()
             filters["due_before"] = (end - timedelta(microseconds=1)).isoformat()
             tasks, _ = self._fetch(filters, limit=limit)
-            tasks = [t for t in tasks if t.status not in ("completed", "cancelled")]
+            # Keep completed due today; only drop cancelled
+            tasks = [t for t in tasks if t.status != "cancelled"]
             # Also include overdue WIP for the dept (same spirit as personal /today)
             overdue, _ = self._fetch(
                 {"department_id": department_id, "overdue": True, "status": "in_progress"},
@@ -206,7 +207,7 @@ class TelegramTaskService:
             },
             limit=limit,
         )
-        due_today = [t for t in due_today if t.status not in ("completed", "cancelled")]
+        due_today = [t for t in due_today if t.status != "cancelled"]
         overdue, _ = self._fetch({"overdue": True, "status": "in_progress"}, limit=limit)
         seen = {t.id for t in due_today}
         combined = list(due_today)
@@ -227,7 +228,8 @@ class TelegramTaskService:
                 "due_before": due_before.isoformat(),
             }
         )
-        due_today = [t for t in due_today if t.status not in ("completed", "cancelled")]
+        # Include completed tasks due today; only exclude cancelled
+        due_today = [t for t in due_today if t.status != "cancelled"]
 
         # Include overdue in-progress (useful like My Tasks today list)
         overdue, _ = self._fetch({"assignee_id": assignee_id, "overdue": True, "status": "in_progress"})
