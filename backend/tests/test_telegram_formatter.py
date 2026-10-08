@@ -18,7 +18,7 @@ def test_format_empty_list():
     assert "No tasks found" in text
 
 
-def test_format_task_table_has_pre():
+def test_format_task_table_one_line_no_pre():
     from types import SimpleNamespace
     from datetime import datetime, timezone
 
@@ -26,16 +26,20 @@ def test_format_task_table_has_pre():
 
     task = SimpleNamespace(
         id=1,
-        title="Build dashboard screen",
+        title="Diwali offer webpage design - marketing campaign long title",
         status="to_do",
         due_date=datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc),
         estimated_hours=2.5,
         assignees=[],
     )
     text = format_task_table("Today · Test", [task], show_assignee=False)
-    assert "<pre>" in text
+    assert "<pre>" not in text
+    assert "COPY" not in text.upper()
     assert "Status" in text
-    assert "Build dashboard" in text or "Build dashboard screen" in text
+    assert "..." in text  # long title truncated
+    # task row is a single line
+    data_lines = [ln for ln in text.splitlines() if ln.startswith("1 ")]
+    assert len(data_lines) == 1
 
 
 def test_format_attendance_day_empty_people():
