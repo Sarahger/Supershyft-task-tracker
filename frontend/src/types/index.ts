@@ -128,6 +128,17 @@ export interface Task {
   created_at: string;
   updated_at: string;
   completed_at?: string;
+  original_due_date?: string | null;
+  deadline_revisions?: TaskDeadlineRevision[];
+}
+
+export interface TaskDeadlineRevision {
+  id: number;
+  previous_due_date?: string | null;
+  new_due_date: string;
+  reason: string;
+  changed_by?: UserBrief | null;
+  created_at: string;
 }
 
 export interface TaskAssignee {
@@ -646,4 +657,132 @@ export interface AttendanceUserDetail {
   month: number;
   records: AttendanceRecord[];
   summary: AttendanceSummary;
+}
+
+export type WeeklyCommitmentType = 'existing' | 'new' | 'carried_forward';
+export type WeeklyCompletionSource = 'suggested' | 'manual';
+
+export interface WeeklyAuthor {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+}
+
+export interface WeeklyLeaveDay {
+  date: string;
+  kind?: string;
+  status?: string;
+  label: string;
+}
+
+export interface WeeklyLeaveContext {
+  start: string;
+  end: string;
+  working_days: number;
+  holidays: WeeklyLeaveDay[];
+  leave_days: WeeklyLeaveDay[];
+}
+
+export interface WeeklyCompletion {
+  id?: number;
+  task_id?: number | null;
+  title: string;
+  completion_date?: string | null;
+  source: WeeklyCompletionSource;
+  included: boolean;
+  task_status?: string | null;
+  completed_at?: string | null;
+}
+
+export interface WeeklyCommitment {
+  id?: number;
+  task_id?: number | null;
+  title: string;
+  description?: string | null;
+  estimated_hours?: number | null;
+  due_date: string;
+  original_due_date?: string | null;
+  commitment_type: WeeklyCommitmentType;
+  create_error?: string | null;
+  task_status?: string | null;
+  is_overdue?: boolean;
+  is_carried_forward?: boolean;
+  is_resolved?: boolean;
+  period_start?: string | null;
+  deadline_revisions?: TaskDeadlineRevision[];
+}
+
+export interface WeeklyReport {
+  id: number;
+  user_id: number;
+  period_start: string;
+  period_end: string;
+  planning_start: string;
+  planning_end: string;
+  status: 'draft' | 'submitted';
+  submitted_at?: string | null;
+  leave_notes?: string | null;
+  editable: boolean;
+  editable_until: string;
+  is_current: boolean;
+  author?: WeeklyAuthor | null;
+  completions: WeeklyCompletion[];
+  commitments: WeeklyCommitment[];
+  leave: WeeklyLeaveContext;
+  planning_leave: WeeklyLeaveContext;
+  created_at: string;
+  updated_at: string;
+  create_errors?: { title: string; task_id?: number | null; error: string }[];
+}
+
+export interface WeeklyOverview {
+  period_start: string;
+  period_end: string;
+  planning_start: string;
+  planning_end: string;
+  department_id?: number | null;
+  submitted: number;
+  pending: number;
+  completed: number;
+  upcoming: number;
+  overdue: number;
+  carried_forward: number;
+  employee_count: number;
+}
+
+export interface WeeklyEmployee {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+  departments: { id: number; name: string }[];
+  has_submitted: boolean;
+  has_overdue: boolean;
+}
+
+export interface WeeklyUserHistory {
+  user: WeeklyAuthor & {
+    departments?: { id: number; name: string }[];
+    weekly_updates_adopted_at?: string | null;
+  };
+  current_period_start: string;
+  focus_week?: string | null;
+  reports: WeeklyReport[];
+  outstanding: WeeklyCommitment[];
+  legacy_daily_notes: {
+    id: number;
+    update_date: string;
+    content: string;
+    tasks: { id: number; title: string }[];
+  }[];
+}
+
+export interface WeeklySuggestions {
+  period_start: string;
+  period_end: string;
+  adopted_at?: string | null;
+  items: WeeklyCompletion[];
 }

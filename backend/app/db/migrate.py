@@ -54,6 +54,14 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added users.%s column", col_name)
+        if "weekly_updates_adopted_at" not in user_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_updates_adopted_at TIMESTAMP WITH TIME ZONE"
+            else:
+                sql = "ALTER TABLE users ADD COLUMN weekly_updates_adopted_at DATETIME"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added users.weekly_updates_adopted_at column")
 
     if "tasks" in tables:
         task_cols = {c["name"] for c in inspector.get_columns("tasks")}
@@ -64,6 +72,7 @@ def run_lightweight_migrations(engine) -> None:
                 ("deleted_by_id", "INTEGER REFERENCES users(id)"),
                 ("deleted_at", "TIMESTAMP WITH TIME ZONE"),
                 ("end_date", "TIMESTAMP WITH TIME ZONE"),
+                ("original_due_date", "TIMESTAMP WITH TIME ZONE"),
             ]
         else:
             task_additions = [
@@ -71,6 +80,7 @@ def run_lightweight_migrations(engine) -> None:
                 ("deleted_by_id", "INTEGER REFERENCES users(id)"),
                 ("deleted_at", "DATETIME"),
                 ("end_date", "DATETIME"),
+                ("original_due_date", "DATETIME"),
             ]
         for col_name, col_def in task_additions:
             if col_name not in task_cols:

@@ -1,5 +1,5 @@
 import api from './api';
-import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile } from '../types';
+import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory } from '../types';
 
 export const authApi = {
   requestOtp: (email: string) =>
@@ -41,6 +41,10 @@ export const tasksApi = {
     api.put(`/comments/${commentId}`, { content }),
   deleteComment: (commentId: number) => api.delete(`/comments/${commentId}`),
   getActivity: (id: number) => api.get(`/tasks/${id}/activity`),
+  reviseDeadline: (id: number, data: { reason: string; new_due_date: string; weekly_report_id?: number }) =>
+    api.post<APIResponse<TaskDeadlineRevision>>(`/tasks/${id}/deadline-revision`, data),
+  getDeadlineRevisions: (id: number) =>
+    api.get<APIResponse<TaskDeadlineRevision[]>>(`/tasks/${id}/deadline-revisions`),
   uploadAttachment: (id: number, file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -170,6 +174,54 @@ export const meetingsApi = {
 };
 
 type MeetingActionResult = import('../types').MeetingActionResult;
+
+export const weeklyUpdatesApi = {
+  overview: (params?: { week_start?: string; department_id?: number }) =>
+    api.get<APIResponse<WeeklyOverview>>('/weekly-updates/overview', { params }),
+  employees: (params?: { week_start?: string; department_id?: number }) =>
+    api.get<APIResponse<{ period_start: string; items: import('../types').WeeklyEmployee[] }>>(
+      '/weekly-updates/employees',
+      { params },
+    ),
+  userHistory: (userId: number, week_start?: string) =>
+    api.get<APIResponse<WeeklyUserHistory>>(`/weekly-updates/users/${userId}`, {
+      params: week_start ? { week_start } : undefined,
+    }),
+  suggestions: (week_start?: string) =>
+    api.get<APIResponse<WeeklySuggestions>>('/weekly-updates/suggestions', {
+      params: week_start ? { week_start } : undefined,
+    }),
+  carryForward: (week_start?: string) =>
+    api.get<APIResponse<{ period_start: string; items: import('../types').WeeklyCommitment[] }>>(
+      '/weekly-updates/carry-forward',
+      { params: week_start ? { week_start } : undefined },
+    ),
+  leaveContext: (params?: { week_start?: string; user_id?: number }) =>
+    api.get<APIResponse<{ period_start: string; reporting: WeeklyLeaveContext; planning: WeeklyLeaveContext }>>(
+      '/weekly-updates/leave-context',
+      { params },
+    ),
+  upsert: (data: {
+    period_start: string;
+    leave_notes?: string;
+    completions: Array<{
+      task_id?: number | null;
+      title: string;
+      completion_date?: string | null;
+      source: string;
+      included: boolean;
+    }>;
+    commitments: Array<{
+      task_id?: number | null;
+      title: string;
+      description?: string | null;
+      estimated_hours: number;
+      due_date: string;
+      commitment_type: string;
+      revision_reason?: string | null;
+    }>;
+  }) => api.put<APIResponse<WeeklyReport>>('/weekly-updates', data),
+};
 
 export const dailyUpdatesApi = {
   getDay: (date: string, userId?: number) =>

@@ -9,6 +9,7 @@ def test_format_help_mentions_link():
     assert "/w1" in text
     assert "/attendance" in text
     assert "/dailyupdates" in text
+    assert "/weeklyupdates" in text
     assert "/summary" not in text
     assert "AI" not in text
 

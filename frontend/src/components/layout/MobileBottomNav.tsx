@@ -10,7 +10,7 @@ const items: {
 }[] = [
   { to: '/', icon: LayoutList, label: 'All tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My tasks', end: true },
-  { to: '/daily-updates', icon: NotebookPen, label: 'Daily Updates', end: true },
+  { to: '/weekly-updates', icon: NotebookPen, label: 'Weekly Updates', end: true },
   { to: '/attendance', icon: CalendarCheck, label: 'Attendance', end: true },
   { to: '/meetings', icon: Video, label: 'Meetings', end: true },
 ];

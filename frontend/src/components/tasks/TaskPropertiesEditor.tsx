@@ -311,6 +311,23 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           value={form.due_date}
           onChange={(e) => setForm({ ...form, due_date: e.target.value })}
         />
+        {(task.original_due_date || (task.deadline_revisions && task.deadline_revisions.length > 0)) && (
+          <div className="sm:col-span-2 rounded-xl border border-dark-border px-3 py-2 space-y-1.5">
+            <p className="text-xs font-medium text-text-secondary">Deadline history</p>
+            {task.original_due_date && (
+              <p className="text-xs text-text-muted">
+                Original {toDateInputValue(task.original_due_date)} · Current {toDateInputValue(task.due_date) || '—'}
+              </p>
+            )}
+            {(task.deadline_revisions ?? []).map((rev) => (
+              <p key={rev.id} className="text-xs text-text-muted">
+                {toDateInputValue(rev.previous_due_date)} → {toDateInputValue(rev.new_due_date)}
+                {rev.reason ? ` · ${rev.reason}` : ''}
+                {rev.changed_by ? ` · ${rev.changed_by.first_name}` : ''}
+              </p>
+            ))}
+          </div>
+        )}
         <Select
           label="Project"
           value={form.project_id}

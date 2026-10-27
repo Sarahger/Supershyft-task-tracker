@@ -477,6 +477,18 @@ class TaskService:
             "created_by_id": task.created_by_id,
             "updated_by_id": task.updated_by_id,
             "completed_at": task.completed_at,
+            "original_due_date": task.original_due_date,
+            "deadline_revisions": [
+                {
+                    "id": rev.id,
+                    "previous_due_date": rev.previous_due_date,
+                    "new_due_date": rev.new_due_date,
+                    "reason": rev.reason,
+                    "changed_by": user_to_brief_dict(rev.changed_by) if getattr(rev, "changed_by", None) else None,
+                    "created_at": rev.created_at,
+                }
+                for rev in (task.deadline_revisions or [])
+            ],
             "assignees": [
                 {
                     "id": a.id,

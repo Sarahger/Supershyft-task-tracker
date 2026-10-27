@@ -19,7 +19,7 @@ import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
 
 const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
-const DailyUpdatesPage = lazy(() => import('./pages/DailyUpdatesPage'));
+const WeeklyUpdatesPage = lazy(() => import('./pages/WeeklyUpdatesPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -139,13 +139,14 @@ export default function App() {
                     }
                   />
                   <Route
-                    path="daily-updates"
+                    path="weekly-updates"
                     element={
                       <Suspense fallback={<PageLoader />}>
-                        <DailyUpdatesPage />
+                        <WeeklyUpdatesPage />
                       </Suspense>
                     }
                   />
+                  <Route path="daily-updates" element={<Navigate to="/weekly-updates" replace />} />
                   <Route path="tasks" element={<Navigate to="/" replace />} />
                   <Route path="kanban" element={<Navigate to="/" replace />} />
                   <Route path="dashboard" element={<DashboardRedirect />} />

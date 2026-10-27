@@ -40,6 +40,8 @@ from app.schemas.task import (
     TaskTypeCreate,
     TagCreate,
 )
+from app.schemas.weekly_update import DeadlineRevisionCreate
+from app.services.weekly_update_service import WeeklyUpdateService
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
 from app.utils.mentions import resolve_mentioned_user_ids
@@ -165,6 +167,38 @@ def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     task = TaskService(db).update_task(task, data.model_dump(exclude_unset=True), current_user)
     return APIResponse(data=TaskService(db).task_to_detail_dict(task), message="Task updated")
+
+
+@router.post("/tasks/{task_id}/deadline-revision")
+def revise_deadline(
+    task_id: int,
+    data: DeadlineRevisionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = TaskRepository(db).get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    result = WeeklyUpdateService(db).revise_deadline(
+        task,
+        current_user,
+        data.reason,
+        data.new_due_date,
+        weekly_report_id=data.weekly_report_id,
+    )
+    return APIResponse(data=result, message="Deadline revised")
+
+
+@router.get("/tasks/{task_id}/deadline-revisions")
+def list_deadline_revisions(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = TaskRepository(db).get_by_id(task_id, include_archived=True)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return APIResponse(data=WeeklyUpdateService(db).list_revisions(task))
 
 
 @router.patch("/tasks/{task_id}/status")

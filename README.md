@@ -62,6 +62,7 @@ Users sign in with a **one-time email code** (OTP). SMTP must be configured in `
 | `/my-tasks` | Personal tasks grouped by urgency |
 | `/projects` | Project containers with embedded task databases |
 | `/reports` | Analytics for managers (health, trends, exports) |
+| `/weekly-updates` | Person-wise weekly reports, commitments, and deadline history |
 
 ## Features
 
@@ -71,7 +72,7 @@ Users sign in with a **one-time email code** (OTP). SMTP must be configured in `
 - Kanban board with drag-and-drop
 - Review and testing workflows, bug tracking, block/unblock, reopen
 - JWT auth, RBAC, email notifications, global search
-- Telegram bot (`@supershyftbot`) for tasks, attendance, and daily updates (`/today`, `/attendance`, `/dailyupdates`, manager `/user` filters)
+- Telegram bot (`@supershyftbot`) for tasks, attendance, daily notes (`/dailyupdates`), and weekly updates (`/weeklyupdates`)
 
 ## Deploy to production (Vercel + Neon)
 

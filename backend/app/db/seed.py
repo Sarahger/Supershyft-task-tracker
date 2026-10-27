@@ -288,6 +288,14 @@ def seed():
 
     db.commit()
     print("Database seeded successfully!")
+    try:
+        from app.db.seed_weekly_demo import seed_weekly_demo
+
+        names = seed_weekly_demo()
+        if names:
+            print("Weekly demo reports:", ", ".join(names))
+    except Exception as exc:
+        print(f"Weekly demo seed skipped: {exc}")
     print("\nLogin credentials:")
     print("  Admin:    admin@company.com / admin123")
     print("  Manager:  james@company.com / manager123")

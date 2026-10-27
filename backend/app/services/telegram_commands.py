@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.models import User
 from app.services.attendance_service import AttendanceService, today_local
 from app.services.daily_update_service import DailyUpdateService
+from app.services.weekly_update_service import WeeklyUpdateService
 from app.services.telegram_client import TelegramClient
 from app.services.telegram_formatter import (
     format_attendance_day,
@@ -20,6 +21,7 @@ from app.services.telegram_formatter import (
     format_attendance_week,
     format_daily_updates,
     format_help,
+    format_weekly_update,
     format_task_list,
     format_tasks_grouped_by_assignee,
     format_team_snapshot,
@@ -55,6 +57,7 @@ class TelegramCommandHandler:
         self.tasks = TelegramTaskService(db)
         self.attendance = AttendanceService(db)
         self.daily_updates = DailyUpdateService(db)
+        self.weekly_updates = WeeklyUpdateService(db)
         self.client = TelegramClient()
 
     def handle_update(self, update: dict) -> None:
@@ -159,6 +162,15 @@ class TelegramCommandHandler:
             elif lower == "updates":
                 cleaned = ""
             return self._daily_updates_command(ctx, cleaned)
+
+        if cmd in ("/weeklyupdates", "/weeklyupdate", "/weekly"):
+            cleaned = arg
+            lower = arg.lower()
+            if lower.startswith("updates "):
+                cleaned = arg[8:].strip()
+            elif lower == "updates":
+                cleaned = ""
+            return self._weekly_updates_command(ctx, cleaned)
 
         return "Unknown command. Send /help for the list."
 
@@ -419,6 +431,21 @@ class TelegramCommandHandler:
             f"Daily update · {target.full_name} · {day.strftime('%d-%m-%y')}",
             updates,
         )
+
+    def _weekly_updates_command(self, ctx: CommandContext, arg: str) -> str:
+        target = ctx.user
+        cleaned = (arg or "").strip()
+        if cleaned:
+            denied = self._require_manager(ctx.user)
+            if denied:
+                return denied
+            target, err = self._resolve_target(ctx.user, cleaned)
+            if err:
+                return err
+            assert target is not None
+        payload = self.weekly_updates.format_weekly_for_telegram(ctx.user, target)
+        name = target.full_name if target else ctx.user.full_name
+        return format_weekly_update(f"Weekly update · {name}", payload)
 
     def _handle_free_text(self, ctx: CommandContext, raw: str) -> str:
         if not ctx.user:

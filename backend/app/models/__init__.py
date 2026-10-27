@@ -65,6 +65,7 @@ class User(Base):
     notify_meetings = Column(Boolean, default=True, nullable=False)
     telegram_notifications_enabled = Column(Boolean, default=True, nullable=False)
     telegram_daily_digest_enabled = Column(Boolean, default=False, nullable=False)
+    weekly_updates_adopted_at = Column(DateTime(timezone=True), nullable=True)
     last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -215,6 +216,7 @@ class Task(Base):
     start_date = Column(DateTime(timezone=True), nullable=True)
     end_date = Column(DateTime(timezone=True), nullable=True)
     due_date = Column(DateTime(timezone=True), nullable=True)
+    original_due_date = Column(DateTime(timezone=True), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
     sprint_id = Column(Integer, ForeignKey("sprints.id"), nullable=True)
@@ -271,6 +273,12 @@ class Task(Base):
     )
     activities = relationship("ActivityLog", back_populates="task", cascade="all, delete-orphan")
     custom_field_values = relationship("TaskCustomFieldValue", back_populates="task", cascade="all, delete-orphan")
+    deadline_revisions = relationship(
+        "TaskDeadlineRevision",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskDeadlineRevision.created_at",
+    )
 
 
 class TaskAssignee(Base):
@@ -628,3 +636,89 @@ class TelegramLinkCode(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     user = relationship("User")
+
+
+class WeeklyReport(Base):
+    __tablename__ = "weekly_reports"
+    __table_args__ = (UniqueConstraint("user_id", "period_start", name="uq_weekly_report_user_period"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    period_start = Column(Date, nullable=False, index=True)
+    period_end = Column(Date, nullable=False)
+    planning_start = Column(Date, nullable=False)
+    planning_end = Column(Date, nullable=False)
+    status = Column(String(20), nullable=False, default="draft")
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    leave_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+    completions = relationship(
+        "WeeklyReportCompletion",
+        back_populates="report",
+        cascade="all, delete-orphan",
+    )
+    commitments = relationship(
+        "WeeklyReportCommitment",
+        back_populates="report",
+        cascade="all, delete-orphan",
+    )
+
+
+class WeeklyReportCompletion(Base):
+    __tablename__ = "weekly_report_completions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    weekly_report_id = Column(
+        Integer, ForeignKey("weekly_reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(500), nullable=False)
+    completion_date = Column(Date, nullable=True)
+    source = Column(String(20), nullable=False, default="manual")
+    included = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    report = relationship("WeeklyReport", back_populates="completions")
+    task = relationship("Task", foreign_keys=[task_id])
+
+
+class WeeklyReportCommitment(Base):
+    __tablename__ = "weekly_report_commitments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    weekly_report_id = Column(
+        Integer, ForeignKey("weekly_reports.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    estimated_hours = Column(Float, nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=False)
+    commitment_type = Column(String(20), nullable=False, default="new")
+    original_due_date = Column(DateTime(timezone=True), nullable=True)
+    create_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    report = relationship("WeeklyReport", back_populates="commitments")
+    task = relationship("Task", foreign_keys=[task_id])
+
+
+class TaskDeadlineRevision(Base):
+    __tablename__ = "task_deadline_revisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    previous_due_date = Column(DateTime(timezone=True), nullable=True)
+    new_due_date = Column(DateTime(timezone=True), nullable=False)
+    reason = Column(Text, nullable=False)
+    changed_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    weekly_report_id = Column(Integer, ForeignKey("weekly_reports.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    task = relationship("Task", back_populates="deadline_revisions")
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
+    weekly_report = relationship("WeeklyReport", foreign_keys=[weekly_report_id])

@@ -24,7 +24,7 @@ const navItems: {
 }[] = [
   { to: '/', icon: LayoutList, label: 'Tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My Tasks' },
-  { to: '/daily-updates', icon: NotebookPen, label: 'Daily Updates' },
+  { to: '/weekly-updates', icon: NotebookPen, label: 'Weekly Updates' },
   { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/meetings', icon: Video, label: 'Meetings' },

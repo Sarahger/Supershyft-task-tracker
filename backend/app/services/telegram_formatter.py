@@ -152,6 +152,10 @@ def format_help(bot_username: str = "supershyftbot") -> str:
                 "/dailyupdates today",
                 "/dailyupdates [name]",
                 "",
+                "Weekly updates",
+                "/weeklyupdates",
+                "/weeklyupdates [name]",
+                "",
                 "Managers",
                 "/user [name] today|wip|todos|backlog",
                 "/team today — everyone snapshot",
@@ -296,3 +300,35 @@ def format_daily_updates(title: str, updates: list[dict]) -> str:
     if len(updates) > 12:
         lines.append(f"…and {len(updates) - 12} more")
     return clamp_message("\n".join(lines).rstrip())
+
+
+def format_weekly_update(title: str, payload: dict) -> str:
+    report = payload.get("report")
+    if not report:
+        return clamp_message(f"<b>{escape(title)}</b>\n\nNo weekly update yet.")
+    lines = [
+        f"<b>{escape(title)}</b>",
+        f"{report.get('period_start')} → {report.get('period_end')} · {report.get('status')}",
+        "",
+        "<b>Completed</b>",
+    ]
+    completions = report.get("completions") or []
+    if not completions:
+        lines.append("None recorded")
+    for item in completions[:8]:
+        lines.append(f"• {escape(item.get('title') or '?')}")
+    lines.append("")
+    lines.append("<b>Next week</b>")
+    commitments = report.get("commitments") or []
+    if not commitments:
+        lines.append("None recorded")
+    for item in commitments[:8]:
+        extra = " overdue" if item.get("is_overdue") else ""
+        lines.append(f"• {escape(item.get('title') or '?')}{extra}")
+    outstanding = payload.get("outstanding") or []
+    if outstanding:
+        lines.append("")
+        lines.append("<b>Outstanding</b>")
+        for item in outstanding[:8]:
+            lines.append(f"• {escape(item.get('title') or '?')}")
+    return clamp_message("\n".join(lines))

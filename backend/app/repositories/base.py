@@ -19,6 +19,7 @@ from app.models import (
     Task,
     TaskAssignee,
     TaskCustomFieldValue,
+    TaskDeadlineRevision,
     TaskDependency,
     TaskType,
     User,
@@ -120,6 +121,7 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on_user),
                 joinedload(Task.custom_field_values).joinedload(TaskCustomFieldValue.field_definition),
+                joinedload(Task.deadline_revisions).joinedload(TaskDeadlineRevision.changed_by),
             )
             .filter(Task.id == task_id)
         )

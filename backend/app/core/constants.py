@@ -145,3 +145,20 @@ class ActivityType(str, Enum):
     TASK_BLOCKED = "task_blocked"
     TASK_UNBLOCKED = "task_unblocked"
     TASK_COMPLETED = "task_completed"
+    DUE_DATE_CHANGED = "due_date_changed"
+
+
+class WeeklyReportStatus(str, Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
+class WeeklyCompletionSource(str, Enum):
+    SUGGESTED = "suggested"
+    MANUAL = "manual"
+
+
+class WeeklyCommitmentType(str, Enum):
+    EXISTING = "existing"
+    NEW = "new"
+    CARRIED_FORWARD = "carried_forward"
