@@ -1,18 +1,284 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Plus, Trash2, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange } from 'lucide-react';
+import { Camera, Sun, Moon, Monitor, LayoutList, Columns3, CalendarDays, CalendarRange, MessageCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTaskViewPreferences } from '../contexts/TaskViewPreferencesContext';
 import { OPTIONAL_TASK_VIEWS } from '../lib/taskViewPreferences';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
-import { Input, Select, Textarea } from '../components/ui/Input';
+import { Avatar } from '../components/ui/Avatar';
 import { toast } from '../components/ui/Toast';
-import { customFieldsApi, notificationsApi, type CustomFieldDefinition } from '../services/endpoints';
-import type { NotificationPreferences } from '../types';
+import { authApi, notificationsApi, telegramApi } from '../services/endpoints';
+import type { NotificationPreferences, TelegramLinkCode, TelegramStatus } from '../types';
+import { canAccessManagerFeatures } from '../lib/roles';
+
+function ProfilePhotoSection() {
+  const { user, updateUser } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => authApi.uploadProfilePicture(file),
+    onSuccess: (res) => {
+      updateUser(res.data.data);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      toast.success('Profile photo updated');
+    },
+    onError: (error: { response?: { data?: { detail?: string; message?: string } } }) => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      const data = error.response?.data;
+      const detail = typeof data?.detail === 'string' ? data.detail : data?.message;
+      toast.error(detail || 'Could not upload photo');
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: () => authApi.removeProfilePicture(),
+    onSuccess: (res) => {
+      updateUser(res.data.data);
+      toast.success('Profile photo removed');
+    },
+    onError: () => toast.error('Could not remove photo'),
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be 5MB or smaller');
+      return;
+    }
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+    uploadMutation.mutate(file);
+  };
+
+  if (!user) return null;
+
+  const displaySrc = previewUrl || user.profile_picture;
+  const busy = uploadMutation.isPending || removeMutation.isPending;
+
+  return (
+    <div className="flex items-center gap-4 mb-5 pb-5 border-b border-dark-border">
+      <div className="relative shrink-0">
+        <Avatar
+          name={`${user.first_name} ${user.last_name}`}
+          src={displaySrc}
+          size="lg"
+          className="!h-16 !w-16 !text-lg"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy}
+          className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full border border-dark-border bg-dark-card text-text-secondary hover:text-text-primary hover:bg-dark-hover flex items-center justify-center disabled:opacity-50"
+          title="Upload photo"
+          aria-label="Upload profile photo"
+        >
+          <Camera className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-text-primary">Profile photo</p>
+        <p className="text-xs text-text-muted mt-0.5">
+          JPEG, PNG, WebP, or GIF · up to 5MB
+        </p>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => fileInputRef.current?.click()}
+            loading={uploadMutation.isPending}
+            disabled={busy}
+          >
+            {user.profile_picture ? 'Change photo' : 'Upload photo'}
+          </Button>
+          {user.profile_picture && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => removeMutation.mutate()}
+              loading={removeMutation.isPending}
+              disabled={busy}
+              className="text-accent-danger hover:text-accent-danger"
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+}
+
+function TelegramSettingsSection() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  const { data: status, isLoading } = useQuery({
+    queryKey: ['telegram-status'],
+    queryFn: () => telegramApi.status().then((r) => r.data.data),
+  });
+
+  const [linkCode, setLinkCode] = useState<TelegramLinkCode | null>(null);
+
+  const linkMutation = useMutation({
+    mutationFn: () => telegramApi.createLinkCode().then((r) => r.data.data),
+    onSuccess: (data) => {
+      setLinkCode(data);
+      toast.success('Link code generated — expires in 10 minutes');
+    },
+    onError: () => toast.error('Could not generate link code'),
+  });
+
+  const unlinkMutation = useMutation({
+    mutationFn: () => telegramApi.unlink(),
+    onSuccess: () => {
+      setLinkCode(null);
+      qc.invalidateQueries({ queryKey: ['telegram-status'] });
+      toast.success('Telegram unlinked');
+    },
+    onError: () => toast.error('Could not unlink Telegram'),
+  });
+
+  const prefsMutation = useMutation({
+    mutationFn: (data: Partial<Pick<TelegramStatus, 'telegram_notifications_enabled' | 'telegram_daily_digest_enabled'>>) =>
+      telegramApi.updatePreferences(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['telegram-status'] });
+      toast.success('Telegram preferences saved');
+    },
+    onError: () => toast.error('Could not save Telegram preferences'),
+  });
+
+  if (isLoading || !status) {
+    return (
+      <>
+        <h2 className="text-sm font-medium text-text-primary mb-2">Telegram</h2>
+        <div className="h-24 bg-surface-subtle rounded animate-pulse" />
+      </>
+    );
+  }
+
+  const bot = status.bot_username || 'supershyftbot';
+  const isManager = canAccessManagerFeatures(user);
+
+  return (
+    <>
+      <h2 className="text-sm font-medium text-text-primary mb-1 flex items-center gap-2">
+        <MessageCircle className="h-4 w-4" />
+        Telegram
+      </h2>
+      <p className="text-sm text-text-secondary mb-4">
+        Link @{bot} to view your Supershyft Task Tracker tasks from Telegram. Commands use the same task database as this app.
+      </p>
+
+      <div className="rounded-lg border border-dark-border bg-surface-subtle px-4 py-3 mb-4">
+        <p className="text-sm text-text-primary">
+          Status:{' '}
+          <span className="font-medium">{status.linked ? 'Linked' : 'Not linked'}</span>
+          {status.telegram_username ? ` (@${status.telegram_username})` : ''}
+        </p>
+        {status.linked_at && (
+          <p className="text-xs text-text-muted mt-1">Linked at {new Date(status.linked_at).toLocaleString()}</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Button size="sm" onClick={() => linkMutation.mutate()} loading={linkMutation.isPending}>
+          Generate link code
+        </Button>
+        {status.linked && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => unlinkMutation.mutate()}
+            loading={unlinkMutation.isPending}
+          >
+            Unlink
+          </Button>
+        )}
+      </div>
+
+      {linkCode && (
+        <div className="rounded-lg border border-dark-border bg-surface-highlight px-4 py-3 mb-4 space-y-2">
+          <p className="text-sm text-text-primary">
+            Send this in Telegram to <span className="font-medium">@{linkCode.bot_username}</span>:
+          </p>
+          <code className="block text-sm font-mono bg-surface-subtle px-3 py-2 rounded border border-dark-border">
+            /link {linkCode.code}
+          </code>
+          <p className="text-xs text-text-muted">
+            Expires {new Date(linkCode.expires_at).toLocaleString()}. Do not share this code.
+          </p>
+        </div>
+      )}
+
+      <div className="space-y-0 divide-y divide-dark-border border border-dark-border rounded-lg overflow-hidden">
+        <label className="flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle cursor-pointer hover:bg-dark-hover">
+          <div>
+            <p className="text-sm text-text-primary">Telegram notifications</p>
+            <p className="text-xs text-text-muted mt-0.5">Allow bot messages to this linked chat</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={status.telegram_notifications_enabled}
+            disabled={prefsMutation.isPending}
+            onChange={() =>
+              prefsMutation.mutate({
+                telegram_notifications_enabled: !status.telegram_notifications_enabled,
+              })
+            }
+            className="mt-1 rounded border-dark-border"
+          />
+        </label>
+        {isManager && (
+          <label className="flex items-start justify-between gap-4 px-4 py-3 bg-surface-subtle cursor-pointer hover:bg-dark-hover">
+            <div>
+              <p className="text-sm text-text-primary">Daily digest</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                Morning team snapshot (managers/admins only)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={status.telegram_daily_digest_enabled}
+              disabled={prefsMutation.isPending || !status.linked}
+              onChange={() =>
+                prefsMutation.mutate({
+                  telegram_daily_digest_enabled: !status.telegram_daily_digest_enabled,
+                })
+              }
+              className="mt-1 rounded border-dark-border"
+            />
+          </label>
+        )}
+      </div>
+    </>
+  );
+}
 
 function NotificationSettingsSection() {
   const qc = useQueryClient();
@@ -78,6 +344,12 @@ function NotificationSettingsSection() {
       key: 'notify_comments',
       label: 'Comments',
       description: 'New comments on tasks you are involved in',
+      disabledBy: 'email_notifications_enabled',
+    },
+    {
+      key: 'notify_meetings',
+      label: 'Meetings & calls',
+      description: 'Instant team calls and task sync invitations',
       disabledBy: 'email_notifications_enabled',
     },
   ];
@@ -203,66 +475,10 @@ function TaskViewsSettingsSection() {
   );
 }
 
-const FIELD_TYPES = [
-  { value: 'text', label: 'Text' },
-  { value: 'number', label: 'Number' },
-  { value: 'select', label: 'Select (dropdown)' },
-  { value: 'date', label: 'Date' },
-  { value: 'checkbox', label: 'Checkbox' },
-];
-
-const APPLIES_TO = [
-  { value: 'task', label: 'Task' },
-  { value: 'project', label: 'Project' },
-  { value: 'status', label: 'Status' },
-];
-
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { preference, setPreference } = useTheme();
-  const qc = useQueryClient();
-  const isAdmin = user?.role === 'administrator';
-
-  const [newField, setNewField] = useState({
-    name: '',
-    field_type: 'text',
-    applies_to: 'task',
-    options: '',
-  });
-
-  const { data: customFields, isLoading } = useQuery({
-    queryKey: ['custom-fields', 'all'],
-    queryFn: () => customFieldsApi.list('task').then((r) => r.data.data),
-    enabled: isAdmin,
-  });
-
-  const createFieldMutation = useMutation({
-    mutationFn: () =>
-      customFieldsApi.create({
-        name: newField.name.trim(),
-        field_type: newField.field_type,
-        applies_to: newField.applies_to,
-        options: newField.field_type === 'select'
-          ? newField.options.split('\n').map((o) => o.trim()).filter(Boolean)
-          : [],
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['custom-fields'] });
-      setNewField({ name: '', field_type: 'text', applies_to: 'task', options: '' });
-      toast.success('Custom field created');
-    },
-    onError: () => toast.error('Could not create field'),
-  });
-
-  const removeFieldMutation = useMutation({
-    mutationFn: (id: number) => customFieldsApi.remove(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['custom-fields'] });
-      toast.success('Field removed');
-    },
-    onError: () => toast.error('Could not remove field'),
-  });
 
   return (
     <div className="max-w-2xl mx-auto pb-12 space-y-6">
@@ -274,12 +490,13 @@ export default function SettingsPage() {
 
       <div className="card p-6">
         <h2 className="text-sm font-medium text-text-primary mb-4">Profile</h2>
+        <ProfilePhotoSection />
         <div className="space-y-0 text-sm">
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Name</span><span className="text-text-primary">{user?.first_name} {user?.last_name}</span></div>
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Email</span><span className="text-text-primary">{user?.email}</span></div>
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Role</span><span className="text-text-primary capitalize">{user?.role}</span></div>
           <div className="flex justify-between py-3 border-b border-dark-border"><span className="text-text-muted">Job Title</span><span className="text-text-primary">{user?.job_title || '—'}</span></div>
-          <div className="flex justify-between py-3"><span className="text-text-muted">Departments</span><span className="text-text-primary">{user?.departments?.map((d) => d.name).join(', ')}</span></div>
+          <div className="flex justify-between py-3"><span className="text-text-muted">Departments</span><span className="text-text-primary">{user?.departments?.map((d) => d.name).join(', ') || '—'}</span></div>
         </div>
       </div>
 
@@ -328,91 +545,9 @@ export default function SettingsPage() {
         <TaskViewsSettingsSection />
       </div>
 
-      {isAdmin && (
-        <div className="card p-6">
-          <h2 className="text-sm font-medium text-text-primary mb-2">Custom fields</h2>
-          <p className="text-sm text-text-secondary mb-4">
-            Add your own properties beyond the built-in fields. Task fields appear in the task editor; project and status scopes are stored for future use.
-          </p>
-
-          {isLoading ? (
-            <div className="h-24 bg-surface-subtle rounded animate-pulse" />
-          ) : (
-            <>
-              {customFields && customFields.length > 0 ? (
-                <ul className="space-y-2 mb-6">
-                  {customFields.map((field: CustomFieldDefinition) => (
-                    <li
-                      key={field.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-md border border-dark-border bg-surface-subtle"
-                    >
-                      <div>
-                        <p className="text-sm text-text-primary">{field.name}</p>
-                        <p className="text-2xs text-text-muted capitalize">
-                          {field.field_type} · {field.applies_to} · {field.field_key}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFieldMutation.mutate(field.id)}
-                        disabled={removeFieldMutation.isPending}
-                        className="toolbar-btn text-text-muted hover:text-red-400"
-                        aria-label={`Remove ${field.name}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-text-muted mb-6">No custom fields yet.</p>
-              )}
-
-              <div className="border-t border-dark-border pt-4 space-y-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted">Add field</p>
-                <Input
-                  label="Field name"
-                  value={newField.name}
-                  onChange={(e) => setNewField({ ...newField, name: e.target.value })}
-                  placeholder="e.g. Sprint, Client tier"
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <Select
-                    label="Type"
-                    value={newField.field_type}
-                    onChange={(e) => setNewField({ ...newField, field_type: e.target.value })}
-                    options={FIELD_TYPES}
-                  />
-                  <Select
-                    label="Applies to"
-                    value={newField.applies_to}
-                    onChange={(e) => setNewField({ ...newField, applies_to: e.target.value })}
-                    options={APPLIES_TO}
-                  />
-                </div>
-                {newField.field_type === 'select' && (
-                  <Textarea
-                    label="Options (one per line)"
-                    value={newField.options}
-                    onChange={(e) => setNewField({ ...newField, options: e.target.value })}
-                    rows={3}
-                    placeholder={'Option A\nOption B'}
-                  />
-                )}
-                <Button
-                  size="sm"
-                  onClick={() => createFieldMutation.mutate()}
-                  loading={createFieldMutation.isPending}
-                  disabled={!newField.name.trim()}
-                  className="gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Add field
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      <div className="card p-6">
+        <TelegramSettingsSection />
+      </div>
 
       <div className="card p-6">
         <NotificationSettingsSection />

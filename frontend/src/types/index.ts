@@ -4,6 +4,23 @@ export interface NotificationPreferences {
   notify_task_updates: boolean;
   notify_reviews: boolean;
   notify_comments: boolean;
+  notify_meetings: boolean;
+}
+
+export interface TelegramStatus {
+  linked: boolean;
+  telegram_username?: string | null;
+  linked_at?: string | null;
+  bot_username: string;
+  telegram_notifications_enabled: boolean;
+  telegram_daily_digest_enabled: boolean;
+}
+
+export interface TelegramLinkCode {
+  code: string;
+  expires_at: string;
+  bot_username: string;
+  instructions: string;
 }
 
 export interface UserTaskStats {
@@ -50,6 +67,7 @@ export interface User {
   notify_task_updates?: boolean;
   notify_reviews?: boolean;
   notify_comments?: boolean;
+  notify_meetings?: boolean;
 }
 
 export interface UserProfile extends User {
@@ -69,6 +87,7 @@ export interface Task {
   severity?: string;
   due_date?: string;
   start_date?: string;
+  end_date?: string;
   project_id?: number;
   project_name?: string;
   client_id?: number;
@@ -102,9 +121,24 @@ export interface Task {
   custom_field_values?: Record<string, string | null>;
   attachments?: TaskAttachment[];
   current_version?: number;
+  is_archived?: boolean;
+  deletion_reason?: string;
+  deleted_at?: string;
+  deleted_by?: UserBrief;
   created_at: string;
   updated_at: string;
   completed_at?: string;
+  original_due_date?: string | null;
+  deadline_revisions?: TaskDeadlineRevision[];
+}
+
+export interface TaskDeadlineRevision {
+  id: number;
+  previous_due_date?: string | null;
+  new_due_date: string;
+  reason: string;
+  changed_by?: UserBrief | null;
+  created_at: string;
 }
 
 export interface TaskAssignee {
@@ -263,6 +297,67 @@ export interface APIResponse<T> {
   message: string;
 }
 
+export interface MeetingLogUserBrief {
+  id: number;
+  first_name: string;
+  last_name: string;
+}
+
+export interface MeetingLog {
+  id: number;
+  user_id: number;
+  task_id: number | null;
+  task_title?: string | null;
+  click_time: string;
+  left_at: string | null;
+  log_type: string;
+  status: string | null;
+  meet_url?: string | null;
+  pool_id?: number | null;
+  user?: MeetingLogUserBrief | null;
+}
+
+export interface MeetPoolLink {
+  id: number;
+  meet_url: string;
+  is_occupied: boolean;
+  current_context_id: string | null;
+  meeting_type: string | null;
+  last_occupied_at: string | null;
+}
+
+export interface InstantCallInvite {
+  id: number;
+  pool_id: number;
+  meet_url: string;
+  created_at: string;
+  starter: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    profile_picture?: string | null;
+  } | null;
+}
+
+export interface MeetingDaySummary {
+  date: string;
+  morning_call_join_available: boolean;
+  morning_meet_url: string;
+  my_logs: MeetingLog[];
+  morning_attendance: MeetingLog[];
+  task_calls: MeetingLog[];
+  general_calls: MeetingLog[];
+  active_instant_call: MeetPoolLink | null;
+  invited_active_instant_calls: InstantCallInvite[];
+  pool_available_count: number;
+}
+
+export interface MeetingActionResult {
+  redirect_url?: string | null;
+  log?: MeetingLog | null;
+  pool?: MeetPoolLink | null;
+}
+
 export interface SearchResults {
   tasks: SearchResult[];
   projects: SearchResult[];
@@ -281,19 +376,26 @@ export interface SearchResult {
 }
 
 export const TASK_STATUSES = [
-  'unassigned', 'backlog', 'to_do', 'in_progress', 'blocked',
-  'ready_for_review', 'in_review', 'changes_requested', 'approved',
-  'testing', 'bugs_found', 'completed', 'cancelled',
+  'to_do',
+  'in_progress',
+  'blocked',
+  'in_review',
+  'approved',
+  'testing',
+  'bugs_found',
+  'completed',
+  'cancelled',
 ] as const;
 
+/** Display labels — includes legacy statuses so old records still render cleanly. */
 export const STATUS_LABELS: Record<string, string> = {
   unassigned: 'Unassigned',
   backlog: 'Backlog',
   to_do: 'To Do',
   in_progress: 'In Progress',
   blocked: 'Blocked',
-  ready_for_review: 'Ready for Review',
-  in_review: 'In Review',
+  ready_for_review: 'Review', // legacy → same as in_review
+  in_review: 'Review',
   changes_requested: 'Changes Requested',
   approved: 'Approved',
   testing: 'Testing',
@@ -301,6 +403,45 @@ export const STATUS_LABELS: Record<string, string> = {
   completed: 'Completed',
   cancelled: 'Cancelled',
 };
+
+/** Compact labels for dense task list / table chips. */
+export const STATUS_SHORT_LABELS: Record<string, string> = {
+  unassigned: 'UA',
+  backlog: 'Backlog',
+  to_do: 'To Do',
+  in_progress: 'WIP',
+  blocked: 'Blocked',
+  ready_for_review: 'Review', // legacy
+  in_review: 'Review',
+  changes_requested: 'Changes',
+  approved: 'Approved',
+  testing: 'Testing',
+  bugs_found: 'Bugs',
+  completed: 'Done',
+  cancelled: 'Cancel',
+};
+
+export const SELECTABLE_STATUS_OPTIONS = TASK_STATUSES.map((value) => ({
+  value,
+  label: STATUS_LABELS[value],
+}));
+
+/** Include the current status if it is a legacy value so selects don't blank out.
+ *  Legacy ready_for_review is shown as Review and maps to in_review as the selectable value. */
+export function statusSelectOptions(currentStatus?: string) {
+  const options = [...SELECTABLE_STATUS_OPTIONS];
+  if (
+    currentStatus
+    && !(TASK_STATUSES as readonly string[]).includes(currentStatus)
+    && currentStatus !== 'ready_for_review'
+  ) {
+    return [
+      { value: currentStatus, label: STATUS_LABELS[currentStatus] || currentStatus },
+      ...options,
+    ];
+  }
+  return options;
+}
 
 export const PRIORITY_LABELS: Record<string, string> = {
   low: 'Low',
@@ -323,3 +464,325 @@ export const USER_STATUS_LABELS: Record<string, string> = {
   on_leave: 'On Leave',
   inactive: 'Inactive',
 };
+
+export interface DailyUpdateAuthor {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+}
+
+export interface DailyUpdateTaskBrief {
+  id: number;
+  title: string;
+}
+
+export interface DailyUpdate {
+  id: number;
+  user_id: number;
+  update_date: string;
+  content: string;
+  editable: boolean;
+  editable_until: string;
+  author: DailyUpdateAuthor;
+  tasks: DailyUpdateTaskBrief[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DailyUpdateMentionedLine {
+  id: number;
+  line_text: string;
+  update_date: string;
+  author: DailyUpdateAuthor;
+  tasks: DailyUpdateTaskBrief[];
+  read_only: boolean;
+}
+
+export interface DailyUpdateDay {
+  date: string;
+  editable: boolean;
+  editable_until?: string | null;
+  own_update: DailyUpdate | null;
+  mentioned_lines: DailyUpdateMentionedLine[];
+  team_updates: DailyUpdate[];
+  filtered_user?: DailyUpdateAuthor | null;
+}
+
+export interface DailyUpdateCalendarDay {
+  date: string;
+  has_own: boolean;
+  mention_count: number;
+  team_count: number;
+}
+
+export interface DailyUpdateCalendar {
+  year: number;
+  month: number;
+  days: DailyUpdateCalendarDay[];
+}
+
+export type AttendanceStatus = 'WFO' | 'WFH' | 'LEAVE' | 'HALF_DAY' | 'CAMP';
+
+export type AttendanceFilterStatus = AttendanceStatus | 'NOT_MARKED' | 'ALL';
+
+export const ATTENDANCE_STATUS_LABELS: Record<AttendanceStatus, string> = {
+  WFO: 'Work From Office',
+  WFH: 'Work From Home',
+  LEAVE: 'On Leave',
+  HALF_DAY: 'Half Day',
+  CAMP: 'Camp/Meeting',
+};
+
+export const ATTENDANCE_STATUS_SHORT: Record<AttendanceStatus, string> = {
+  WFO: 'WFO',
+  WFH: 'WFH',
+  LEAVE: 'Leave',
+  HALF_DAY: 'Half Day',
+  CAMP: 'Camp',
+};
+
+export interface AttendanceUserBrief {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+  role?: string | null;
+  departments?: string[];
+}
+
+export interface AttendanceRecord {
+  id: number;
+  user_id: number;
+  attendance_date: string;
+  status: AttendanceStatus;
+  recorded_at: string;
+  created_at: string;
+  editable: boolean;
+  user?: AttendanceUserBrief | null;
+}
+
+export interface AttendanceSummary {
+  wfo_count: number;
+  wfh_count: number;
+  leave_count: number;
+  half_day_count: number;
+  camp_count: number;
+  present_count: number;
+  total_marked: number;
+  working_days: number;
+  attendance_percent: number;
+  late_count: number;
+}
+
+export interface AttendanceMe {
+  year: number;
+  month: number;
+  today: string;
+  today_record: AttendanceRecord | null;
+  records: AttendanceRecord[];
+  summary: AttendanceSummary;
+  week: (AttendanceRecord | null)[];
+}
+
+export type AttendanceTodayStatKey =
+  | 'present_wfo'
+  | 'wfh'
+  | 'on_leave'
+  | 'half_day'
+  | 'camp'
+  | 'not_marked';
+
+export interface AttendanceTodayPeople {
+  present_wfo: AttendanceUserBrief[];
+  wfh: AttendanceUserBrief[];
+  on_leave: AttendanceUserBrief[];
+  half_day: AttendanceUserBrief[];
+  camp: AttendanceUserBrief[];
+  not_marked: AttendanceUserBrief[];
+}
+
+export interface AttendanceTodayStats {
+  present_wfo: number;
+  wfh: number;
+  on_leave: number;
+  half_day: number;
+  camp: number;
+  not_marked: number;
+  total_active: number;
+  people?: AttendanceTodayPeople;
+}
+
+export interface AttendanceList {
+  records: AttendanceRecord[];
+  today_stats: AttendanceTodayStats;
+  year: number;
+  month: number;
+}
+
+export interface AttendanceDayRow {
+  user: AttendanceUserBrief;
+  status: AttendanceStatus | null;
+  recorded_at: string | null;
+  attendance_date: string;
+}
+
+export interface AttendanceDay {
+  date: string;
+  rows: AttendanceDayRow[];
+  stats: AttendanceTodayStats;
+}
+
+export interface AttendanceWeekDayCell {
+  date: string;
+  status: AttendanceStatus | null;
+  recorded_at: string | null;
+}
+
+export interface AttendanceWeekRow {
+  user: AttendanceUserBrief;
+  days: AttendanceWeekDayCell[];
+}
+
+export interface AttendanceWeek {
+  week_start: string;
+  week_end: string;
+  rows: AttendanceWeekRow[];
+}
+
+export interface AttendanceUserDetail {
+  user: AttendanceUserBrief;
+  year: number;
+  month: number;
+  records: AttendanceRecord[];
+  summary: AttendanceSummary;
+}
+
+export type WeeklyCommitmentType = 'existing' | 'new' | 'carried_forward';
+export type WeeklyCompletionSource = 'suggested' | 'manual';
+
+export interface WeeklyAuthor {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+}
+
+export interface WeeklyLeaveDay {
+  date: string;
+  kind?: string;
+  status?: string;
+  label: string;
+}
+
+export interface WeeklyLeaveContext {
+  start: string;
+  end: string;
+  working_days: number;
+  holidays: WeeklyLeaveDay[];
+  leave_days: WeeklyLeaveDay[];
+}
+
+export interface WeeklyCompletion {
+  id?: number;
+  task_id?: number | null;
+  title: string;
+  completion_date?: string | null;
+  source: WeeklyCompletionSource;
+  included: boolean;
+  task_status?: string | null;
+  completed_at?: string | null;
+}
+
+export interface WeeklyCommitment {
+  id?: number;
+  task_id?: number | null;
+  title: string;
+  description?: string | null;
+  estimated_hours?: number | null;
+  due_date: string;
+  original_due_date?: string | null;
+  commitment_type: WeeklyCommitmentType;
+  create_error?: string | null;
+  task_status?: string | null;
+  is_overdue?: boolean;
+  is_carried_forward?: boolean;
+  is_resolved?: boolean;
+  period_start?: string | null;
+  deadline_revisions?: TaskDeadlineRevision[];
+}
+
+export interface WeeklyReport {
+  id: number;
+  user_id: number;
+  period_start: string;
+  period_end: string;
+  planning_start: string;
+  planning_end: string;
+  status: 'draft' | 'submitted';
+  submitted_at?: string | null;
+  leave_notes?: string | null;
+  editable: boolean;
+  editable_until: string;
+  is_current: boolean;
+  author?: WeeklyAuthor | null;
+  completions: WeeklyCompletion[];
+  commitments: WeeklyCommitment[];
+  leave: WeeklyLeaveContext;
+  planning_leave: WeeklyLeaveContext;
+  created_at: string;
+  updated_at: string;
+  create_errors?: { title: string; task_id?: number | null; error: string }[];
+}
+
+export interface WeeklyOverview {
+  period_start: string;
+  period_end: string;
+  planning_start: string;
+  planning_end: string;
+  department_id?: number | null;
+  submitted: number;
+  pending: number;
+  completed: number;
+  upcoming: number;
+  overdue: number;
+  carried_forward: number;
+  employee_count: number;
+}
+
+export interface WeeklyEmployee {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+  departments: { id: number; name: string }[];
+  has_submitted: boolean;
+  has_overdue: boolean;
+}
+
+export interface WeeklyUserHistory {
+  user: WeeklyAuthor & {
+    departments?: { id: number; name: string }[];
+    weekly_updates_adopted_at?: string | null;
+  };
+  current_period_start: string;
+  focus_week?: string | null;
+  reports: WeeklyReport[];
+  outstanding: WeeklyCommitment[];
+  legacy_daily_notes: {
+    id: number;
+    update_date: string;
+    content: string;
+    tasks: { id: number; title: string }[];
+  }[];
+}
+
+export interface WeeklySuggestions {
+  period_start: string;
+  period_end: string;
+  adopted_at?: string | null;
+  items: WeeklyCompletion[];
+}

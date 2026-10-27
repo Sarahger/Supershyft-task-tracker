@@ -3,13 +3,15 @@ import math
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.dependencies import get_current_user, require_admin, require_manager
+from app.core.constants import UserStatus
+from app.core.dependencies import get_current_user, require_manager
 from app.db.database import get_db
 from app.models import User
 from app.repositories.base import UserRepository
 from app.schemas.common import APIResponse, PaginatedData
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.auth_service import UserService
+from app.services.task_service import compute_time_taken_hours
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -19,12 +21,25 @@ def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
+    status: str | None = Query(None, description="Filter by exact status (e.g. active)"),
+    include_inactive: bool = Query(
+        False,
+        description="When true and status is omitted, include inactive users (Users admin tab)",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if status is not None and status not in {s.value for s in UserStatus}:
+        raise HTTPException(status_code=400, detail="Invalid status filter")
     repo = UserRepository(db)
     skip = (page - 1) * page_size
-    users, total = repo.get_all(skip=skip, limit=page_size, search=search)
+    users, total = repo.get_all(
+        skip=skip,
+        limit=page_size,
+        search=search,
+        status=status,
+        include_inactive=include_inactive,
+    )
     items = [_format_user(u, db) for u in users]
     return APIResponse(
         data=PaginatedData(
@@ -45,13 +60,35 @@ def get_user(user_id: int, db: Session = Depends(get_db), current_user: User = D
     return APIResponse(data=_format_user(user, db, include_stats=True))
 
 
-@router.post("", dependencies=[Depends(require_admin)])
-def create_user(data: UserCreate, db: Session = Depends(get_db)):
+@router.post("")
+def create_user(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager),
+):
+    if current_user.role == "manager" and data.role == "administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Managers cannot create administrator accounts",
+        )
     try:
         user = UserService(db).create_user(data.model_dump())
         return APIResponse(data=_format_user(user, db), message="User created")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+MANAGER_EDITABLE_FIELDS = {
+    "first_name",
+    "last_name",
+    "email",
+    "role",
+    "status",
+    "job_title",
+    "phone",
+    "department_ids",
+    "manager_id",
+}
 
 
 @router.put("/{user_id}")
@@ -67,30 +104,49 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     update_data = data.model_dump(exclude_unset=True)
-    if current_user.role == "manager" and current_user.id != user_id:
-        update_data = {k: v for k, v in update_data.items() if k == "status"}
-        if not update_data:
-            raise HTTPException(status_code=403, detail="Managers can only update user status")
-    elif current_user.role != "administrator":
-        update_data = {k: v for k, v in update_data.items() if k in ("first_name", "last_name", "phone", "job_title", "password")}
-    user = UserService(db).update_user(user, update_data)
+    if current_user.role == "manager":
+        if current_user.id == user_id:
+            update_data = {k: v for k, v in update_data.items() if k in ("first_name", "last_name", "phone", "job_title")}
+        elif user.role == "administrator":
+            raise HTTPException(status_code=403, detail="Managers cannot edit administrator accounts")
+        else:
+            if update_data.get("role") == "administrator":
+                raise HTTPException(status_code=403, detail="Managers cannot assign administrator role")
+            update_data = {k: v for k, v in update_data.items() if k in MANAGER_EDITABLE_FIELDS}
+            if not update_data:
+                raise HTTPException(status_code=403, detail="Insufficient permissions to update this user")
+    elif current_user.role == "employee":
+        if current_user.id != user_id:
+            raise HTTPException(status_code=403, detail="Cannot update other users")
+        update_data = {k: v for k, v in update_data.items() if k in ("first_name", "last_name", "phone", "job_title")}
+    try:
+        user = UserService(db).update_user(user, update_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return APIResponse(data=_format_user(user, db), message="User updated")
 
 
-@router.delete("/{user_id}", dependencies=[Depends(require_admin)])
-def deactivate_user(
+@router.delete("/{user_id}")
+def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_manager),
 ):
     if user_id == current_user.id:
-        raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
     user = UserRepository(db).get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user.status = "inactive"
-    db.commit()
-    return APIResponse(message="User deactivated")
+    if current_user.role == "manager" and user.role == "administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Managers cannot delete administrator accounts",
+        )
+    try:
+        UserService(db).delete_user(user)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return APIResponse(message="User deleted permanently")
 
 
 def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
@@ -125,13 +181,14 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
         cancelled_tasks = [t for t in tasks if t.status == "cancelled"]
 
         total_estimated = sum(t.estimated_hours for t in tasks if t.estimated_hours is not None)
-        total_actual = sum(t.actual_hours for t in tasks if t.actual_hours is not None)
+        actual_by_id = {t.id: compute_time_taken_hours(t) for t in tasks}
+        total_actual = sum(h for h in actual_by_id.values() if h is not None)
 
         timed_completed = [
             t for t in completed_tasks
-            if t.estimated_hours is not None and t.actual_hours is not None and t.estimated_hours > 0
+            if t.estimated_hours is not None and actual_by_id.get(t.id) is not None and t.estimated_hours > 0
         ]
-        on_track = sum(1 for t in timed_completed if t.actual_hours <= t.estimated_hours)
+        on_track = sum(1 for t in timed_completed if (actual_by_id.get(t.id) or 0) <= t.estimated_hours)
         over_budget = len(timed_completed) - on_track
         utilization = round((total_actual / total_estimated) * 100, 1) if total_estimated > 0 else None
 
@@ -161,8 +218,10 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
                     "priority": t.priority,
                     "project_name": t.project.name if t.project else None,
                     "due_date": t.due_date,
+                    "start_date": t.start_date,
+                    "end_date": t.end_date,
                     "estimated_hours": t.estimated_hours,
-                    "actual_hours": t.actual_hours,
+                    "actual_hours": actual_by_id.get(t.id),
                     "updated_at": t.updated_at,
                 }
                 for t in tasks

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class CommentCreate(BaseModel):
     content: str = Field(..., min_length=1)
     parent_id: int | None = None
+    mentioned_user_ids: list[int] | None = None
 
 
 class CommentUpdate(BaseModel):
@@ -92,6 +93,7 @@ class NotificationPreferences(BaseModel):
     notify_task_updates: bool = True
     notify_reviews: bool = True
     notify_comments: bool = True
+    notify_meetings: bool = True
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -100,6 +102,7 @@ class NotificationPreferencesUpdate(BaseModel):
     notify_task_updates: bool | None = None
     notify_reviews: bool | None = None
     notify_comments: bool | None = None
+    notify_meetings: bool | None = None
 
 
 class SavedFilterCreate(BaseModel):

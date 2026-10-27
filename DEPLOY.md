@@ -65,6 +65,11 @@ Leave build/output settings — `vercel.json` at the repo root defines them.
 | `AUTO_SEED` | `true` |
 | `CORS_ORIGINS` | `https://YOUR-PROJECT.vercel.app` (update after first deploy) |
 | `FRONTEND_URL` | Same as above |
+| `TELEGRAM_BOT_TOKEN` | BotFather token (never commit; revoke if leaked) |
+| `TELEGRAM_WEBHOOK_SECRET` | Long random string (same value used in `setWebhook`) |
+| `TELEGRAM_BOT_USERNAME` | `supershyftbot` |
+| `CRON_SECRET` | Long random string for `/api/cron/*` |
+| `OPENROUTER_API_KEY` | Optional — AI `/summary` only |
 
 **Do not set `VITE_API_URL`** — the app calls `/api` on the same domain.
 
@@ -87,6 +92,27 @@ Open `https://YOUR-PROJECT.vercel.app`
 - [ ] Reports, users (admin)
 
 First API request after idle may take a few seconds (serverless cold start).
+
+---
+
+## Step 5 — Telegram bot (@supershyftbot)
+
+1. **Revoke any token that was pasted in chat** (BotFather → `/revoke`) and create a fresh token.
+2. Set on Vercel: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_BOT_USERNAME=supershyftbot`, `CRON_SECRET`.
+3. Redeploy.
+4. Register the webhook (PowerShell / bash — use your **new** token and real domain):
+
+```bash
+curl -X POST "https://api.telegram.org/bot<NEW_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d "{\"url\":\"https://YOUR-PROJECT.vercel.app/api/telegram/webhook\",\"secret_token\":\"YOUR_WEBHOOK_SECRET\"}"
+```
+
+5. Verify: `curl "https://api.telegram.org/bot<NEW_TOKEN>/getWebhookInfo"`
+6. In the app: **Settings → Telegram → Generate link code** → in Telegram send `/link CODE`
+7. Try `/today` and `/help`
+
+Daily digests run via Vercel cron at `30 2 * * *` (≈ 08:00 IST) → `/api/cron/telegram-daily-digest`.
 
 ---
 

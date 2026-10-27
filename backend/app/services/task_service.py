@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.constants import ActivityType, NotificationType, TaskStatus
@@ -18,6 +19,42 @@ from app.repositories.base import ActivityRepository, TaskRepository, user_to_br
 from app.services.notification_service import NotificationService
 
 
+def _ensure_aware(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def compute_time_taken_hours(task: Task, *, now: datetime | None = None) -> float | None:
+    """Hours from start_date → end_date when completed; start_date → now while open."""
+    if not task.start_date:
+        return None
+    start = _ensure_aware(task.start_date)
+    if task.status == TaskStatus.COMPLETED.value:
+        end = task.end_date or task.completed_at
+    else:
+        end = now or datetime.now(timezone.utc)
+    if end is None:
+        return None
+    end = _ensure_aware(end)
+    return round(max(0.0, (end - start).total_seconds() / 3600.0), 2)
+
+
+def apply_status_timing(task: Task, effective_status: str) -> None:
+    """
+    Auto-set start/end only when empty so later manual edits are preserved.
+    - In Progress → start_date = now (if unset)
+    - Completed → end_date = now (if unset), persist actual_hours
+    """
+    now = datetime.now(timezone.utc)
+    if effective_status == TaskStatus.IN_PROGRESS.value and task.start_date is None:
+        task.start_date = now
+    if effective_status == TaskStatus.COMPLETED.value:
+        if task.end_date is None:
+            task.end_date = now
+        task.actual_hours = compute_time_taken_hours(task, now=now)
+
+
 class TaskService:
     def __init__(self, db: Session):
         self.db = db
@@ -26,16 +63,21 @@ class TaskService:
         self.notifications = NotificationService(db)
 
     def create_task(self, data: dict, creator: User) -> Task:
+        estimated = data.get("estimated_hours")
+        if estimated is None or estimated <= 0:
+            raise HTTPException(status_code=400, detail="Time required is mandatory when creating a task")
+
         task = Task(
             title=data["title"],
             description=data.get("description"),
             task_type_id=data.get("task_type_id"),
             priority=data.get("priority", "medium"),
-            status=data.get("status", "unassigned"),
+            status=data.get("status", TaskStatus.TODO.value),
             severity=data.get("severity"),
-            estimated_hours=data.get("estimated_hours"),
+            estimated_hours=estimated,
             actual_hours=data.get("actual_hours"),
             start_date=data.get("start_date"),
+            end_date=data.get("end_date"),
             due_date=data.get("due_date"),
             project_id=data.get("project_id"),
             client_id=data.get("client_id"),
@@ -46,12 +88,13 @@ class TaskService:
             testing_required=data.get("testing_required", False),
             created_by_id=creator.id,
         )
+        apply_status_timing(task, task.status)
 
         if assignee_ids := data.get("assignee_ids"):
             for uid in assignee_ids:
                 task.assignees.append(TaskAssignee(user_id=uid))
-            if task.status == "unassigned":
-                task.status = TaskStatus.BACKLOG.value
+            if task.status in ("unassigned", "backlog"):
+                task.status = TaskStatus.TODO.value
 
         if dept_ids := data.get("department_ids"):
             depts = self.db.query(Department).filter(Department.id.in_(dept_ids)).all()
@@ -101,9 +144,33 @@ class TaskService:
             task.tags = tags
             del data["tag_ids"]
 
+        # Ignore client-sent actual_hours — always derived from start/end.
+        data.pop("actual_hours", None)
+        if "estimated_hours" in data:
+            estimated = data["estimated_hours"]
+            if estimated is not None and estimated <= 0:
+                raise HTTPException(status_code=400, detail="Time required must be greater than 0")
+
+        old_status = task.status
+        dates_touched = "start_date" in data or "end_date" in data
+
         for key, value in data.items():
             if hasattr(task, key):
                 setattr(task, key, value)
+
+        if "status" in data and task.status != old_status:
+            apply_status_timing(task, task.status)
+            if task.status == TaskStatus.COMPLETED.value and task.completed_at is None:
+                task.completed_at = datetime.now(timezone.utc)
+            elif old_status == TaskStatus.COMPLETED.value and task.status != TaskStatus.COMPLETED.value:
+                task.completed_at = None
+                task.end_date = None
+                task.actual_hours = None
+        elif dates_touched:
+            if task.end_date and task.start_date:
+                task.actual_hours = compute_time_taken_hours(task)
+            elif task.status != TaskStatus.COMPLETED.value:
+                task.actual_hours = None
 
         task.updated_by_id = updater.id
         task = self.repo.update(task)
@@ -140,11 +207,18 @@ class TaskService:
         else:
             task.status = new_status
 
+        # Effective status after branch (bugs_found forces in_progress; unblock restores previous)
+        apply_status_timing(task, task.status)
+
         if new_status == TaskStatus.COMPLETED.value:
             task.completed_at = datetime.now(timezone.utc)
             self.notifications.notify_assignees(
                 task, NotificationType.TASK_COMPLETED.value, f"Task completed: {task.title}", ""
             )
+        elif old_status == TaskStatus.COMPLETED.value and task.status != TaskStatus.COMPLETED.value:
+            task.completed_at = None
+            task.end_date = None
+            task.actual_hours = None
 
         task.updated_by_id = user.id
         task = self.repo.update(task)
@@ -167,7 +241,7 @@ class TaskService:
 
         if task.review_required and all(a.is_completed for a in task.assignees):
             if task.status == TaskStatus.IN_PROGRESS.value:
-                task.status = TaskStatus.READY_FOR_REVIEW.value
+                task.status = TaskStatus.IN_REVIEW.value
                 self.repo.update(task)
                 if task.reviewer_id:
                     self.notifications.notify(
@@ -228,6 +302,7 @@ class TaskService:
             task.status = TaskStatus.TESTING.value if task.testing_required else TaskStatus.COMPLETED.value
             if task.status == TaskStatus.COMPLETED.value:
                 task.completed_at = datetime.now(timezone.utc)
+                apply_status_timing(task, task.status)
             self.notifications.notify_assignees(
                 task, NotificationType.REVIEW_APPROVED.value, f"Review approved: {task.title}", comments or ""
             )
@@ -242,6 +317,7 @@ class TaskService:
                 a.is_completed = False
                 a.completed_at = None
             task.status = TaskStatus.IN_PROGRESS.value
+            apply_status_timing(task, task.status)
             self.notifications.notify_assignees(
                 task, NotificationType.CHANGES_REQUESTED.value, f"Changes requested: {task.title}", comments or ""
             )
@@ -256,6 +332,9 @@ class TaskService:
         task.current_version += 1
         task.status = TaskStatus.IN_PROGRESS.value
         task.completed_at = None
+        task.end_date = None
+        task.actual_hours = None
+        apply_status_timing(task, task.status)
         for a in task.assignees:
             a.is_completed = False
             a.completed_at = None
@@ -301,6 +380,9 @@ class TaskService:
 
     def delete_task(self, task: Task, user: User, reason: str) -> None:
         task.is_archived = True
+        task.deletion_reason = reason.strip()
+        task.deleted_by_id = user.id
+        task.deleted_at = datetime.now(timezone.utc)
         task.updated_by_id = user.id
         self.db.commit()
         self.activity.log(
@@ -309,6 +391,23 @@ class TaskService:
             f"Deleted task: {task.title}. Reason: {reason.strip()}",
             task.id,
         )
+
+    def task_to_deleted_list_dict(self, task: Task) -> dict:
+        return {
+            "id": task.id,
+            "title": task.title,
+            "is_archived": True,
+            "deletion_reason": task.deletion_reason,
+            "deleted_at": task.deleted_at,
+            "deleted_by": user_to_brief_dict(task.deleted_by) if task.deleted_by else None,
+        }
+
+    def task_to_deleted_detail_dict(self, task: Task) -> dict:
+        return {
+            **self.task_to_deleted_list_dict(task),
+            "status": task.status,
+            "created_at": task.created_at,
+        }
 
     def task_to_list_dict(self, task: Task, stats: dict | None = None) -> dict:
         if stats is not None:
@@ -328,6 +427,8 @@ class TaskService:
             "status": task.status,
             "priority": task.priority,
             "due_date": task.due_date,
+            "start_date": task.start_date,
+            "end_date": task.end_date,
             "project_id": task.project_id,
             "project_name": task.project.name if task.project else None,
             "review_required": task.review_required,
@@ -347,7 +448,7 @@ class TaskService:
             "attachment_count": attachment_count,
             "checklist_progress": checklist_progress,
             "estimated_hours": task.estimated_hours,
-            "actual_hours": task.actual_hours,
+            "actual_hours": compute_time_taken_hours(task),
             "is_blocked": task.status == "blocked",
             "created_at": task.created_at,
             "updated_at": task.updated_at,
@@ -360,8 +461,9 @@ class TaskService:
             "task_type_id": task.task_type_id,
             "severity": task.severity,
             "estimated_hours": task.estimated_hours,
-            "actual_hours": task.actual_hours,
+            "actual_hours": compute_time_taken_hours(task),
             "start_date": task.start_date,
+            "end_date": task.end_date,
             "client_id": task.client_id,
             "sprint_id": task.sprint_id,
             "milestone_id": task.milestone_id,
@@ -375,6 +477,18 @@ class TaskService:
             "created_by_id": task.created_by_id,
             "updated_by_id": task.updated_by_id,
             "completed_at": task.completed_at,
+            "original_due_date": task.original_due_date,
+            "deadline_revisions": [
+                {
+                    "id": rev.id,
+                    "previous_due_date": rev.previous_due_date,
+                    "new_due_date": rev.new_due_date,
+                    "reason": rev.reason,
+                    "changed_by": user_to_brief_dict(rev.changed_by) if getattr(rev, "changed_by", None) else None,
+                    "created_at": rev.created_at,
+                }
+                for rev in (task.deadline_revisions or [])
+            ],
             "assignees": [
                 {
                     "id": a.id,

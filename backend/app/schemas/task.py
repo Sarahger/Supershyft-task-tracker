@@ -86,6 +86,7 @@ class TaskBase(BaseModel):
     estimated_hours: float | None = None
     actual_hours: float | None = None
     start_date: datetime | None = None
+    end_date: datetime | None = None
     due_date: datetime | None = None
     project_id: int | None = None
     client_id: int | None = None
@@ -97,7 +98,8 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    status: str = "unassigned"
+    status: str = "to_do"
+    estimated_hours: float = Field(..., gt=0, description="Time required in hours (required when creating)")
     assignee_ids: list[int] = []
     department_ids: list[int] = []
     tag_ids: list[int] = []
@@ -113,6 +115,7 @@ class TaskUpdate(BaseModel):
     estimated_hours: float | None = None
     actual_hours: float | None = None
     start_date: datetime | None = None
+    end_date: datetime | None = None
     due_date: datetime | None = None
     project_id: int | None = None
     client_id: int | None = None

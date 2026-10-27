@@ -19,6 +19,7 @@ from app.models import (
     Task,
     TaskAssignee,
     TaskCustomFieldValue,
+    TaskDeadlineRevision,
     TaskDependency,
     TaskType,
     User,
@@ -62,8 +63,20 @@ class UserRepository(BaseRepository):
     def get_by_email(self, email: str) -> User | None:
         return self.db.query(User).filter(User.email == email).first()
 
-    def get_all(self, skip: int = 0, limit: int = 100, search: str | None = None) -> tuple[list[User], int]:
+    def get_all(
+        self,
+        skip: int = 0,
+        limit: int = 100,
+        search: str | None = None,
+        *,
+        status: str | None = None,
+        include_inactive: bool = False,
+    ) -> tuple[list[User], int]:
         query = self.db.query(User).options(joinedload(User.departments))
+        if status:
+            query = query.filter(User.status == status)
+        elif not include_inactive:
+            query = query.filter(User.status != "inactive")
         if search:
             term = f"%{search}%"
             query = query.filter(
@@ -90,8 +103,8 @@ class UserRepository(BaseRepository):
 
 
 class TaskRepository(BaseRepository):
-    def get_by_id(self, task_id: int) -> Task | None:
-        return (
+    def get_by_id(self, task_id: int, *, include_archived: bool = False) -> Task | None:
+        query = (
             self.db.query(Task)
             .options(
                 joinedload(Task.assignees).joinedload(TaskAssignee.user),
@@ -102,15 +115,19 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.client),
                 joinedload(Task.reviewer),
                 joinedload(Task.creator),
+                joinedload(Task.deleted_by),
                 joinedload(Task.checklists).joinedload(Checklist.items),
                 joinedload(Task.attachments).joinedload(Attachment.uploader),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on),
                 joinedload(Task.dependencies).joinedload(TaskDependency.depends_on_user),
                 joinedload(Task.custom_field_values).joinedload(TaskCustomFieldValue.field_definition),
+                joinedload(Task.deadline_revisions).joinedload(TaskDeadlineRevision.changed_by),
             )
-            .filter(Task.id == task_id, Task.is_archived == False)
-            .first()
+            .filter(Task.id == task_id)
         )
+        if not include_archived:
+            query = query.filter(Task.is_archived == False)
+        return query.first()
 
     def get_filtered(
         self,
@@ -125,10 +142,15 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.tags),
                 joinedload(Task.project),
                 joinedload(Task.task_type),
+                joinedload(Task.deleted_by),
             )
-            .filter(Task.is_archived == False)
         )
         filters = filters or {}
+
+        if filters.get("archived") is True:
+            query = query.filter(Task.is_archived == True)
+        else:
+            query = query.filter(Task.is_archived == False)
 
         if status := filters.get("status"):
             if isinstance(status, list):
@@ -155,7 +177,7 @@ class TaskRepository(BaseRepository):
         if filters.get("blocked"):
             query = query.filter(Task.status == "blocked")
         if filters.get("awaiting_review"):
-            query = query.filter(Task.status.in_(["ready_for_review", "in_review"]))
+            query = query.filter(Task.status == "in_review")
         if filters.get("has_due_date") is True:
             query = query.filter(Task.due_date.isnot(None))
         elif filters.get("has_due_date") is False:
@@ -170,13 +192,29 @@ class TaskRepository(BaseRepository):
             query = query.filter(Task.due_date <= due_before)
         if search := filters.get("search"):
             term = f"%{search}%"
-            query = query.filter(or_(Task.title.ilike(term), Task.description.ilike(term)))
+            if filters.get("archived") is True:
+                query = query.filter(or_(Task.title.ilike(term), Task.deletion_reason.ilike(term)))
+            else:
+                query = query.filter(or_(Task.title.ilike(term), Task.description.ilike(term)))
         if department_id := filters.get("department_id"):
-            from app.models import task_departments
-            query = query.join(task_departments).filter(task_departments.c.department_id == department_id)
+            # Tasks assigned to anyone in this department (not task.department tags)
+            from app.models import user_departments
+
+            assignee_in_dept = (
+                self.db.query(TaskAssignee.id)
+                .join(user_departments, user_departments.c.user_id == TaskAssignee.user_id)
+                .filter(
+                    TaskAssignee.task_id == Task.id,
+                    user_departments.c.department_id == department_id,
+                )
+                .exists()
+            )
+            query = query.filter(assignee_in_dept)
 
         sort_by = filters.get("sort_by", "updated_at")
         sort_order = filters.get("sort_order", "desc")
+        if filters.get("archived") is True and sort_by == "updated_at":
+            sort_by = "deleted_at"
         sort_col = getattr(Task, sort_by, Task.updated_at)
         query = query.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
 

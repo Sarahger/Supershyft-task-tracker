@@ -5,80 +5,80 @@
 /* ─── Fallback (dark) before theme class applies ─── */
 html {
   color-scheme: dark;
-  --color-bg-rgb: 25 25 25;
-  --color-sidebar-rgb: 32 32 32;
-  --color-card-rgb: 37 37 37;
-  --color-drawer-rgb: 38 38 38;
-  --color-hover-rgb: 42 42 42;
-  --color-border-rgb: 50 50 50;
-  --color-muted-rgb: 47 47 47;
-  --color-surface-rgb: 37 37 37;
-  --color-row-hover-rgb: 42 42 42;
-  --color-text-primary-rgb: 245 245 245;
-  --color-text-secondary-rgb: 161 161 170;
-  --color-text-muted-rgb: 113 113 122;
-  --color-text-disabled-rgb: 113 113 122;
+  --color-bg-rgb: 4 6 11;
+  --color-sidebar-rgb: 7 10 17;
+  --color-card-rgb: 10 13 22;
+  --color-drawer-rgb: 9 12 20;
+  --color-hover-rgb: 14 18 30;
+  --color-border-rgb: 22 30 46;
+  --color-muted-rgb: 11 15 24;
+  --color-surface-rgb: 10 13 22;
+  --color-row-hover-rgb: 14 18 30;
+  --color-text-primary-rgb: 228 233 242;
+  --color-text-secondary-rgb: 138 150 170;
+  --color-text-muted-rgb: 92 106 128;
+  --color-text-disabled-rgb: 72 84 104;
 }
 
-/* ─── Dark theme (DO NOT MODIFY — baseline) ─── */
+/* ─── Dark theme — deeper navy, quieter blue accents ─── */
 html.dark {
   color-scheme: dark;
-  --color-bg-rgb: 25 25 25;
-  --color-sidebar-rgb: 32 32 32;
-  --color-card-rgb: 37 37 37;
-  --color-drawer-rgb: 38 38 38;
-  --color-hover-rgb: 42 42 42;
-  --color-border-rgb: 50 50 50;
-  --color-muted-rgb: 47 47 47;
-  --color-surface-rgb: 37 37 37;
-  --color-row-hover-rgb: 42 42 42;
-  --color-text-primary-rgb: 245 245 245;
-  --color-text-secondary-rgb: 161 161 170;
-  --color-text-muted-rgb: 113 113 122;
-  --color-text-disabled-rgb: 113 113 122;
-  --surface-muted: rgba(255, 255, 255, 0.05);
-  --surface-subtle: rgba(255, 255, 255, 0.03);
-  --surface-highlight: rgba(255, 255, 255, 0.08);
-  --surface-active: rgba(255, 255, 255, 0.1);
-  --selection-bg: rgba(255, 255, 255, 0.1);
-  --focus-border: rgba(255, 255, 255, 0.2);
-  --focus-ring: rgba(255, 255, 255, 0.1);
-  --row-selected: rgba(255, 255, 255, 0.04);
-  --row-focus-outline: rgba(255, 255, 255, 0.1);
-  --btn-primary-bg: #f5f5f5;
-  --btn-primary-fg: #191919;
+  --color-bg-rgb: 4 6 11;
+  --color-sidebar-rgb: 7 10 17;
+  --color-card-rgb: 10 13 22;
+  --color-drawer-rgb: 9 12 20;
+  --color-hover-rgb: 14 18 30;
+  --color-border-rgb: 22 30 46;
+  --color-muted-rgb: 11 15 24;
+  --color-surface-rgb: 10 13 22;
+  --color-row-hover-rgb: 14 18 30;
+  --color-text-primary-rgb: 228 233 242;
+  --color-text-secondary-rgb: 138 150 170;
+  --color-text-muted-rgb: 92 106 128;
+  --color-text-disabled-rgb: 72 84 104;
+  --surface-muted: rgba(255, 255, 255, 0.035);
+  --surface-subtle: rgba(59, 130, 246, 0.04);
+  --surface-highlight: rgba(59, 130, 246, 0.07);
+  --surface-active: rgba(59, 130, 246, 0.1);
+  --selection-bg: rgba(59, 130, 246, 0.2);
+  --focus-border: rgba(96, 165, 250, 0.4);
+  --focus-ring: rgba(59, 130, 246, 0.18);
+  --row-selected: rgba(59, 130, 246, 0.08);
+  --row-focus-outline: rgba(96, 165, 250, 0.2);
+  --btn-primary-bg: #e4e9f2;
+  --btn-primary-fg: #05080f;
   --btn-danger-bg: #dc2626;
   --btn-danger-fg: #ffffff;
   --btn-danger-hover: #b91c1c;
-  --overlay-backdrop: rgba(0, 0, 0, 0.5);
+  --overlay-backdrop: rgba(0, 0, 0, 0.72);
   --shadow-card: none;
-  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-dropdown: 0 12px 32px rgba(0, 0, 0, 0.55);
   --radius-card: 0.5rem;
   --radius-input: 0.375rem;
-  --accent-primary: #3b82f6;
-  --accent-success: #10b981;
+  --accent-primary: #60a5fa;
+  --accent-success: #34d399;
   --accent-warning: #f59e0b;
-  --accent-danger: #ef4444;
-  --accent-purple: #8b5cf6;
-  --scrollbar-thumb: 50 50 50;
-  --scrollbar-thumb-hover: 113 113 122;
+  --accent-danger: #f87171;
+  --accent-purple: #3b82f6;
+  --scrollbar-thumb: 28 36 54;
+  --scrollbar-thumb-hover: 96 165 250;
   /* status badges */
   --badge-neutral-bg: rgba(255, 255, 255, 0.05);
-  --badge-neutral-text: 113 113 122;
-  --badge-todo-bg: rgba(59, 130, 246, 0.15);
+  --badge-neutral-text: 92 106 128;
+  --badge-todo-bg: rgba(59, 130, 246, 0.14);
   --badge-todo-text: 147 197 253;
   --badge-progress-bg: rgba(245, 158, 11, 0.15);
   --badge-progress-text: 252 211 77;
-  --badge-blocked-bg: rgba(239, 68, 68, 0.15);
+  --badge-blocked-bg: rgba(248, 113, 113, 0.14);
   --badge-blocked-text: 252 165 165;
-  --badge-review-bg: rgba(139, 92, 246, 0.15);
-  --badge-review-text: 196 181 253;
+  --badge-review-bg: rgba(99, 102, 241, 0.14);
+  --badge-review-text: 165 180 252;
   --badge-changes-bg: rgba(249, 115, 22, 0.15);
   --badge-changes-text: 253 186 116;
-  --badge-approved-bg: rgba(16, 185, 129, 0.15);
+  --badge-approved-bg: rgba(52, 211, 153, 0.14);
   --badge-approved-text: 110 231 183;
-  --badge-testing-bg: rgba(34, 211, 238, 0.15);
-  --badge-testing-text: 103 232 249;
+  --badge-testing-bg: rgba(59, 130, 246, 0.14);
+  --badge-testing-text: 125 211 252;
   --badge-bugs-bg: rgba(251, 113, 133, 0.15);
   --badge-bugs-text: 253 164 175;
   --priority-high-text: 251 191 36;
@@ -88,41 +88,41 @@ html.dark {
   --health-healthy: 52 211 153;
   --health-risk: 251 191 36;
   --health-delayed: 248 113 113;
-  --calendar-today-bg: 59 130 246;
+  --calendar-today-bg: 37 99 235;
   --calendar-today-text: 255 255 255;
   --calendar-accent-critical: 255 92 92;
   --calendar-accent-high: 245 158 11;
-  --calendar-accent-medium: 59 130 246;
+  --calendar-accent-medium: 96 165 250;
   /* metric / insight colors */
-  --metric-sky-rgb: 56 189 248;
-  --metric-sky-strong-rgb: 125 211 252;
+  --metric-sky-rgb: 96 165 250;
+  --metric-sky-strong-rgb: 147 197 253;
   --metric-amber-rgb: 251 191 36;
   --metric-amber-strong-rgb: 252 211 77;
   --metric-red-rgb: 248 113 113;
   --metric-orange-rgb: 251 146 60;
   --metric-orange-strong-rgb: 253 186 116;
   --metric-emerald-rgb: 52 211 153;
-  --metric-emerald-strong-rgb: 52 211 153;
-  --metric-purple-rgb: 192 132 252;
-  --metric-purple-strong-rgb: 216 180 254;
-  --metric-violet-rgb: 167 139 250;
+  --metric-emerald-strong-rgb: 110 231 183;
+  --metric-purple-rgb: 147 197 253;
+  --metric-purple-strong-rgb: 191 219 254;
+  --metric-violet-rgb: 129 140 248;
   --insight-danger-title-rgb: 254 202 202;
   --insight-danger-sub-rgb: 254 202 202;
   --insight-danger-icon-rgb: 248 113 113;
   --insight-warning-title-rgb: 253 230 138;
   --insight-warning-sub-rgb: 253 230 138;
   --insight-warning-icon-rgb: 251 191 36;
-  --insight-info-title-rgb: 186 230 253;
-  --insight-info-sub-rgb: 186 230 253;
-  --insight-info-icon-rgb: 56 189 248;
+  --insight-info-title-rgb: 191 219 254;
+  --insight-info-sub-rgb: 191 219 254;
+  --insight-info-icon-rgb: 96 165 250;
   --status-active-text-rgb: 52 211 153;
   --status-leave-text-rgb: 251 191 36;
   --status-inactive-text-rgb: 248 113 113;
-  --dept-existing-text-rgb: 233 213 255;
+  --dept-existing-text-rgb: 191 219 254;
   --dept-new-text-rgb: 167 243 208;
   --dept-new-label-rgb: 52 211 153;
-  --link-sky-rgb: 125 211 252;
-  --link-sky-hover-rgb: 125 211 252;
+  --link-sky-rgb: 147 197 253;
+  --link-sky-hover-rgb: 191 219 254;
 }
 
 /* ─── Light theme (premium SaaS palette) ─── */
@@ -518,10 +518,10 @@ html.light {
     background: linear-gradient(90deg, #ffffff 32%, #f5f7fa 32%);
   }
   .theme-preview-dark {
-    background: linear-gradient(90deg, #202020 32%, #191919 32%);
+    background: linear-gradient(90deg, #0a0d16 32%, #04060b 32%);
   }
   .theme-preview-system {
-    background: linear-gradient(90deg, #ffffff 32%, #f5f7fa 50%, #191919 50%);
+    background: linear-gradient(90deg, #ffffff 32%, #f5f7fa 50%, #04060b 50%);
   }
 
   /* Mobile-only layout — desktop/tablet (md+) unchanged */
@@ -538,6 +538,11 @@ html.light {
 @media (max-width: 767px) {
   .mobile-main-content {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .mobile-main-content::-webkit-scrollbar {
+    display: none;
   }
   .mobile-bottom-nav {
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -587,4 +592,14 @@ html.light ::-webkit-scrollbar-thumb:hover {
 select,
 option {
   color-scheme: inherit;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: scale(1); }
 }

@@ -6,6 +6,47 @@ export function canAccessManagerFeatures(user: User | null | undefined): boolean
   return !!user && MANAGER_ACCESS_ROLES.includes(user.role);
 }
 
+export function canAccessAdminFeatures(user: User | null | undefined): boolean {
+  return user?.role === 'administrator';
+}
+
 export function canDeleteTasks(user: User | null | undefined): boolean {
   return canAccessManagerFeatures(user);
+}
+
+export function canAccessAttendanceHr(user: User | null | undefined): boolean {
+  return canAccessManagerFeatures(user);
+}
+
+export function canManageUsers(user: User | null | undefined): boolean {
+  return canAccessManagerFeatures(user);
+}
+
+export function canDeactivateUser(
+  currentUser: User | null | undefined,
+  targetUser: User,
+): boolean {
+  if (!canManageUsers(currentUser) || !currentUser) return false;
+  if (targetUser.id === currentUser.id || targetUser.status === 'inactive') return false;
+  if (currentUser.role === 'manager' && targetUser.role === 'administrator') return false;
+  return true;
+}
+
+export function canEditUser(
+  currentUser: User | null | undefined,
+  targetUser: User,
+): boolean {
+  if (!canManageUsers(currentUser) || !currentUser) return false;
+  if (currentUser.role === 'manager' && targetUser.role === 'administrator') return false;
+  return true;
+}
+
+export function canDeleteUser(
+  currentUser: User | null | undefined,
+  targetUser: User,
+): boolean {
+  if (!canManageUsers(currentUser) || !currentUser) return false;
+  if (targetUser.id === currentUser.id) return false;
+  if (currentUser.role === 'manager' && targetUser.role === 'administrator') return false;
+  return true;
 }

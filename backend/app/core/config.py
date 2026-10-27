@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    APP_NAME: str = "Internal Work Management System"
+    APP_NAME: str = "Supershyft Task Tracker"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
 
@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-this-secret-key-in-production-use-env-var"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Stay signed in until explicit logout (~10 years)
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 3650
 
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50MB
@@ -50,9 +51,24 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    # AI Task Assistant plugin (disabled — see backend/app/plugins/ locally)
-    # AI_ASSISTANT_ENABLED: bool = False
-    # OPENAI_API_KEY: str | None = None
+    GOOGLE_MEET_URL: str = "https://meet.google.com/mvs-btmd-bby"
+    MEETING_TIMEZONE: str = "Asia/Kolkata"
+    MEET_POOL_AUTO_RELEASE_MINUTES: int = 60
+    TASK_CALL_BUFFER_MINUTES: int = 5
+
+    COMPLETED_RETENTION_DAYS: int = 7
+    DELETED_RETENTION_DAYS: int = 30
+    CRON_SECRET: str = ""
+
+    # Telegram bot (set in Vercel / local .env — never commit real values)
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_WEBHOOK_SECRET: str = ""
+    TELEGRAM_BOT_USERNAME: str = "supershyftbot"
+
+    # OpenRouter (optional AI summaries)
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_MODEL: str = "openrouter/free"
+    OPENROUTER_TIMEOUT_SECONDS: float = 10.0
 
     @property
     def cors_origins_list(self) -> list[str]:

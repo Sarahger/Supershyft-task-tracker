@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { isToday, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
-import { tasksApi, miscApi, usersApi } from '../../services/endpoints';
+import { useSearchParams } from 'react-router-dom';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { tasksApi, usersApi, departmentsApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
@@ -9,6 +10,8 @@ import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField
 import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
+import { DeletedTasksList } from './DeletedTasksList';
+import { groupTasksByDueSections } from './TaskCard';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
 import { DeleteTaskModal } from './DeleteTaskModal';
@@ -28,7 +31,8 @@ const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ 
 
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
-export type QuickFilter = 'all' | 'overdue' | 'today' | 'blocked' | 'review' | 'completed';
+/** Top pills: all departments, a specific department, or deleted. */
+export type DeptTab = 'all' | 'deleted' | number;
 
 interface TasksWorkspaceProps {
   title: string;
@@ -45,11 +49,11 @@ interface TasksWorkspaceProps {
 
 function groupTasks(tasks: Task[], groupBy: GroupBy): { label: string; tasks: Task[] }[] {
   if (groupBy === 'none') return [{ label: '', tasks }];
+  if (groupBy === 'status') return groupTasksByDueSections(tasks);
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
     let key = 'Other';
-    if (groupBy === 'status') key = t.status;
-    else if (groupBy === 'priority') key = t.priority;
+    if (groupBy === 'priority') key = t.priority;
     else if (groupBy === 'project') key = t.project_name || 'No project';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
@@ -74,15 +78,21 @@ export function TasksWorkspace({
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const defaultProjectId = typeof listFilters?.project_id === 'number' ? listFilters.project_id : undefined;
+  const handleOpenCreate = useCallback(() => {
+    openCreate(defaultProjectId != null ? { projectId: defaultProjectId } : undefined);
+  }, [openCreate, defaultProjectId]);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
-  const [assigneeFilter, setAssigneeFilter] = useState('');
-  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [assigneeFilter, setAssigneeFilter] = useState(() => searchParams.get('assignee') ?? '');
+  const [deptTab, setDeptTab] = useState<DeptTab>('all');
   const [sortField, setSortField] = useState<SortField>('updated_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [groupBy, setGroupBy] = useState<GroupBy>(() => (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 'project' : 'none'));
+  const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [viewMode, setViewMode] = useState<ViewMode>(() => normalizeView(defaultView));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [calendarWeek, setCalendarWeek] = useState(() => new Date());
@@ -91,6 +101,23 @@ export function TasksWorkspace({
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
   const { columns, toggleColumn, setColumns } = useColumnVisibility();
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('assignee') ?? '';
+    setAssigneeFilter((prev) => (prev === fromUrl ? prev : fromUrl));
+    if (fromUrl) setPage(1);
+  }, [searchParams]);
+
+  const updateAssigneeFilter = useCallback((v: string) => {
+    setAssigneeFilter(v);
+    setPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('assignee', v);
+      else next.delete('assignee');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const deleteMutation = useDeleteTaskMutation((taskId) => {
     setDeleteTarget(null);
@@ -131,17 +158,28 @@ export function TasksWorkspace({
     };
   }, [calendarWeek]);
 
+  const isDeletedView = deptTab === 'deleted' && showQuickFilters;
+  const selectedDepartmentId = typeof deptTab === 'number' ? deptTab : undefined;
+
   const sharedListFilters = useMemo(() => ({
     search: search || undefined,
-    status: quickFilter === 'completed' ? 'completed' : (statusFilter || undefined),
+    status: statusFilter || undefined,
     priority: priorityFilter || undefined,
     assignee_id: assigneeFilter ? Number(assigneeFilter) : undefined,
-    overdue: quickFilter === 'overdue' ? true : undefined,
-    blocked: quickFilter === 'blocked' ? true : undefined,
-    awaiting_review: quickFilter === 'review' ? true : undefined,
-  }), [search, statusFilter, priorityFilter, assigneeFilter, quickFilter]);
+    department_id: selectedDepartmentId,
+    archived: isDeletedView ? true : undefined,
+  }), [search, statusFilter, priorityFilter, assigneeFilter, selectedDepartmentId, isDeletedView]);
 
   const filters = useMemo(() => {
+    if (isDeletedView) {
+      return {
+        ...sharedListFilters,
+        page,
+        page_size: 50,
+        sort_by: 'deleted_at',
+        sort_order: 'desc',
+      };
+    }
     if (viewMode === 'calendar') {
       return {
         ...sharedListFilters,
@@ -166,14 +204,16 @@ export function TasksWorkspace({
         sort_order: 'asc',
       };
     }
+    // Load the full active task set so mobile project groups / kanban aren't
+    // capped at the first page of 50 newest tasks.
     return {
       ...sharedListFilters,
-      page,
-      page_size: 50,
+      page: 1,
+      page_size: 500,
       sort_by: sortField,
       sort_order: sortDir,
     };
-  }, [sharedListFilters, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
+  }, [sharedListFilters, isDeletedView, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: [...queryKey, filters, listFilters],
@@ -191,8 +231,34 @@ export function TasksWorkspace({
         }
         return { items: filtered, total: filtered.length, total_pages: 1, page: 1 };
       }
+
       const res = await tasksApi.list({ ...filters, ...listFilters });
-      return res.data.data;
+      const first = res.data.data;
+      const pageSize = Number(filters.page_size) || 50;
+
+      // Paginated deleted view stays page-by-page; everything else loads all pages.
+      if (isDeletedView || !first.total_pages || first.total_pages <= 1) {
+        return first;
+      }
+
+      const items = [...first.items];
+      for (let p = 2; p <= first.total_pages; p += 1) {
+        const next = await tasksApi.list({
+          ...filters,
+          ...listFilters,
+          page: p,
+          page_size: pageSize,
+        });
+        items.push(...next.data.data.items);
+      }
+
+      return {
+        ...first,
+        items,
+        page: 1,
+        page_size: items.length,
+        total_pages: 1,
+      };
     },
   });
 
@@ -218,16 +284,17 @@ export function TasksWorkspace({
     staleTime: REFERENCE_STALE_MS,
   });
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ['departments'],
+    queryFn: () => departmentsApi.list().then((r) => r.data.data),
+    enabled: showQuickFilters,
+    staleTime: REFERENCE_STALE_MS,
+  });
+
   const { data: savedFilters } = useQuery({
     queryKey: ['saved-filters'],
     queryFn: () => api.get('/saved-filters').then((r) => r.data.data),
     retry: false,
-    staleTime: REFERENCE_STALE_MS,
-  });
-
-  const { data: taskTypes } = useQuery({
-    queryKey: ['task-types'],
-    queryFn: () => miscApi.taskTypes().then((r) => r.data.data as { id: number; name: string }[]),
     staleTime: REFERENCE_STALE_MS,
   });
 
@@ -243,15 +310,9 @@ export function TasksWorkspace({
   });
 
   const tasks = data?.items || [];
-  const displayTasks = useMemo(() => {
-    if (quickFilter === 'today') {
-      return tasks.filter((t) => t.due_date && isToday(new Date(t.due_date)));
-    }
-    if (quickFilter === 'completed') {
-      return tasks.filter((t) => t.status === 'completed');
-    }
-    return tasks;
-  }, [tasks, quickFilter]);
+  const displayTasks = tasks;
+
+  const showViewsEffective = showViews && !isDeletedView;
   const groups = groupTasks(displayTasks, groupBy);
 
   const statusMutation = useMutation({
@@ -273,62 +334,81 @@ export function TasksWorkspace({
     onError: () => toast.error('Failed to update priority'),
   });
 
-  const taskTypeMutation = useMutation({
-    mutationFn: ({ id, taskTypeId }: { id: number; taskTypeId: number | null }) =>
-      tasksApi.update(id, { task_type_id: taskTypeId }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey });
-      toast.success('Task type updated');
-    },
-    onError: () => toast.error('Failed to update task type'),
-  });
-
-  // Keyboard navigation
+  // Clear keyboard row focus when the visible list changes
   useEffect(() => {
+    setFocusedIndex(-1);
+  }, [displayTasks, groupBy, viewMode, page]);
+
+  // Keyboard navigation — only after arrow keys, not from mouse hover
+  useEffect(() => {
+    if (viewMode !== 'table' || groupBy !== 'none' || isMobile) return;
+
     const handler = (e: KeyboardEvent) => {
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'SELECT') return;
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setFocusedIndex((i) => Math.min(i + 1, tasks.length - 1));
+        setFocusedIndex((i) => {
+          if (!displayTasks.length) return -1;
+          return i < 0 ? 0 : Math.min(i + 1, displayTasks.length - 1);
+        });
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setFocusedIndex((i) => Math.max(i - 1, 0));
-      } else if (e.key === 'Enter' && focusedIndex >= 0 && tasks[focusedIndex]) {
-        openTask(tasks[focusedIndex].id);
-      } else if (e.key === ' ' && focusedIndex >= 0 && tasks[focusedIndex]) {
+        setFocusedIndex((i) => {
+          if (!displayTasks.length || i < 0) return -1;
+          return i <= 0 ? -1 : i - 1;
+        });
+      } else if (e.key === 'Enter' && focusedIndex >= 0 && displayTasks[focusedIndex]) {
+        openTask(displayTasks[focusedIndex].id);
+      } else if (e.key === ' ' && focusedIndex >= 0 && displayTasks[focusedIndex]) {
         e.preventDefault();
         setSelectedIds((prev) => {
           const next = new Set(prev);
-          const id = tasks[focusedIndex].id;
+          const id = displayTasks[focusedIndex].id;
           if (next.has(id)) next.delete(id);
           else next.add(id);
           return next;
         });
+      } else if (e.key === 'Escape') {
+        setFocusedIndex(-1);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [tasks, focusedIndex, openTask]);
+  }, [displayTasks, focusedIndex, openTask, viewMode, groupBy, isMobile]);
 
   const applySavedFilter = (json: string) => {
     try {
       const f = JSON.parse(json);
       if (f.status) setStatusFilter(f.status);
       if (f.priority) setPriorityFilter(f.priority);
-      if (f.assignee_id) setAssigneeFilter(String(f.assignee_id));
+      if (f.assignee_id) updateAssigneeFilter(String(f.assignee_id));
       if (f.search) setSearch(f.search);
       setPage(1);
     } catch { /* ignore */ }
   };
 
-  const quickFilterOptions: { id: QuickFilter; label: string }[] = [
-    { id: 'all', label: 'All' },
-    { id: 'overdue', label: 'Overdue' },
-    { id: 'today', label: 'Today' },
-    { id: 'blocked', label: 'Blocked' },
-    { id: 'review', label: 'Review' },
-    { id: 'completed', label: 'Completed' },
-  ];
+  const deptTabOptions = useMemo(() => {
+    const HIDDEN_DEPT_TABS = new Set(['software development', 'hr']);
+    const depts = [...departments]
+      .filter((d) => !HIDDEN_DEPT_TABS.has(d.name.trim().toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const options: { id: string; label: string }[] = [
+      { id: 'all', label: 'All' },
+      ...depts.map((d) => ({ id: String(d.id), label: d.name })),
+      { id: 'deleted', label: 'Deleted' },
+    ];
+    return options;
+  }, [departments]);
+
+  const selectDeptTab = (id: string) => {
+    setPage(1);
+    if (id === 'all' || id === 'deleted') {
+      setDeptTab(id);
+      return;
+    }
+    const n = Number(id);
+    if (Number.isFinite(n) && n > 0) setDeptTab(n);
+  };
 
   return (
     <div className={clsx('flex flex-col min-h-0 pb-8', fullWidth ? 'w-full max-w-none' : 'max-w-workspace mx-auto', isMobile && 'pb-24')}>
@@ -341,23 +421,27 @@ export function TasksWorkspace({
         )}
       </div>
 
-      {/* Desktop quick filters */}
+      {/* Desktop department tabs */}
       {showQuickFilters && !isMobile && (
         <div className="flex items-center gap-1.5 mb-4 overflow-x-auto flex-nowrap pb-0.5 -mx-1 px-1">
-          {quickFilterOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => { setQuickFilter(opt.id); setPage(1); }}
-              className={clsx(
-                'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap',
-                quickFilter === opt.id
-                  ? 'bg-surface-highlight text-text-primary'
-                  : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
+          {deptTabOptions.map((opt) => {
+            const active = String(deptTab) === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => selectDeptTab(opt.id)}
+                className={clsx(
+                  'px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap',
+                  active
+                    ? 'bg-surface-highlight text-text-primary'
+                    : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -371,7 +455,7 @@ export function TasksWorkspace({
           priorityFilter={priorityFilter}
           onPriorityFilterChange={(v) => { setPriorityFilter(v); setPage(1); }}
           assigneeFilter={assigneeFilter}
-          onAssigneeFilterChange={(v) => { setAssigneeFilter(v); setPage(1); }}
+          onAssigneeFilterChange={updateAssigneeFilter}
           assigneeOptions={usersList ?? []}
           sortField={sortField}
           sortDir={sortDir}
@@ -381,10 +465,11 @@ export function TasksWorkspace({
           onGroupByChange={setGroupBy}
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
-          showViewSelector={showViews}
-          quickFilter={quickFilter}
-          onQuickFilterChange={(v) => { setQuickFilter(v as QuickFilter); setPage(1); }}
-          quickFilterOptions={quickFilterOptions}
+          showViewSelector={showViewsEffective}
+          quickFilter={String(deptTab)}
+          onQuickFilterChange={selectDeptTab}
+          quickFilterOptions={deptTabOptions}
+          showQuickFilters={showQuickFilters}
         />
       )}
 
@@ -398,7 +483,7 @@ export function TasksWorkspace({
         priorityFilter={priorityFilter}
         onPriorityFilterChange={(v) => { setPriorityFilter(v); setPage(1); }}
         assigneeFilter={assigneeFilter}
-        onAssigneeFilterChange={(v) => { setAssigneeFilter(v); setPage(1); }}
+        onAssigneeFilterChange={updateAssigneeFilter}
         assigneeOptions={usersList ?? []}
         sortField={sortField}
         sortDir={sortDir}
@@ -408,18 +493,18 @@ export function TasksWorkspace({
         onGroupByChange={setGroupBy}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
-        onNewTask={openCreate}
+        onNewTask={isDeletedView ? undefined : handleOpenCreate}
         totalCount={data?.total}
         visibleColumns={columns}
         onToggleColumn={toggleColumn}
         selectedCount={selectedIds.size}
         onBulkStatusChange={(status) => bulkMutation.mutate({ ids: Array.from(selectedIds), status })}
         onClearSelection={() => setSelectedIds(new Set())}
-        showViewSelector={showViews}
+        showViewSelector={showViewsEffective}
       />
       </div>
 
-      {savedFilters?.length > 0 && !isMobile && (
+      {savedFilters?.length > 0 && !isMobile && !isDeletedView && (
         <SavedFiltersBar filters={savedFilters} onApply={applySavedFilter} />
       )}
 
@@ -427,7 +512,7 @@ export function TasksWorkspace({
         <div className="space-y-3">
           <p className="text-sm text-text-muted max-md:hidden">Loading tasks…</p>
           {isMobile ? (
-            <MobileTasksView tasks={[]} onTaskClick={() => {}} onCreateTask={openCreate} isLoading />
+            <MobileTasksView tasks={[]} onTaskClick={() => {}} onCreateTask={handleOpenCreate} isLoading />
           ) : viewMode === 'calendar' ? (
             <Suspense fallback={<TaskDatabaseSkeleton />}><TaskCalendarSkeleton /></Suspense>
           ) : viewMode === 'weekly' ? (
@@ -450,6 +535,8 @@ export function TasksWorkspace({
             </button>
           }
         />
+      ) : isDeletedView ? (
+        <DeletedTasksList tasks={displayTasks} onTaskClick={openTask} />
       ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' && !isMobile ? (
         <EmptyState title="No tasks" description="Create a task or adjust your filters." />
       ) : viewMode === 'kanban' ? (
@@ -484,7 +571,7 @@ export function TasksWorkspace({
         <MobileTasksView
           tasks={displayTasks}
           onTaskClick={openTask}
-          onCreateTask={openCreate}
+          onCreateTask={handleOpenCreate}
           isLoading={isLoading}
           groupBy={groupBy}
         />
@@ -511,14 +598,12 @@ export function TasksWorkspace({
                 }}
                 selectedIds={selectedIds}
                 onSelectionChange={setSelectedIds}
-                focusedIndex={focusedIndex}
-                onFocusIndexChange={setFocusedIndex}
+                focusedIndex={groupBy === 'none' ? focusedIndex : -1}
                 editable
-                taskTypes={taskTypes ?? []}
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
                 onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
-                onDeleteTask={allowDelete ? requestDeleteTask : undefined}
+                onDeleteTask={allowDelete && !isDeletedView ? requestDeleteTask : undefined}
               />
             </div>
           ))}
@@ -533,7 +618,7 @@ export function TasksWorkspace({
         </div>
       )}
 
-      {isMobile && <FloatingActionButton onClick={openCreate} />}
+      {isMobile && !isDeletedView && <FloatingActionButton onClick={handleOpenCreate} />}
 
       {allowDelete && (
       <DeleteTaskModal

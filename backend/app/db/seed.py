@@ -181,31 +181,31 @@ def seed():
         ("Implement user authentication", "Feature", "high", "in_progress", "Mobile App", ["Alex", "Michael"], "James", True, False, 16),
         ("Fix login redirect bug", "Bug", "critical", "to_do", "Mobile App", ["Alex"], "James", True, True, 4),
         ("Design onboarding screens", "Design", "high", "in_review", "Mobile App", ["Sophia"], "Maria", True, False, 12),
-        ("API rate limiting", "Feature", "medium", "backlog", "Admin Dashboard", ["Michael"], "James", True, False, 8),
+        ("API rate limiting", "Feature", "medium", "to_do", "Admin Dashboard", ["Michael"], "James", True, False, 8),
         ("Write API documentation", "Documentation", "low", "completed", "Documentation", ["Michael"], "James", False, False, 6),
         ("Homepage hero section", "Design", "high", "in_progress", "Website Redesign", ["Sophia", "Daniel"], "Maria", True, False, 10),
         ("SEO optimization", "Marketing", "medium", "to_do", "Website Redesign", ["Olivia"], "David", False, False, 8),
         ("Social media campaign", "Marketing", "high", "in_progress", "Marketing Campaign Q2", ["Olivia"], "David", False, False, 20),
-        ("Email newsletter template", "Marketing", "medium", "backlog", "Marketing Campaign Q2", ["Olivia"], "David", False, False, 6),
+        ("Email newsletter template", "Marketing", "medium", "to_do", "Marketing Campaign Q2", ["Olivia"], "David", False, False, 6),
         ("Setup CI/CD pipeline", "Operations", "high", "completed", "Admin Dashboard", ["Liam"], "James", True, True, 12),
         ("Database migration script", "Feature", "critical", "blocked", "Admin Dashboard", ["Michael", "Liam"], "James", True, False, 8),
-        ("User profile page", "Feature", "medium", "ready_for_review", "Mobile App", ["Emily"], "James", True, False, 10),
+        ("User profile page", "Feature", "medium", "in_review", "Mobile App", ["Emily"], "James", True, False, 10),
         ("Payment integration", "Feature", "critical", "to_do", "Mobile App", ["Alex", "Michael"], "James", True, True, 24),
         ("Accessibility audit", "Testing", "medium", "testing", "Website Redesign", ["Daniel"], "Maria", True, True, 8),
         ("Performance optimization", "Feature", "high", "in_progress", "Website Redesign", ["Emily"], "James", True, False, 16),
         ("Health camp logistics", "Operations", "medium", "to_do", "Health Camp", ["Ethan"], "David", False, False, 12),
-        ("Vendor contract review", "Operations", "low", "backlog", "Health Camp", ["Ethan"], "David", False, False, 4),
+        ("Vendor contract review", "Operations", "low", "to_do", "Health Camp", ["Ethan"], "David", False, False, 4),
         ("Budget planning Q3", "General", "medium", "to_do", None, ["Isabella"], "James", False, False, 6),
         ("Employee onboarding flow", "Feature", "medium", "in_progress", "Admin Dashboard", ["Mia", "Emily"], "James", True, False, 14),
         ("Bug: Dashboard charts not loading", "Bug", "major", "in_progress", "Admin Dashboard", ["Emily"], "James", True, False, 4),
         ("Research competitor features", "Research", "low", "completed", "Product", ["Mia"], "James", False, False, 8),
         ("Team standup notes", "Meeting", "low", "completed", None, ["Alex"], None, False, False, 1),
         ("Client demo preparation", "General", "high", "to_do", "Mobile App", ["Mia", "Alex"], "James", True, False, 6),
-        ("Sales pitch deck update", "Marketing", "medium", "backlog", None, ["Ava"], "David", False, False, 8),
+        ("Sales pitch deck update", "Marketing", "medium", "to_do", None, ["Ava"], "David", False, False, 8),
         ("HR policy documentation", "Documentation", "low", "to_do", None, ["Noah"], "James", False, False, 10),
-        ("Fix mobile navigation", "Bug", "high", "changes_requested", "Mobile App", ["Emily"], "James", True, False, 6),
-        ("Analytics dashboard", "Feature", "medium", "unassigned", "Admin Dashboard", [], "James", True, False, 20),
-        ("Brand guidelines update", "Design", "low", "backlog", "Marketing Campaign Q2", ["Sophia"], "Maria", False, False, 8),
+        ("Fix mobile navigation", "Bug", "high", "in_progress", "Mobile App", ["Emily"], "James", True, False, 6),
+        ("Analytics dashboard", "Feature", "medium", "to_do", "Admin Dashboard", [], "James", True, False, 20),
+        ("Brand guidelines update", "Design", "low", "to_do", "Marketing Campaign Q2", ["Sophia"], "Maria", False, False, 8),
         ("Load testing", "Testing", "high", "approved", "Mobile App", ["Liam"], "James", True, True, 12),
         ("Security audit", "Testing", "critical", "cancelled", "Admin Dashboard", ["Liam"], "James", True, True, 16),
     ]
@@ -246,7 +246,7 @@ def seed():
 
         for name in assignees:
             if name in user_map:
-                completed = status in ("ready_for_review", "in_review", "approved", "testing", "completed")
+                completed = status in ("in_review", "approved", "testing", "completed")
                 task.assignees.append(TaskAssignee(user_id=user_map[name].id, is_completed=completed))
 
         task.departments = [departments["Technology"]] if ttype in ("Feature", "Bug", "Testing") else [departments["Design"]] if ttype == "Design" else [departments["Marketing"]]
@@ -288,6 +288,14 @@ def seed():
 
     db.commit()
     print("Database seeded successfully!")
+    try:
+        from app.db.seed_weekly_demo import seed_weekly_demo
+
+        names = seed_weekly_demo()
+        if names:
+            print("Weekly demo reports:", ", ".join(names))
+    except Exception as exc:
+        print(f"Weekly demo seed skipped: {exc}")
     print("\nLogin credentials:")
     print("  Admin:    admin@company.com / admin123")
     print("  Manager:  james@company.com / manager123")

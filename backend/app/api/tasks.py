@@ -40,9 +40,19 @@ from app.schemas.task import (
     TaskTypeCreate,
     TagCreate,
 )
+from app.schemas.weekly_update import DeadlineRevisionCreate
+from app.services.weekly_update_service import WeeklyUpdateService
 from app.services.task_service import TaskService
 from app.services.notification_service import NotificationService
-from app.services.storage import StorageError, fetch_url_bytes, is_private_blob_url, store_file
+from app.utils.mentions import resolve_mentioned_user_ids
+from app.services.storage import (
+    StorageError,
+    delete_stored_file,
+    fetch_blob_bytes,
+    fetch_url_bytes,
+    is_private_blob_url,
+    store_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +76,16 @@ def list_tasks(
     has_due_date: bool | None = None,
     due_after: datetime | None = None,
     due_before: datetime | None = None,
+    archived: bool | None = None,
     sort_by: str = "updated_at",
     sort_order: str = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+    maybe_run_task_retention_cleanup(db)
+
     repo = TaskRepository(db)
     service = TaskService(db)
     filters = {
@@ -89,6 +104,7 @@ def list_tasks(
             "has_due_date": has_due_date,
             "due_after": due_after,
             "due_before": due_before,
+            "archived": archived,
             "sort_by": sort_by,
             "sort_order": sort_order,
         }.items()
@@ -96,10 +112,14 @@ def list_tasks(
     }
     skip = (page - 1) * page_size
     tasks, total = repo.get_filtered(skip=skip, limit=page_size, filters=filters)
-    stats = repo.load_list_stats([t.id for t in tasks])
+    if archived is True:
+        items = [service.task_to_deleted_list_dict(t) for t in tasks]
+    else:
+        stats = repo.load_list_stats([t.id for t in tasks])
+        items = [service.task_to_list_dict(t, stats.get(t.id)) for t in tasks]
     return APIResponse(
         data=PaginatedData(
-            items=[service.task_to_list_dict(t, stats.get(t.id)) for t in tasks],
+            items=items,
             total=total,
             page=page,
             page_size=page_size,
@@ -119,10 +139,14 @@ def my_tasks(db: Session = Depends(get_db), current_user: User = Depends(get_cur
 
 @router.get("/tasks/{task_id}")
 def get_task(task_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    task = TaskRepository(db).get_by_id(task_id)
+    repo = TaskRepository(db)
+    task = repo.get_by_id(task_id, include_archived=True)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    return APIResponse(data=TaskService(db).task_to_detail_dict(task))
+    service = TaskService(db)
+    if task.is_archived:
+        return APIResponse(data=service.task_to_deleted_detail_dict(task))
+    return APIResponse(data=service.task_to_detail_dict(task))
 
 
 @router.post("/tasks")
@@ -143,6 +167,38 @@ def update_task(
         raise HTTPException(status_code=404, detail="Task not found")
     task = TaskService(db).update_task(task, data.model_dump(exclude_unset=True), current_user)
     return APIResponse(data=TaskService(db).task_to_detail_dict(task), message="Task updated")
+
+
+@router.post("/tasks/{task_id}/deadline-revision")
+def revise_deadline(
+    task_id: int,
+    data: DeadlineRevisionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = TaskRepository(db).get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    result = WeeklyUpdateService(db).revise_deadline(
+        task,
+        current_user,
+        data.reason,
+        data.new_due_date,
+        weekly_report_id=data.weekly_report_id,
+    )
+    return APIResponse(data=result, message="Deadline revised")
+
+
+@router.get("/tasks/{task_id}/deadline-revisions")
+def list_deadline_revisions(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = TaskRepository(db).get_by_id(task_id, include_archived=True)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return APIResponse(data=WeeklyUpdateService(db).list_revisions(task))
 
 
 @router.patch("/tasks/{task_id}/status")
@@ -312,12 +368,30 @@ def add_comment(
         preview = data.content.strip()
         if len(preview) > 120:
             preview = preview[:117] + "..."
+
+        mentioned_ids = resolve_mentioned_user_ids(
+            data.content,
+            db,
+            data.mentioned_user_ids,
+        )
+        mentioned_ids.discard(current_user.id)
+
+        for user_id in mentioned_ids:
+            NotificationService(db).notify(
+                user_id,
+                NotificationType.MENTION.value,
+                f"You were mentioned on: {task.title}",
+                f'{current_user.full_name} mentioned you: "{preview}"',
+                f"/tasks/{task.id}",
+            )
+
         NotificationService(db).notify_task_watchers(
             task,
             NotificationType.TASK_COMMENT.value,
             f"New comment on: {task.title}",
             f"{current_user.full_name} commented: {preview}",
             exclude_user_id=current_user.id,
+            also_exclude_user_ids=mentioned_ids,
         )
 
     return APIResponse(data=_format_comment(comment))
@@ -333,10 +407,40 @@ def edit_comment(
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment or comment.author_id != current_user.id:
         raise HTTPException(status_code=404, detail="Comment not found")
-    comment.content = data.content
+    content = data.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Comment cannot be empty")
+    comment.content = content
     comment.is_edited = True
     db.commit()
+    db.refresh(comment)
     return APIResponse(data=_format_comment(comment))
+
+
+@router.delete("/comments/{comment_id}")
+def delete_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment or comment.author_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    task_id = comment.task_id
+
+    def delete_with_replies(cid: int) -> None:
+        for reply in db.query(Comment).filter(Comment.parent_id == cid).all():
+            delete_with_replies(reply.id)
+        row = db.query(Comment).filter(Comment.id == cid).first()
+        if row:
+            db.delete(row)
+
+    delete_with_replies(comment_id)
+    db.commit()
+    if task_id:
+        ActivityRepository(db).log(current_user.id, "comment_deleted", "Deleted comment", task_id)
+    return APIResponse(data=None, message="Comment deleted")
 
 
 @router.get("/tasks/{task_id}/activity")
@@ -418,10 +522,38 @@ def update_checklist_item(
     item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    if data.title is not None and not data.title.strip():
+        raise HTTPException(status_code=400, detail="Title is required")
     for key, value in data.model_dump(exclude_unset=True).items():
-        setattr(item, key, value)
+        if key == "title" and value is not None:
+            setattr(item, key, value.strip())
+        else:
+            setattr(item, key, value)
     db.commit()
-    return APIResponse(data={"id": item.id, "is_completed": item.is_completed})
+    db.refresh(item)
+    return APIResponse(
+        data={
+            "id": item.id,
+            "title": item.title,
+            "is_completed": item.is_completed,
+            "sort_order": item.sort_order,
+        },
+        message="Checklist item updated",
+    )
+
+
+@router.delete("/checklist-items/{item_id}")
+def delete_checklist_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(item)
+    db.commit()
+    return APIResponse(data=None, message="Checklist item deleted")
 
 
 @router.post("/tasks/{task_id}/attachments")
@@ -516,29 +648,116 @@ async def download_attachment(
     attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    if attachment.url:
-        if is_private_blob_url(attachment.url):
-            try:
+
+    oidc_token = request.headers.get("x-vercel-oidc-token")
+    filename = attachment.filename or "download"
+    mime = attachment.mime_type or "application/octet-stream"
+
+    def _file_response(content: bytes, content_type: str | None = None) -> Response:
+        return Response(
+            content=content,
+            media_type=content_type or mime,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "private, max-age=60",
+            },
+        )
+
+    # Vercel Blob: file_path is a store pathname like "attachments/<uuid>.pdf"
+    blob_pathname = None
+    if attachment.file_path and (
+        attachment.file_path.startswith("attachments/")
+        or "blob.vercel-storage.com" in (attachment.file_path or "")
+    ):
+        blob_pathname = attachment.file_path.lstrip("/")
+
+    if blob_pathname or (attachment.url and "blob.vercel-storage.com" in attachment.url):
+        try:
+            if attachment.url and is_private_blob_url(attachment.url):
                 content, content_type = await fetch_url_bytes(
                     attachment.url,
-                    oidc_token=request.headers.get("x-vercel-oidc-token"),
+                    oidc_token=oidc_token,
                 )
-            except Exception as exc:
-                raise HTTPException(status_code=404, detail=f"File not found: {exc}") from exc
-            filename = attachment.filename or "download"
-            return Response(
-                content=content,
-                media_type=attachment.mime_type or content_type,
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                return _file_response(content, content_type)
+            if blob_pathname:
+                content, content_type = await fetch_blob_bytes(
+                    blob_pathname,
+                    oidc_token=oidc_token,
+                )
+                return _file_response(content, content_type)
+            if attachment.url:
+                # Public blob URL — proxy through API so axios/CORS stay reliable
+                content, content_type = await fetch_url_bytes(
+                    attachment.url,
+                    oidc_token=oidc_token,
+                )
+                return _file_response(content, content_type)
+        except Exception as exc:
+            logger.exception(
+                "Blob download failed for attachment %s (path=%s url=%s)",
+                attachment_id,
+                attachment.file_path,
+                attachment.url,
             )
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Could not read this file from Vercel Blob. "
+                    "Check BLOB_READ_WRITE_TOKEN / Blob store linking, then re-upload the file. "
+                    f"({exc})"
+                ),
+            ) from exc
+
+    # Non-blob remote URL
+    if attachment.url:
         return RedirectResponse(attachment.url)
+
+    # Local disk (dev / non-Vercel hosts only)
     if attachment.file_path and os.path.exists(attachment.file_path):
         return FileResponse(
             attachment.file_path,
-            filename=attachment.filename or os.path.basename(attachment.file_path),
-            media_type=attachment.mime_type or "application/octet-stream",
+            filename=filename,
+            media_type=mime,
+            content_disposition_type="inline",
         )
-    raise HTTPException(status_code=404, detail="File not found")
+
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            "File not found on this host. It may have been uploaded on another server "
+            "without Vercel Blob — re-upload the attachment from this environment."
+        ),
+    )
+
+
+@router.delete("/attachments/{attachment_id}")
+async def delete_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    task_id = attachment.task_id
+    filename = attachment.filename or "file"
+    await delete_stored_file(
+        attachment.file_path,
+        attachment.url,
+        oidc_token=request.headers.get("x-vercel-oidc-token"),
+    )
+    db.delete(attachment)
+    db.commit()
+    if task_id:
+        ActivityRepository(db).log(
+            current_user.id,
+            "attachment_deleted",
+            f"Removed {filename}",
+            task_id,
+        )
+    return APIResponse(data=None, message="Attachment deleted")
 
 
 @router.get("/task-types")

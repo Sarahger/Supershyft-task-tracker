@@ -4,7 +4,7 @@ import {
   ChevronDown, X, Bookmark, CalendarDays, CalendarRange,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { STATUS_LABELS } from '../../types';
+import { SELECTABLE_STATUS_OPTIONS } from '../../types';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
 import type { ColumnId } from './TaskDatabase';
 import { Button } from '../ui/Button';
@@ -43,7 +43,7 @@ interface TaskToolbarProps {
   onGroupByChange: (v: GroupBy) => void;
   viewMode: ViewMode;
   onViewModeChange: (v: ViewMode) => void;
-  onNewTask: () => void;
+  onNewTask?: () => void;
   totalCount?: number;
   visibleColumns?: { id: ColumnId; label: string; visible: boolean }[];
   onToggleColumn?: (id: ColumnId) => void;
@@ -87,20 +87,7 @@ export function TaskToolbar({
   const [showColumns, setShowColumns] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setShowFilter(false);
-        setShowSort(false);
-        setShowGroup(false);
-        setShowColumns(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const activeFilters = [statusFilter, priorityFilter, assigneeFilter].filter(Boolean).length;
+  const anyMenuOpen = showFilter || showSort || showGroup || showColumns;
 
   const closeMenus = () => {
     setShowFilter(false);
@@ -108,6 +95,33 @@ export function TaskToolbar({
     setShowGroup(false);
     setShowColumns(false);
   };
+
+  useEffect(() => {
+    if (!anyMenuOpen) return;
+
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node | null;
+      if (filterRef.current && target && !filterRef.current.contains(target)) {
+        closeMenus();
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMenus();
+    };
+
+    // Capture phase so menus still close even if a child stops bubbling
+    document.addEventListener('mousedown', onPointerDown, true);
+    document.addEventListener('touchstart', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown, true);
+      document.removeEventListener('touchstart', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [anyMenuOpen]);
+
+  const activeFilters = [statusFilter, priorityFilter, assigneeFilter].filter(Boolean).length;
 
   return (
     <div className="space-y-3 mb-4">
@@ -121,8 +135,8 @@ export function TaskToolbar({
             defaultValue=""
           >
             <option value="" disabled>Change status</option>
-            {Object.entries(STATUS_LABELS).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
+            {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
+              <option key={value} value={value}>{label}</option>
             ))}
           </select>
           <button onClick={onClearSelection} className="toolbar-btn ml-auto text-text-muted">
@@ -148,6 +162,7 @@ export function TaskToolbar({
             <span className="text-2xs text-text-muted hidden md:inline shrink-0">{totalCount} tasks</span>
           )}
 
+          {onNewTask && (
           <Button
             onClick={onNewTask}
             size="sm"
@@ -157,10 +172,21 @@ export function TaskToolbar({
             <Plus className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">New task</span>
           </Button>
+          )}
         </div>
 
         {/* Filters, sort, group, columns + view switcher */}
-        <div ref={filterRef} className="flex items-center gap-1 min-w-0 w-full">
+        {anyMenuOpen && (
+          <div
+            className="fixed inset-0 z-20"
+            aria-hidden
+            onMouseDown={closeMenus}
+          />
+        )}
+        <div
+          ref={filterRef}
+          className={clsx('flex items-center gap-1 min-w-0 w-full', anyMenuOpen && 'relative z-30')}
+        >
           <div className="flex items-center gap-1 min-w-0 flex-1">
           {/* Filter */}
           <div className="relative shrink-0">
@@ -178,7 +204,9 @@ export function TaskToolbar({
                 <label className="text-2xs text-text-muted uppercase tracking-wider mb-1 block">Status</label>
                 <select className="input py-1 text-sm mb-3" value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)}>
                   <option value="">All</option>
-                  {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
                 <label className="text-2xs text-text-muted uppercase tracking-wider mb-1 block">Priority</label>
                 <select className="input py-1 text-sm mb-3" value={priorityFilter} onChange={(e) => onPriorityFilterChange(e.target.value)}>
@@ -280,7 +308,9 @@ export function TaskToolbar({
               </button>
               {showColumns && (
                 <div className="absolute top-full left-0 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
-                  {visibleColumns.filter((c) => c.id !== 'indicators').map((col) => (
+                  {visibleColumns
+                    .filter((c) => c.id !== 'indicators' && c.id !== 'assignees' && c.id !== 'priority')
+                    .map((col) => (
                     <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-dark-hover rounded cursor-pointer">
                       <input
                         type="checkbox"

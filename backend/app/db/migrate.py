@@ -37,6 +37,9 @@ def run_lightweight_migrations(engine) -> None:
             ("notify_task_updates", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ("notify_reviews", "BOOLEAN NOT NULL DEFAULT TRUE"),
             ("notify_comments", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("notify_meetings", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("telegram_notifications_enabled", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("telegram_daily_digest_enabled", "BOOLEAN NOT NULL DEFAULT FALSE"),
         ]
         dialect = engine.dialect.name
         for col_name, col_def in user_additions:
@@ -44,9 +47,73 @@ def run_lightweight_migrations(engine) -> None:
                 if dialect == "postgresql":
                     sql = f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
                 elif dialect == "sqlite":
-                    sql = f"ALTER TABLE users ADD COLUMN {col_name} INTEGER NOT NULL DEFAULT 1"
+                    default = "0" if "DEFAULT FALSE" in col_def.upper() else "1"
+                    sql = f"ALTER TABLE users ADD COLUMN {col_name} INTEGER NOT NULL DEFAULT {default}"
                 else:
                     sql = f"ALTER TABLE users ADD COLUMN {col_name} {col_def}"
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added users.%s column", col_name)
+        if "weekly_updates_adopted_at" not in user_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_updates_adopted_at TIMESTAMP WITH TIME ZONE"
+            else:
+                sql = "ALTER TABLE users ADD COLUMN weekly_updates_adopted_at DATETIME"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added users.weekly_updates_adopted_at column")
+
+    if "tasks" in tables:
+        task_cols = {c["name"] for c in inspector.get_columns("tasks")}
+        dialect = engine.dialect.name
+        if dialect == "postgresql":
+            task_additions = [
+                ("deletion_reason", "TEXT"),
+                ("deleted_by_id", "INTEGER REFERENCES users(id)"),
+                ("deleted_at", "TIMESTAMP WITH TIME ZONE"),
+                ("end_date", "TIMESTAMP WITH TIME ZONE"),
+                ("original_due_date", "TIMESTAMP WITH TIME ZONE"),
+            ]
+        else:
+            task_additions = [
+                ("deletion_reason", "TEXT"),
+                ("deleted_by_id", "INTEGER REFERENCES users(id)"),
+                ("deleted_at", "DATETIME"),
+                ("end_date", "DATETIME"),
+                ("original_due_date", "DATETIME"),
+            ]
+        for col_name, col_def in task_additions:
+            if col_name not in task_cols:
+                if dialect == "postgresql":
+                    sql = f"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                else:
+                    sql = f"ALTER TABLE tasks ADD COLUMN {col_name} {col_def}"
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                logger.info("Added tasks.%s column", col_name)
+
+    if "meeting_logs" in tables:
+        log_cols = {c["name"] for c in inspector.get_columns("meeting_logs")}
+        dialect = engine.dialect.name
+        log_additions = [
+            ("meet_url", "VARCHAR(500)"),
+            ("pool_id", "INTEGER"),
+        ]
+        for col_name, col_def in log_additions:
+            if col_name not in log_cols:
+                if dialect == "postgresql":
+                    sql = f"ALTER TABLE meeting_logs ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                else:
+                    sql = f"ALTER TABLE meeting_logs ADD COLUMN {col_name} {col_def}"
+                with engine.begin() as conn:
+                    conn.execute(text(sql))
+                logger.info("Added meeting_logs.%s column", col_name)
+
+    # Collapse legacy ready_for_review into the single Review status (in_review)
+    if "tasks" in tables:
+        with engine.begin() as conn:
+            result = conn.execute(
+                text("UPDATE tasks SET status = 'in_review' WHERE status = 'ready_for_review'")
+            )
+            if result.rowcount:
+                logger.info("Normalized %s tasks from ready_for_review → in_review", result.rowcount)

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, clients, custom_fields, dashboard, departments, projects, tasks, users
+from app.api import attendance, auth, clients, cron, custom_fields, daily_updates, dashboard, departments, meetings, projects, tasks, telegram, users, weekly_updates
 from app.core.config import settings
 from app.db.base import Base
 from app.db.database import engine
@@ -22,6 +22,26 @@ async def lifespan(app: FastAPI):
     if os.getenv("VERCEL") != "1":
         Base.metadata.create_all(bind=engine)
         run_lightweight_migrations(engine)
+        try:
+            from app.db.database import SessionLocal
+            from app.services.meet_pool_service import seed_meet_pool
+            from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+            db = SessionLocal()
+            try:
+                seed_meet_pool(db)
+                maybe_run_task_retention_cleanup(db, force=True)
+                from app.db.seed_weekly_demo import DEMO_NOTE, seed_weekly_demo
+                from app.models import WeeklyReport
+
+                if db.query(WeeklyReport).filter(WeeklyReport.leave_notes == DEMO_NOTE).count() == 0:
+                    names = seed_weekly_demo()
+                    if names:
+                        logger.info("Loaded weekly demo data for %s", ", ".join(names))
+            finally:
+                db.close()
+        except Exception as exc:
+            logger.warning("Meet pool seed / task cleanup skipped or failed: %s", exc)
     if os.getenv("VERCEL") != "1":
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     if settings.AUTO_SEED and os.getenv("VERCEL") != "1":
@@ -69,6 +89,12 @@ app.include_router(clients.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(custom_fields.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(meetings.router, prefix="/api")
+app.include_router(daily_updates.router, prefix="/api")
+app.include_router(weekly_updates.router, prefix="/api")
+app.include_router(attendance.router, prefix="/api")
+app.include_router(cron.router, prefix="/api")
+app.include_router(telegram.router, prefix="/api")
 
 # AI Task Assistant plugin (disabled — see backend/app/plugins/ locally)
 # if settings.AI_ASSISTANT_ENABLED:
@@ -82,4 +108,15 @@ if not _is_vercel and os.path.exists(settings.UPLOAD_DIR):
 @app.get("/api/health")
 @app.get("/health")
 def health():
+    try:
+        from app.db.database import SessionLocal
+        from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+        db = SessionLocal()
+        try:
+            maybe_run_task_retention_cleanup(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Health cleanup skipped: %s", exc)
     return {"success": True, "data": {"status": "healthy"}, "message": "OK"}

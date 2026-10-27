@@ -1,11 +1,19 @@
 import api from './api';
-import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskReportData, User, UserProfile } from '../types';
+import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory } from '../types';
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post<APIResponse<{ access_token: string; refresh_token: string; user: User }>>('/auth/login', { email, password }),
+  requestOtp: (email: string) =>
+    api.post<APIResponse<unknown>>('/auth/request-otp', { email }),
+  verifyOtp: (email: string, code: string) =>
+    api.post<APIResponse<{ access_token: string; refresh_token: string; user: User }>>('/auth/verify-otp', { email, code }),
   logout: (refresh_token: string) => api.post('/auth/logout', { refresh_token }),
   me: () => api.get<APIResponse<User>>('/auth/me'),
+  uploadProfilePicture: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<APIResponse<User>>('/auth/me/profile-picture', form);
+  },
+  removeProfilePicture: () => api.delete<APIResponse<User>>('/auth/me/profile-picture'),
 };
 
 export const tasksApi = {
@@ -27,9 +35,16 @@ export const tasksApi = {
   reopen: (id: number) => api.post<APIResponse<Task>>(`/tasks/${id}/reopen`),
   delete: (id: number, reason: string) => api.post<APIResponse<null>>(`/tasks/${id}/delete`, { reason }),
   getComments: (id: number) => api.get(`/tasks/${id}/comments`),
-  addComment: (id: number, content: string, parent_id?: number) =>
-    api.post(`/tasks/${id}/comments`, { content, parent_id }),
+  addComment: (id: number, content: string, parent_id?: number, mentioned_user_ids?: number[]) =>
+    api.post(`/tasks/${id}/comments`, { content, parent_id, mentioned_user_ids }),
+  updateComment: (commentId: number, content: string) =>
+    api.put(`/comments/${commentId}`, { content }),
+  deleteComment: (commentId: number) => api.delete(`/comments/${commentId}`),
   getActivity: (id: number) => api.get(`/tasks/${id}/activity`),
+  reviseDeadline: (id: number, data: { reason: string; new_due_date: string; weekly_report_id?: number }) =>
+    api.post<APIResponse<TaskDeadlineRevision>>(`/tasks/${id}/deadline-revision`, data),
+  getDeadlineRevisions: (id: number) =>
+    api.get<APIResponse<TaskDeadlineRevision[]>>(`/tasks/${id}/deadline-revisions`),
   uploadAttachment: (id: number, file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -39,15 +54,18 @@ export const tasksApi = {
     api.get<APIResponse<TaskAttachment[]>>(`/tasks/${taskId}/attachments`),
   downloadAttachment: async (attachmentId: number, filename: string) => {
     const response = await api.get(`/attachments/${attachmentId}/download`, { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const mime = response.data?.type || 'application/octet-stream';
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: mime }));
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.click();
     window.URL.revokeObjectURL(url);
   },
+  deleteAttachment: (attachmentId: number) => api.delete(`/attachments/${attachmentId}`),
   updateChecklistItem: (itemId: number, data: { is_completed?: boolean; title?: string }) =>
     api.patch(`/checklist-items/${itemId}`, data),
+  deleteChecklistItem: (itemId: number) => api.delete(`/checklist-items/${itemId}`),
   addChecklistItem: (taskId: number, title: string) =>
     api.post<APIResponse<{ id: number; title: string; is_completed: boolean; sort_order: number }>>(
       `/tasks/${taskId}/checklist-items`,
@@ -80,14 +98,17 @@ export const usersApi = {
     first_name: string;
     last_name: string;
     email: string;
-    password: string;
     role?: string;
     job_title?: string;
     department_ids?: number[];
   }) => api.post<APIResponse<User>>('/users', data),
-  update: (id: number, data: Partial<User> & { password?: string }) =>
-    api.put<APIResponse<User>>(`/users/${id}`, data),
-  deactivate: (id: number) => api.delete(`/users/${id}`),
+  update: (
+    id: number,
+    data: Partial<Pick<User, 'first_name' | 'last_name' | 'email' | 'role' | 'status' | 'job_title' | 'phone'>> & {
+      department_ids?: number[];
+    },
+  ) => api.put<APIResponse<User>>(`/users/${id}`, data),
+  remove: (id: number) => api.delete(`/users/${id}`),
 };
 
 export const departmentsApi = {
@@ -115,37 +136,108 @@ export const notificationsApi = {
   sendTestEmail: () => api.post<APIResponse<unknown>>('/notifications/test-email'),
 };
 
+export const telegramApi = {
+  status: () => api.get<APIResponse<TelegramStatus>>('/telegram/status'),
+  createLinkCode: () => api.post<APIResponse<TelegramLinkCode>>('/telegram/link-codes'),
+  unlink: () => api.delete<APIResponse<{ unlinked: boolean }>>('/telegram/link'),
+  updatePreferences: (data: {
+    telegram_notifications_enabled?: boolean;
+    telegram_daily_digest_enabled?: boolean;
+  }) => api.patch<APIResponse<TelegramStatus>>('/telegram/preferences', data),
+};
+
 export const miscApi = {
-  taskTypes: () => api.get('/task-types'),
   tags: () => api.get('/tags'),
 };
 
-export interface CustomFieldDefinition {
-  id: number;
-  name: string;
-  field_key: string;
-  field_type: 'text' | 'number' | 'select' | 'date' | 'checkbox';
-  applies_to: string;
-  options: string[];
-  sort_order: number;
-  is_active: boolean;
-}
+export const meetingsApi = {
+  joinMorning: () =>
+    api.post<APIResponse<MeetingActionResult>>('/meetings/morning/join'),
+  startInstant: (data: { invite_user_ids: number[] }) =>
+    api.post<APIResponse<MeetingActionResult>>('/meetings/instant/start', data),
+  endInstant: (pool_id: number) =>
+    api.post<APIResponse<{ pool: import('../types').MeetPoolLink }>>('/meetings/instant/end', { pool_id }),
+  startTaskCall: (taskId: number) =>
+    api.post<APIResponse<MeetingActionResult>>(`/meetings/task/${taskId}/start`),
+  joinTaskCall: (taskId: number) =>
+    api.post<APIResponse<MeetingActionResult>>(`/meetings/task/${taskId}/join`),
+  endTaskCall: (taskId: number) =>
+    api.post<APIResponse<{ pool: import('../types').MeetPoolLink }>>(`/meetings/task/${taskId}/end`),
+  leave: (log_id?: number) =>
+    api.post<APIResponse<import('../types').MeetingLog>>('/meetings/leave', { log_id: log_id ?? null }),
+  getDay: (date: string) =>
+    api.get<APIResponse<import('../types').MeetingDaySummary>>('/meetings/day', { params: { date } }),
+  getTaskLogs: (taskId: number) =>
+    api.get<APIResponse<import('../types').MeetingLog[]>>(`/meetings/task/${taskId}`),
+  getActiveTaskCall: (taskId: number) =>
+    api.get<APIResponse<import('../types').MeetPoolLink | null>>(`/meetings/task/${taskId}/active`),
+};
 
-export const customFieldsApi = {
-  list: (appliesTo = 'task') =>
-    api.get<APIResponse<CustomFieldDefinition[]>>('/custom-fields', { params: { applies_to: appliesTo } }),
-  create: (data: {
-    name: string;
-    field_type?: string;
-    applies_to?: string;
-    options?: string[];
-    field_key?: string;
-  }) => api.post<APIResponse<CustomFieldDefinition>>('/custom-fields', data),
-  update: (id: number, data: Partial<CustomFieldDefinition>) =>
-    api.put<APIResponse<CustomFieldDefinition>>(`/custom-fields/${id}`, data),
-  remove: (id: number) => api.delete(`/custom-fields/${id}`),
-  updateTaskValues: (taskId: number, values: Record<string, string | null>) =>
-    api.put(`/custom-fields/tasks/${taskId}/values`, { values }),
+type MeetingActionResult = import('../types').MeetingActionResult;
+
+export const weeklyUpdatesApi = {
+  overview: (params?: { week_start?: string; department_id?: number }) =>
+    api.get<APIResponse<WeeklyOverview>>('/weekly-updates/overview', { params }),
+  employees: (params?: { week_start?: string; department_id?: number }) =>
+    api.get<APIResponse<{ period_start: string; items: import('../types').WeeklyEmployee[] }>>(
+      '/weekly-updates/employees',
+      { params },
+    ),
+  userHistory: (userId: number, week_start?: string) =>
+    api.get<APIResponse<WeeklyUserHistory>>(`/weekly-updates/users/${userId}`, {
+      params: week_start ? { week_start } : undefined,
+    }),
+  suggestions: (week_start?: string) =>
+    api.get<APIResponse<WeeklySuggestions>>('/weekly-updates/suggestions', {
+      params: week_start ? { week_start } : undefined,
+    }),
+  carryForward: (week_start?: string) =>
+    api.get<APIResponse<{ period_start: string; items: import('../types').WeeklyCommitment[] }>>(
+      '/weekly-updates/carry-forward',
+      { params: week_start ? { week_start } : undefined },
+    ),
+  leaveContext: (params?: { week_start?: string; user_id?: number }) =>
+    api.get<APIResponse<{ period_start: string; reporting: WeeklyLeaveContext; planning: WeeklyLeaveContext }>>(
+      '/weekly-updates/leave-context',
+      { params },
+    ),
+  upsert: (data: {
+    period_start: string;
+    leave_notes?: string;
+    completions: Array<{
+      task_id?: number | null;
+      title: string;
+      completion_date?: string | null;
+      source: string;
+      included: boolean;
+    }>;
+    commitments: Array<{
+      task_id?: number | null;
+      title: string;
+      description?: string | null;
+      estimated_hours: number;
+      due_date: string;
+      commitment_type: string;
+      revision_reason?: string | null;
+    }>;
+  }) => api.put<APIResponse<WeeklyReport>>('/weekly-updates', data),
+};
+
+export const dailyUpdatesApi = {
+  getDay: (date: string, userId?: number) =>
+    api.get<APIResponse<import('../types').DailyUpdateDay>>('/daily-updates/day', {
+      params: { date, ...(userId != null ? { user_id: userId } : {}) },
+    }),
+  getCalendar: (year: number, month: number) =>
+    api.get<APIResponse<import('../types').DailyUpdateCalendar>>('/daily-updates/calendar', {
+      params: { year, month },
+    }),
+  upsert: (data: {
+    update_date: string;
+    content: string;
+    task_ids?: number[];
+    mentioned_user_ids?: number[];
+  }) => api.put<APIResponse<import('../types').DailyUpdate>>('/daily-updates', data),
 };
 
 export const reportsApi = {
@@ -153,4 +245,33 @@ export const reportsApi = {
     api.post<APIResponse<TaskReportData>>('/reports/tasks', filters),
   exportCsv: (filters: Record<string, unknown>) =>
     api.post('/reports/export/csv', filters, { responseType: 'blob' }),
+};
+
+export const attendanceApi = {
+  mark: (
+    status: import('../types').AttendanceStatus,
+    attendance_date?: string,
+    user_id?: number,
+  ) =>
+    api.post<APIResponse<import('../types').AttendanceRecord>>('/attendance', {
+      status,
+      ...(attendance_date ? { attendance_date } : {}),
+      ...(user_id != null ? { user_id } : {}),
+    }),
+  me: (params?: { month?: number; year?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceMe>>('/attendance/me', { params }),
+  today: () =>
+    api.get<APIResponse<import('../types').AttendanceRecord | null>>('/attendance/me/today'),
+  list: (params?: Record<string, unknown>) =>
+    api.get<APIResponse<import('../types').AttendanceList>>('/attendance', { params }),
+  day: (params?: { day?: string; department_id?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceDay>>('/attendance/day', { params }),
+  week: (params?: { week_start?: string; department_id?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceWeek>>('/attendance/week', { params }),
+  userDetail: (userId: number, params?: { month?: number; year?: number }) =>
+    api.get<APIResponse<import('../types').AttendanceUserDetail>>(`/attendance/users/${userId}`, {
+      params,
+    }),
+  exportCsv: (filters: Record<string, unknown>) =>
+    api.post('/attendance/export/csv', filters, { responseType: 'blob' }),
 };

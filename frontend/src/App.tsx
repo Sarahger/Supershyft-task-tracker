@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -21,11 +21,15 @@ import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
 
 const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
+const WeeklyUpdatesPage = lazy(() => import('./pages/WeeklyUpdatesPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const MeetingsPage = lazy(() => import('./pages/MeetingsPage'));
+const AttendancePage = lazy(() => import('./pages/AttendancePage'));
+const AttendanceHrPage = lazy(() => import('./pages/AttendanceHrPage'));
 
 const STALE_REFERENCE_MS = 5 * 60 * 1000;
 
@@ -56,16 +60,40 @@ function ProtectedLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { selectedTaskId, closeTask, isCreateOpen, closeCreate, openCreate } = useTaskDrawer();
   const { selectedUserId, closeUser } = useUserDrawer();
+  const location = useLocation();
 
   useEffect(() => {
+    const openNewTask = () => {
+      const projectMatch = location.pathname.match(/^\/projects\/(\d+)/);
+      openCreate(projectMatch ? { projectId: Number(projectMatch[1]) } : undefined);
+    };
+
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'c' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        openCreate();
+      const key = e.key.toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      const inField =
+        document.activeElement?.tagName === 'INPUT'
+        || document.activeElement?.tagName === 'TEXTAREA'
+        || (document.activeElement as HTMLElement | null)?.isContentEditable;
+
+      // Ctrl/Cmd+C — create task when nothing is selected (so normal copy still works)
+      if (mod && key === 'c' && !e.shiftKey && !e.altKey) {
+        if (inField) return;
+        const selected = window.getSelection()?.toString() ?? '';
+        if (selected.length > 0) return;
+        e.preventDefault();
+        openNewTask();
+        return;
+      }
+
+      // Plain "c" when not typing
+      if (key === 'c' && !mod && !e.altKey && !inField) {
+        openNewTask();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [openCreate]);
+  }, [openCreate, location.pathname]);
 
   if (isLoading) {
     return (
@@ -98,9 +126,9 @@ export default function App() {
         <ThemeProvider>
         <TaskViewPreferencesProvider>
         <AuthProvider>
-          <TaskDrawerProvider>
-            <UserDrawerProvider>
             <BrowserRouter>
+              <TaskDrawerProvider>
+                <UserDrawerProvider>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route element={<ProtectedLayout />}>
@@ -113,6 +141,15 @@ export default function App() {
                       </Suspense>
                     }
                   />
+                  <Route
+                    path="weekly-updates"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <WeeklyUpdatesPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route path="daily-updates" element={<Navigate to="/weekly-updates" replace />} />
                   <Route path="tasks" element={<Navigate to="/" replace />} />
                   <Route path="kanban" element={<Navigate to="/" replace />} />
                   <Route path="dashboard" element={<DashboardRedirect />} />
@@ -130,6 +167,32 @@ export default function App() {
                       <Suspense fallback={<PageLoader />}>
                         <ProjectDetailPage />
                       </Suspense>
+                    }
+                  />
+                  <Route
+                    path="meetings"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <MeetingsPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="attendance"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <AttendancePage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="attendance/hr"
+                    element={
+                      <RequireManager>
+                        <Suspense fallback={<PageLoader />}>
+                          <AttendanceHrPage />
+                        </Suspense>
+                      </RequireManager>
                     }
                   />
                   <Route
@@ -164,9 +227,9 @@ export default function App() {
                 </Route>
               </Routes>
               <ToastContainer />
+                </UserDrawerProvider>
+              </TaskDrawerProvider>
             </BrowserRouter>
-            </UserDrawerProvider>
-          </TaskDrawerProvider>
         </AuthProvider>
         </TaskViewPreferencesProvider>
         </ThemeProvider>

@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 
 interface AvatarProps {
   name: string;
-  src?: string;
+  src?: string | null;
   size?: 'sm' | 'md' | 'lg';
+  className?: string;
 }
 
 const sizeClasses = { sm: 'h-6 w-6 text-xs', md: 'h-8 w-8 text-sm', lg: 'h-10 w-10 text-base' };
@@ -19,15 +21,40 @@ function getColor(name: string) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-export function Avatar({ name, src, size = 'md' }: AvatarProps) {
-  if (src) {
-    return <img src={src} alt={name} className={clsx('rounded-full object-cover', sizeClasses[size])} />;
-  }
+function InitialsAvatar({ name, size, className }: { name: string; size: 'sm' | 'md' | 'lg'; className?: string }) {
   return (
-    <div className={clsx('rounded-full flex items-center justify-center text-white font-medium', getColor(name), sizeClasses[size])}>
+    <div
+      className={clsx(
+        'rounded-full flex items-center justify-center text-white font-medium shrink-0',
+        getColor(name),
+        sizeClasses[size],
+        className,
+      )}
+    >
       {getInitials(name)}
     </div>
   );
+}
+
+export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        onError={() => setFailed(true)}
+        className={clsx('rounded-full object-cover shrink-0', sizeClasses[size], className)}
+      />
+    );
+  }
+
+  return <InitialsAvatar name={name} size={size} className={className} />;
 }
 
 export function AvatarGroup({ users, max = 3 }: { users: { first_name: string; last_name: string; profile_picture?: string }[]; max?: number }) {

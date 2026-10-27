@@ -2,15 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
-import { tasksApi, projectsApi, usersApi, miscApi, customFieldsApi } from '../../services/endpoints';
+import { tasksApi, projectsApi, usersApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { Avatar } from '../ui/Avatar';
 import { toast } from '../ui/Toast';
 import { AssigneeMentionInput } from './AssigneeMentionInput';
-import { STATUS_LABELS } from '../../types';
+import { STATUS_LABELS, statusSelectOptions } from '../../types';
 import type { Task } from '../../types';
+import { formatTimeTakenHours, parseDurationInput } from '../../lib/taskTiming';
 
 interface TaskFormState {
   title: string;
@@ -18,14 +19,14 @@ interface TaskFormState {
   priority: string;
   status: string;
   due_date: string;
+  start_date: string;
+  end_date: string;
   project_id: string;
-  task_type_id: string;
   reviewer_id: string;
   assignee_ids: number[];
   review_required: boolean;
   testing_required: boolean;
-  estimated_hours: string;
-  actual_hours: string;
+  time_required: string;
 }
 
 function toDateInputValue(date?: string | null) {
@@ -35,6 +36,21 @@ function toDateInputValue(date?: string | null) {
   return d.toISOString().slice(0, 10);
 }
 
+function toDateTimeLocalValue(date?: string | null) {
+  if (!date) return '';
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDateTimeLocalValue(value: string): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 function taskToForm(task: Task): TaskFormState {
   return {
     title: task.title,
@@ -42,14 +58,14 @@ function taskToForm(task: Task): TaskFormState {
     priority: task.priority,
     status: task.status,
     due_date: toDateInputValue(task.due_date),
+    start_date: toDateTimeLocalValue(task.start_date),
+    end_date: toDateTimeLocalValue(task.end_date),
     project_id: task.project_id ? String(task.project_id) : '',
-    task_type_id: task.task_type?.id ? String(task.task_type.id) : '',
     reviewer_id: task.reviewer_id ? String(task.reviewer_id) : '',
     assignee_ids: task.assignees?.map((a) => a.user_id) ?? [],
     review_required: task.review_required,
     testing_required: task.testing_required,
-    estimated_hours: task.estimated_hours != null ? String(task.estimated_hours) : '',
-    actual_hours: task.actual_hours != null ? String(task.actual_hours) : '',
+    time_required: formatTimeTakenHours(task.estimated_hours) ?? '',
   };
 }
 
@@ -64,6 +80,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
   const [savedForm, setSavedForm] = useState<TaskFormState>(() => taskToForm(task));
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [blockReasonInput, setBlockReasonInput] = useState('');
+  const [timeRequiredError, setTimeRequiredError] = useState('');
 
   useEffect(() => {
     const next = taskToForm(task);
@@ -81,74 +98,50 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
   });
 
-  const { data: taskTypes } = useQuery({
-    queryKey: ['task-types'],
-    queryFn: () => miscApi.taskTypes().then((r) => r.data.data),
-  });
-
-  const { data: customFields } = useQuery({
-    queryKey: ['custom-fields'],
-    queryFn: () => customFieldsApi.list('task').then((r) => r.data.data),
-  });
-
-  const [customValues, setCustomValues] = useState<Record<string, string>>({});
-  const [savedCustomValues, setSavedCustomValues] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    const vals = task.custom_field_values ?? {};
-    const normalized: Record<string, string> = {};
-    for (const [k, v] of Object.entries(vals)) {
-      if (v != null) normalized[k] = v;
-    }
-    setCustomValues(normalized);
-    setSavedCustomValues(normalized);
-  }, [task.custom_field_values, taskId]);
-
-  const customDirty = useMemo(
-    () => JSON.stringify(customValues) !== JSON.stringify(savedCustomValues),
-    [customValues, savedCustomValues],
-  );
-
   const isDirty = useMemo(
-    () => JSON.stringify(form) !== JSON.stringify(savedForm) || customDirty,
-    [form, savedForm, customDirty]
+    () => JSON.stringify(form) !== JSON.stringify(savedForm),
+    [form, savedForm],
   );
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (estimatedHours: number | null) => {
       await tasksApi.update(taskId, {
         title: form.title.trim(),
         description: form.description.trim() || null,
         priority: form.priority,
         status: form.status,
         due_date: form.due_date ? new Date(`${form.due_date}T12:00:00`).toISOString() : null,
+        start_date: fromDateTimeLocalValue(form.start_date),
+        end_date: fromDateTimeLocalValue(form.end_date),
         project_id: form.project_id ? Number(form.project_id) : null,
-        task_type_id: form.task_type_id ? Number(form.task_type_id) : null,
         reviewer_id: form.reviewer_id ? Number(form.reviewer_id) : null,
         assignee_ids: form.assignee_ids,
         review_required: form.review_required,
         testing_required: form.testing_required,
-        estimated_hours: form.estimated_hours ? Number(form.estimated_hours) : null,
-        actual_hours: form.actual_hours ? Number(form.actual_hours) : null,
+        estimated_hours: estimatedHours,
       });
-      if (customDirty) {
-        const values: Record<string, string | null> = {};
-        for (const field of customFields ?? []) {
-          values[field.field_key] = customValues[field.field_key]?.trim() || null;
-        }
-        await customFieldsApi.updateTaskValues(taskId, values);
-      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
       setSavedForm(form);
-      setSavedCustomValues(customValues);
+      setTimeRequiredError('');
       toast.success('Task updated');
     },
     onError: () => toast.error('Failed to save task'),
   });
+
+  const saveTask = () => {
+    const estimatedHours = parseDurationInput(form.time_required);
+    if (form.time_required.trim() && estimatedHours == null) {
+      setTimeRequiredError('Use a duration like 1h or 30m');
+      toast.error('Enter time required as 1h or 30m');
+      return;
+    }
+    setTimeRequiredError('');
+    saveMutation.mutate(estimatedHours);
+  };
 
   const blockMutation = useMutation({
     mutationFn: (reason: string) => tasksApi.block(taskId, reason),
@@ -190,6 +183,14 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     }));
   };
 
+  const setReviewer = (userId: number) => {
+    setForm((prev) => ({ ...prev, reviewer_id: String(userId) }));
+  };
+
+  const removeReviewer = () => {
+    setForm((prev) => ({ ...prev, reviewer_id: '' }));
+  };
+
   const assigneeOptions = users ?? [];
   const reviewerOptions = assigneeOptions.filter((u: { id: number }) => !form.assignee_ids.includes(u.id));
 
@@ -206,8 +207,21 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       .filter(Boolean) as UserOption[];
   }, [form.assignee_ids, assigneeOptions, task.assignees]);
 
+  const reviewerUser = useMemo(() => {
+    if (!form.reviewer_id) return null;
+    const id = Number(form.reviewer_id);
+    const fromList = assigneeOptions.find((u: UserOption) => u.id === id);
+    if (fromList) return fromList;
+    if (task.reviewer) return { id, first_name: task.reviewer.first_name, last_name: task.reviewer.last_name };
+    return null;
+  }, [form.reviewer_id, assigneeOptions, task.reviewer]);
+
   const availableAssignees = assigneeOptions.filter(
     (u: UserOption) => !form.assignee_ids.includes(u.id),
+  );
+
+  const availableReviewers = reviewerOptions.filter(
+    (u: UserOption) => String(u.id) !== form.reviewer_id,
   );
 
   return (
@@ -223,7 +237,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
             >
               Discard
             </button>
-            <Button size="sm" onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+            <Button size="sm" onClick={saveTask} loading={saveMutation.isPending}>
               Save changes
             </Button>
           </div>
@@ -249,7 +263,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           label="Status"
           value={form.status}
           onChange={(e) => handleStatusChange(e.target.value)}
-          options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+          options={statusSelectOptions(form.status)}
         />
         <Select
           label="Priority"
@@ -263,29 +277,57 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           ]}
         />
         <Input
+          label="Start date"
+          type="datetime-local"
+          value={form.start_date}
+          onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+        />
+        <Input
+          label="End date"
+          type="datetime-local"
+          value={form.end_date}
+          onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+        />
+        <Input
+          label="Time required"
+          value={form.time_required}
+          onChange={(e) => {
+            setTimeRequiredError('');
+            setForm({ ...form, time_required: e.target.value });
+          }}
+          placeholder="e.g. 1h or 30m"
+          error={timeRequiredError || undefined}
+        />
+        <div>
+          <label className="block text-xs font-medium text-text-secondary mb-1.5">Time taken</label>
+          <p className="text-sm text-text-primary px-3 py-2 rounded-md bg-surface-subtle border border-dark-border min-h-[38px] flex items-center">
+            {formatTimeTakenHours(task.actual_hours) ?? '—'}
+          </p>
+          <p className="text-2xs text-text-muted mt-1">Auto from start → end (or now while in progress)</p>
+        </div>
+        <Input
           label="Due date"
           type="date"
           value={form.due_date}
           onChange={(e) => setForm({ ...form, due_date: e.target.value })}
         />
-        <Input
-          label="Time required (hours)"
-          type="number"
-          min="0"
-          step="0.25"
-          value={form.estimated_hours}
-          onChange={(e) => setForm({ ...form, estimated_hours: e.target.value })}
-          placeholder="e.g. 4"
-        />
-        <Input
-          label="Time taken (hours)"
-          type="number"
-          min="0"
-          step="0.25"
-          value={form.actual_hours}
-          onChange={(e) => setForm({ ...form, actual_hours: e.target.value })}
-          placeholder="e.g. 3.5"
-        />
+        {(task.original_due_date || (task.deadline_revisions && task.deadline_revisions.length > 0)) && (
+          <div className="sm:col-span-2 rounded-xl border border-dark-border px-3 py-2 space-y-1.5">
+            <p className="text-xs font-medium text-text-secondary">Deadline history</p>
+            {task.original_due_date && (
+              <p className="text-xs text-text-muted">
+                Original {toDateInputValue(task.original_due_date)} · Current {toDateInputValue(task.due_date) || '—'}
+              </p>
+            )}
+            {(task.deadline_revisions ?? []).map((rev) => (
+              <p key={rev.id} className="text-xs text-text-muted">
+                {toDateInputValue(rev.previous_due_date)} → {toDateInputValue(rev.new_due_date)}
+                {rev.reason ? ` · ${rev.reason}` : ''}
+                {rev.changed_by ? ` · ${rev.changed_by.first_name}` : ''}
+              </p>
+            ))}
+          </div>
+        )}
         <Select
           label="Project"
           value={form.project_id}
@@ -293,29 +335,6 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           options={[
             { value: '', label: 'No project' },
             ...(projects ?? []).map((p: { id: number; name: string }) => ({ value: String(p.id), label: p.name })),
-          ]}
-        />
-        {taskTypes && (
-          <Select
-            label="Task type"
-            value={form.task_type_id}
-            onChange={(e) => setForm({ ...form, task_type_id: e.target.value })}
-            options={[
-              { value: '', label: 'None' },
-              ...taskTypes.map((t: { id: number; name: string }) => ({ value: String(t.id), label: t.name })),
-            ]}
-          />
-        )}
-        <Select
-          label="Reviewer"
-          value={form.reviewer_id}
-          onChange={(e) => setForm({ ...form, reviewer_id: e.target.value })}
-          options={[
-            { value: '', label: 'No reviewer' },
-            ...reviewerOptions.map((u: { id: number; first_name: string; last_name: string }) => ({
-              value: String(u.id),
-              label: `${u.first_name} ${u.last_name}`,
-            })),
           ]}
         />
       </div>
@@ -400,7 +419,14 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           <input
             type="checkbox"
             checked={form.review_required}
-            onChange={(e) => setForm({ ...form, review_required: e.target.checked })}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setForm({
+                ...form,
+                review_required: checked,
+                reviewer_id: checked ? form.reviewer_id : '',
+              });
+            }}
             className="rounded border-dark-border"
           />
           <span className="text-text-secondary">Review required</span>
@@ -416,59 +442,41 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         </label>
       </div>
 
-      {customFields && customFields.length > 0 && (
+      {form.review_required && (
         <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-3">Custom fields</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {customFields.map((field) => {
-              const value = customValues[field.field_key] ?? '';
-              if (field.field_type === 'select') {
-                return (
-                  <Select
-                    key={field.id}
-                    label={field.name}
-                    value={value}
-                    onChange={(e) =>
-                      setCustomValues((prev) => ({ ...prev, [field.field_key]: e.target.value }))
-                    }
-                    options={[
-                      { value: '', label: '—' },
-                      ...field.options.map((o) => ({ value: o, label: o })),
-                    ]}
-                  />
-                );
-              }
-              if (field.field_type === 'checkbox') {
-                return (
-                  <label key={field.id} className="flex items-center gap-2 cursor-pointer pt-6">
-                    <input
-                      type="checkbox"
-                      checked={value === 'true'}
-                      onChange={(e) =>
-                        setCustomValues((prev) => ({
-                          ...prev,
-                          [field.field_key]: e.target.checked ? 'true' : '',
-                        }))
-                      }
-                      className="rounded border-dark-border"
-                    />
-                    <span className="text-sm text-text-secondary">{field.name}</span>
-                  </label>
-                );
-              }
-              return (
-                <Input
-                  key={field.id}
-                  label={field.name}
-                  type={field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'}
-                  value={value}
-                  onChange={(e) =>
-                    setCustomValues((prev) => ({ ...prev, [field.field_key]: e.target.value }))
-                  }
-                />
-              );
-            })}
-          </div>
+          <label className="block text-xs font-medium text-text-secondary mb-2">Reviewer</label>
+          {reviewerUser ? (
+            <div className="flex flex-wrap gap-2">
+              <span
+                className={clsx(
+                  'chip badge-todo inline-flex items-center gap-1.5 pl-1 pr-1.5 py-1 border border-dark-border',
+                )}
+              >
+                <Avatar name={`${reviewerUser.first_name} ${reviewerUser.last_name}`} size="sm" />
+                <span className="text-sm text-text-primary max-w-[8rem] truncate">
+                  {reviewerUser.first_name} {reviewerUser.last_name}
+                </span>
+                <button
+                  type="button"
+                  onClick={removeReviewer}
+                  className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
+                  aria-label={`Remove reviewer ${reviewerUser.first_name} ${reviewerUser.last_name}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </div>
+          ) : availableReviewers.length > 0 ? (
+            <AssigneeMentionInput
+              users={availableReviewers}
+              onSelect={setReviewer}
+              placeholder="Type @name to assign reviewer…"
+            />
+          ) : (
+            <p className="text-sm text-text-muted">
+              Add a team member who is not already an assignee, or remove an assignee to pick them as reviewer.
+            </p>
+          )}
         </div>
       )}
     </div>

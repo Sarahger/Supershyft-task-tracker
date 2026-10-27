@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import get_current_user, require_admin, require_manager
 from app.db.database import get_db
 from app.models import Department, Task, User, task_departments
 from app.repositories.base import DepartmentRepository
@@ -26,8 +26,12 @@ def get_department(dept_id: int, db: Session = Depends(get_db), current_user: Us
     return APIResponse(data=_format_dept(dept, db))
 
 
-@router.post("", dependencies=[Depends(require_admin)])
-def create_department(data: DepartmentCreate, db: Session = Depends(get_db)):
+@router.post("")
+def create_department(
+    data: DepartmentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager),
+):
     dept = Department(name=data.name, description=data.description, manager_id=data.manager_id)
     dept = DepartmentRepository(db).create(dept)
     return APIResponse(data=_format_dept(dept, db), message="Department created")

@@ -1,24 +1,31 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Send, GitBranch, Eye, Paperclip, Upload, RotateCcw, Unlock, Plus, Download, X, Trash2, Video, ExternalLink, PhoneOff, Pencil } from 'lucide-react';
 import { Drawer, DrawerSection } from '../ui/Modal';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
-import { Textarea, Input } from '../ui/Input';
+import { Input } from '../ui/Input';
 import { Skeleton } from '../ui/Skeleton';
 import { toast } from '../ui/Toast';
-import { tasksApi, usersApi } from '../../services/endpoints';
+import { tasksApi, usersApi, meetingsApi } from '../../services/endpoints';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { TaskPropertiesEditor } from './TaskPropertiesEditor';
+import { CommentMentionTextarea } from './CommentMentionTextarea';
+import { CommentMentionText } from './CommentMentionText';
 import { DeleteTaskModal } from './DeleteTaskModal';
+import { extractMentionedUserIds } from '../../lib/mentions';
 import { AttachmentPreviewModal } from './AttachmentPreviewModal';
 import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
 import { useAuth } from '../../contexts/AuthContext';
 import { canDeleteTasks } from '../../lib/roles';
+import { getChecklistProgress } from '../../lib/checklist';
+import { formatTimeTakenHours } from '../../lib/taskTiming';
+import { startTaskCall, joinTaskCall, endTaskCall, openBlankMeetWindow, openMeetUrl } from '../../lib/meetings';
 import { AttachmentInlinePreview } from './AttachmentInlinePreview';
 import type { TaskAttachment } from '../../types';
+import clsx from 'clsx';
 
 interface TaskDrawerProps {
   taskId: number | null;
@@ -34,7 +41,11 @@ function formatFileSize(bytes?: number) {
 
 export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const [comment, setComment] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingCommentContent, setEditingCommentContent] = useState('');
   const [checklistInput, setChecklistInput] = useState('');
+  const [editingChecklistId, setEditingChecklistId] = useState<number | null>(null);
+  const [editingChecklistTitle, setEditingChecklistTitle] = useState('');
   const [dependencyPersonPick, setDependencyPersonPick] = useState('');
   const [dependencyPick, setDependencyPick] = useState('');
   const [previewAttachment, setPreviewAttachment] = useState<TaskAttachment | null>(null);
@@ -52,9 +63,13 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
 
   useEffect(() => {
     setChecklistInput('');
+    setEditingChecklistId(null);
+    setEditingChecklistTitle('');
     setDependencyPersonPick('');
     setDependencyPick('');
     setComment('');
+    setEditingCommentId(null);
+    setEditingCommentContent('');
     setPreviewAttachment(null);
     setShowDeleteModal(false);
   }, [taskId]);
@@ -64,6 +79,58 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     queryFn: () => tasksApi.get(taskId!).then((r) => r.data.data),
     enabled: !!taskId,
     staleTime: 30_000,
+  });
+
+  const { data: taskMeetingLogs } = useQuery({
+    queryKey: ['task-meeting-logs', taskId],
+    queryFn: () => meetingsApi.getTaskLogs(taskId!).then((r) => r.data.data),
+    enabled: !!taskId && !!task && !task.is_archived,
+    staleTime: 30_000,
+  });
+
+  const { data: activeTaskCall } = useQuery({
+    queryKey: ['task-active-call', taskId],
+    queryFn: () => meetingsApi.getActiveTaskCall(taskId!).then((r) => r.data.data),
+    enabled: !!taskId && !!task && !task.is_archived,
+    refetchInterval: 30_000,
+  });
+
+  const isAssignee = !!task?.assignees?.some((a) => a.user_id === user?.id);
+  const isCallStarter = !!(
+    activeTaskCall
+    && taskMeetingLogs?.length
+    && taskMeetingLogs
+      .filter((l) => l.pool_id === activeTaskCall.id)
+      .sort((a, b) => new Date(a.click_time).getTime() - new Date(b.click_time).getTime())[0]?.user_id === user?.id
+  );
+
+  const taskCallMutation = useMutation({
+    mutationFn: (pendingWindow: Window | null) => startTaskCall(taskId!, pendingWindow),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
+      qc.invalidateQueries({ queryKey: ['task-active-call', taskId] });
+      qc.invalidateQueries({ queryKey: ['meetings-day'] });
+      toast.success('Task call started — assignees notified');
+    },
+  });
+
+  const joinTaskCallMutation = useMutation({
+    mutationFn: (pendingWindow: Window | null) => joinTaskCall(taskId!, pendingWindow),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
+      qc.invalidateQueries({ queryKey: ['meetings-day'] });
+      toast.success('Joining task call…');
+    },
+  });
+
+  const endTaskCallMutation = useMutation({
+    mutationFn: () => endTaskCall(taskId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-meeting-logs', taskId] });
+      qc.invalidateQueries({ queryKey: ['task-active-call', taskId] });
+      qc.invalidateQueries({ queryKey: ['meetings-day'] });
+      toast.success('Call ended — link returned to pool');
+    },
   });
 
   const attachments = task?.attachments ?? [];
@@ -91,8 +158,37 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   });
 
   const commentMutation = useMutation({
-    mutationFn: (content: string) => tasksApi.addComment(taskId!, content),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['task-comments', taskId] }); setComment(''); },
+    mutationFn: (payload: { content: string; mentioned_user_ids: number[] }) =>
+      tasksApi.addComment(taskId!, payload.content, undefined, payload.mentioned_user_ids),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      setComment('');
+    },
+  });
+
+  const editCommentMutation = useMutation({
+    mutationFn: ({ commentId, content }: { commentId: number; content: string }) =>
+      tasksApi.updateComment(commentId, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      setEditingCommentId(null);
+      setEditingCommentContent('');
+      toast.success('Comment updated');
+    },
+    onError: () => toast.error('Failed to update comment'),
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: number) => tasksApi.deleteComment(commentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-comments', taskId] });
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Comment deleted');
+    },
+    onError: () => toast.error('Failed to delete comment'),
   });
 
   const completeMutation = useMutation({
@@ -110,6 +206,31 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     },
   });
 
+  const editChecklistMutation = useMutation({
+    mutationFn: ({ itemId, title }: { itemId: number; title: string }) =>
+      tasksApi.updateChecklistItem(itemId, { title }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      setEditingChecklistId(null);
+      setEditingChecklistTitle('');
+      toast.success('Subtask updated');
+    },
+    onError: () => toast.error('Failed to update subtask'),
+  });
+
+  const deleteChecklistMutation = useMutation({
+    mutationFn: (itemId: number) => tasksApi.deleteChecklistItem(itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      toast.success('Subtask deleted');
+    },
+    onError: () => toast.error('Failed to delete subtask'),
+  });
+
   const addChecklistMutation = useMutation({
     mutationFn: (title: string) => tasksApi.addChecklistItem(taskId!, title),
     onSuccess: () => {
@@ -125,7 +246,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
   const { data: usersList } = useQuery({
     queryKey: ['users-list'],
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-    enabled: !!taskId && !!dependencyPersonPick,
+    enabled: !!taskId,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -183,6 +304,18 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     },
   });
 
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: (attachmentId: number) => tasksApi.deleteAttachment(attachmentId),
+    onSuccess: (_res, attachmentId) => {
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.removeQueries({ queryKey: ['attachment-inline', attachmentId] });
+      if (previewAttachment?.id === attachmentId) setPreviewAttachment(null);
+      toast.success('Attachment removed');
+    },
+    onError: () => toast.error('Failed to remove attachment'),
+  });
+
   const handleDownloadAttachment = async (attachmentId: number, filename: string) => {
     try {
       await tasksApi.downloadAttachment(attachmentId, filename);
@@ -193,6 +326,29 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
 
   const openAttachmentPreview = (file: TaskAttachment) => {
     setPreviewAttachment(file);
+  };
+
+  const startChecklistEdit = (itemId: number, title: string) => {
+    setEditingChecklistId(itemId);
+    setEditingChecklistTitle(title);
+  };
+
+  const cancelChecklistEdit = () => {
+    setEditingChecklistId(null);
+    setEditingChecklistTitle('');
+  };
+
+  const saveChecklistEdit = (itemId: number, originalTitle: string) => {
+    const title = editingChecklistTitle.trim();
+    if (!title) {
+      cancelChecklistEdit();
+      return;
+    }
+    if (title === originalTitle) {
+      cancelChecklistEdit();
+      return;
+    }
+    editChecklistMutation.mutate({ itemId, title });
   };
 
   const existingDependencyIds = new Set(task?.dependencies?.map((d) => d.depends_on_id) ?? []);
@@ -207,19 +363,113 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
     (a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9),
   );
 
+  const submitComment = () => {
+    const trimmed = comment.trim();
+    if (!trimmed) return;
+    const mentioned_user_ids = extractMentionedUserIds(trimmed, usersList ?? []);
+    commentMutation.mutate({ content: trimmed, mentioned_user_ids });
+  };
+
+  const startCommentEdit = (commentId: number, content: string) => {
+    setEditingCommentId(commentId);
+    setEditingCommentContent(content);
+  };
+
+  const cancelCommentEdit = () => {
+    setEditingCommentId(null);
+    setEditingCommentContent('');
+  };
+
+  const saveCommentEdit = (commentId: number, originalContent: string) => {
+    const trimmed = editingCommentContent.trim();
+    if (!trimmed) {
+      toast.error('Comment cannot be empty');
+      return;
+    }
+    if (trimmed === originalContent.trim()) {
+      cancelCommentEdit();
+      return;
+    }
+    editCommentMutation.mutate({ commentId, content: trimmed });
+  };
+
   return (
     <>
     <Drawer isOpen={!!taskId} onClose={onClose}>
       {isLoading ? (
         <div className="p-8 space-y-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-24" /><Skeleton className="h-32" /></div>
       ) : task ? (
+        task.is_archived ? (
+          <div className="px-8 py-7 max-w-none">
+            <div className="pr-10 mb-6">
+              <h1 className="text-2xl font-semibold text-text-primary leading-snug tracking-tight">{task.title}</h1>
+              <span className="inline-flex items-center mt-3 px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                Deleted
+              </span>
+            </div>
+            <div className="space-y-5">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Reason for deletion</p>
+                <p className="text-sm text-text-primary leading-relaxed">
+                  {task.deletion_reason || 'No reason provided'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Deleted by</p>
+                <p className="text-sm text-text-primary">
+                  {task.deleted_by
+                    ? `${task.deleted_by.first_name} ${task.deleted_by.last_name}`
+                    : 'Unknown'}
+                </p>
+              </div>
+              {task.deleted_at && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Deleted on</p>
+                  <p className="text-sm text-text-primary">
+                    {format(new Date(task.deleted_at), 'MMM d, yyyy · h:mm a')}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="px-8 py-7 max-w-none">
           {/* Header */}
           <div className="pr-10 mb-6">
             <h1 className="text-2xl font-semibold text-text-primary leading-snug tracking-tight">{task.title}</h1>
+            {(() => {
+              const checklistProgress = getChecklistProgress(task.checklists);
+              if (!checklistProgress) return null;
+              return (
+                <div className="mt-3 max-w-md">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-xs text-text-muted">Subtask progress</span>
+                    <span className="text-xs font-medium text-text-secondary tabular-nums">
+                      {checklistProgress.done}/{checklistProgress.total} · {checklistProgress.percent}%
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-dark-muted overflow-hidden">
+                    <div
+                      className={clsx(
+                        'h-full rounded-full transition-all duration-300',
+                        checklistProgress.percent === 100
+                          ? 'bg-emerald-500'
+                          : checklistProgress.percent > 0
+                            ? 'bg-amber-500'
+                            : 'bg-dark-border',
+                      )}
+                      style={{ width: `${checklistProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
             <div className="flex flex-wrap items-center gap-2 mt-3">
               <StatusBadge status={task.status} />
               <PriorityBadge priority={task.priority} />
+              <span className="text-sm text-text-secondary">
+                Time required {formatTimeTakenHours(task.estimated_hours) ?? '—'}
+              </span>
               {task.due_date && (
                 <span className="text-sm text-text-secondary">
                   Due {format(new Date(task.due_date), 'MMM d, yyyy')}
@@ -237,6 +487,41 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                   <Unlock className="h-3.5 w-3.5" /> Unblock
                 </Button>
               )}
+              {isAssignee && !activeTaskCall && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => taskCallMutation.mutate(openBlankMeetWindow())}
+                  disabled={taskCallMutation.isPending}
+                  className="gap-1.5"
+                >
+                  <Video className="h-3.5 w-3.5" /> Start Impromptu Task Call
+                </Button>
+              )}
+              {isAssignee && activeTaskCall && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => joinTaskCallMutation.mutate(openBlankMeetWindow())}
+                    disabled={joinTaskCallMutation.isPending}
+                    className="gap-1.5 border-emerald-500/30 text-emerald-400"
+                  >
+                    <Video className="h-3.5 w-3.5" /> Join Active Call
+                  </Button>
+                  {isCallStarter && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => endTaskCallMutation.mutate()}
+                      disabled={endTaskCallMutation.isPending}
+                      className="gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10"
+                    >
+                      <PhoneOff className="h-3.5 w-3.5" /> End Call
+                    </Button>
+                  )}
+                </>
+              )}
               {allowDelete && (
               <Button
                 variant="secondary"
@@ -251,6 +536,37 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           </div>
 
           <TaskPropertiesEditor task={task} taskId={task.id} />
+
+          {(taskMeetingLogs?.length ?? 0) > 0 && (
+            <DrawerSection title="Task calls" defaultOpen>
+              <div className="space-y-2">
+                {taskMeetingLogs!.map((log) => (
+                  <div key={log.id} className="flex items-center justify-between gap-2 py-2 border-b border-dark-border last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-sm text-text-primary">
+                        {log.user ? `${log.user.first_name} ${log.user.last_name}` : 'Someone'}
+                        {log.status ? ` · ${log.status}` : ''}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {format(new Date(log.click_time), 'MMM d, h:mm a')}
+                        {log.left_at ? ` · Left ${format(new Date(log.left_at), 'h:mm a')}` : ''}
+                      </p>
+                    </div>
+                    {log.meet_url && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="gap-1 shrink-0"
+                        onClick={() => openMeetUrl(log.meet_url!)}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" /> Join
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </DrawerSection>
+          )}
 
           {task.assignees && task.assignees.length > 1 && (
             <DrawerSection title="Assignee progress" defaultOpen={false}>
@@ -284,35 +600,86 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           <DrawerSection title={`Comments${comments?.length ? ` · ${comments.length}` : ''}`}>
             <div className="space-y-4">
               {comments?.length ? comments.map((c: {
-                id: number; content: string;
+                id: number;
+                author_id: number;
+                content: string;
+                is_edited?: boolean;
                 author?: { first_name: string; last_name: string };
-                created_at: string; replies?: unknown[];
-              }) => (
-                <div key={c.id} className="flex gap-3">
+                created_at: string;
+                replies?: unknown[];
+              }) => {
+                const isOwnComment = c.author_id === user?.id;
+                return (
+                <div key={c.id} className="flex gap-3 group">
                   {c.author && <Avatar name={`${c.author.first_name} ${c.author.last_name}`} size="sm" />}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
+                    <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-sm font-medium text-text-primary">{c.author?.first_name} {c.author?.last_name}</span>
-                      <span className="text-2xs text-text-muted">{format(new Date(c.created_at), 'MMM d, h:mm a')}</span>
+                      <span className="text-2xs text-text-muted">
+                        {format(new Date(c.created_at), 'MMM d, h:mm a')}
+                        {c.is_edited ? ' · edited' : ''}
+                      </span>
+                      {isOwnComment && editingCommentId !== c.id && (
+                        <div className="flex items-center gap-0.5 ml-auto opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => startCommentEdit(c.id, c.content)}
+                            className="toolbar-btn text-text-muted hover:text-text-primary"
+                            title="Edit comment"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteCommentMutation.mutate(c.id)}
+                            disabled={deleteCommentMutation.isPending}
+                            className="toolbar-btn text-text-muted hover:text-red-400"
+                            title="Delete comment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-sm text-text-secondary mt-0.5 leading-relaxed">{c.content}</p>
+                    {editingCommentId === c.id ? (
+                      <div className="mt-2 space-y-2">
+                        <CommentMentionTextarea
+                          value={editingCommentContent}
+                          onChange={setEditingCommentContent}
+                          users={usersList ?? []}
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button variant="secondary" size="sm" onClick={cancelCommentEdit}>
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => saveCommentEdit(c.id, c.content)}
+                            disabled={!editingCommentContent.trim() || editCommentMutation.isPending}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <CommentMentionText content={c.content} />
+                    )}
                   </div>
                 </div>
-              )) : (
+              );
+              }) : (
                 <p className="text-sm text-text-muted">No comments yet</p>
               )}
               <div className="flex gap-2 pt-2">
-                <Textarea
+                <CommentMentionTextarea
                   value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Write a comment..."
-                  rows={2}
-                  className="flex-1 text-sm"
+                  onChange={setComment}
+                  users={usersList ?? []}
                 />
                 <Button
                   variant="secondary"
-                  onClick={() => commentMutation.mutate(comment)}
-                  disabled={!comment.trim()}
+                  onClick={submitComment}
+                  disabled={!comment.trim() || commentMutation.isPending}
                   className="self-end"
                 >
                   <Send className="h-4 w-4" />
@@ -333,17 +700,70 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             {task.checklists?.flatMap((cl) => cl.items).length ? (
               <div className="space-y-1">
                 {task.checklists.flatMap((cl) => cl.items).map((item) => (
-                  <label key={item.id} className="flex items-center gap-3 py-1.5 px-1 rounded-md hover:bg-dark-hover cursor-pointer">
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 py-1.5 px-1 rounded-md hover:bg-dark-hover group"
+                  >
                     <input
                       type="checkbox"
                       checked={item.is_completed}
                       onChange={(e) => checklistMutation.mutate({ itemId: item.id, done: e.target.checked })}
-                      className="rounded border-dark-border text-text-primary focus:ring-[var(--focus-ring)]"
+                      className="rounded border-dark-border text-text-primary focus:ring-[var(--focus-ring)] shrink-0"
                     />
-                    <span className={`text-sm ${item.is_completed ? 'line-through text-text-muted' : 'text-text-primary'}`}>
-                      {item.title}
-                    </span>
-                  </label>
+                    <div className="flex-1 min-w-0">
+                      {editingChecklistId === item.id ? (
+                        <Input
+                          value={editingChecklistTitle}
+                          onChange={(e) => setEditingChecklistTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              saveChecklistEdit(item.id, item.title);
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              cancelChecklistEdit();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (editingChecklistId === item.id) saveChecklistEdit(item.id, item.title);
+                          }}
+                          autoFocus
+                          className="text-sm h-8"
+                        />
+                      ) : (
+                        <span
+                          className={clsx(
+                            'text-sm block truncate',
+                            item.is_completed ? 'line-through text-text-muted' : 'text-text-primary',
+                          )}
+                        >
+                          {item.title}
+                        </span>
+                      )}
+                    </div>
+                    {editingChecklistId !== item.id && (
+                      <div className="flex items-center gap-0.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => startChecklistEdit(item.id, item.title)}
+                          className="toolbar-btn text-text-muted hover:text-text-primary"
+                          title="Edit subtask"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteChecklistMutation.mutate(item.id)}
+                          disabled={deleteChecklistMutation.isPending}
+                          className="toolbar-btn text-text-muted hover:text-red-400"
+                          title="Delete subtask"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -421,6 +841,16 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
                         title="Download"
                       >
                         <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => deleteAttachmentMutation.mutate(file.id)}
+                        disabled={deleteAttachmentMutation.isPending}
+                        className="gap-1.5 shrink-0 text-accent-danger hover:text-accent-danger hover:bg-red-500/10 border-red-500/20"
+                        title="Remove attachment"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                     <AttachmentInlinePreview
@@ -584,11 +1014,27 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           {/* Metadata — tertiary, always collapsed */}
           <DrawerSection title="Details" defaultOpen={false}>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {task.estimated_hours != null && (
-                <div><span className="text-text-muted">Estimated</span><p className="text-text-primary">{task.estimated_hours}h</p></div>
+              {task.start_date && (
+                <div>
+                  <span className="text-text-muted">Start</span>
+                  <p className="text-text-primary">{format(new Date(task.start_date), 'MMM d, yyyy h:mm a')}</p>
+                </div>
               )}
+              {task.end_date && (
+                <div>
+                  <span className="text-text-muted">End</span>
+                  <p className="text-text-primary">{format(new Date(task.end_date), 'MMM d, yyyy h:mm a')}</p>
+                </div>
+              )}
+              <div>
+                <span className="text-text-muted">Time required</span>
+                <p className="text-text-primary">{formatTimeTakenHours(task.estimated_hours) ?? '—'}</p>
+              </div>
               {task.actual_hours != null && (
-                <div><span className="text-text-muted">Actual</span><p className="text-text-primary">{task.actual_hours}h</p></div>
+                <div>
+                  <span className="text-text-muted">Time taken</span>
+                  <p className="text-text-primary">{formatTimeTakenHours(task.actual_hours)}</p>
+                </div>
               )}
               {task.departments?.length ? (
                 <div className="col-span-2">
@@ -603,6 +1049,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             </div>
           </DrawerSection>
         </div>
+        )
       ) : null}
     </Drawer>
     <AttachmentPreviewModal

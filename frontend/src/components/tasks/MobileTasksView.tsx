@@ -5,6 +5,7 @@ import type { Task } from '../../types';
 import { MobileTaskCard } from './MobileTaskCard';
 import { EmptyState } from '../ui/Skeleton';
 import { Button } from '../ui/Button';
+import { groupTasksByDueSections } from './TaskCard';
 
 const STORAGE_KEY = 'mobile-expanded-projects';
 
@@ -12,11 +13,23 @@ function buildGroups(tasks: Task[], groupBy: 'project' | 'status' | 'priority' |
   if (groupBy === 'none') {
     return [{ name: 'All tasks', tasks, completed: 0, total: tasks.length, progress: 0 }];
   }
+  if (groupBy === 'status') {
+    return groupTasksByDueSections(tasks).map((s) => {
+      const completed = s.tasks.filter((t) => t.status === 'completed').length;
+      const total = s.tasks.length;
+      return {
+        name: s.label,
+        tasks: s.tasks,
+        completed,
+        total,
+        progress: total > 0 ? Math.round((completed / total) * 100) : 0,
+      };
+    });
+  }
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
     let key = 'Other';
-    if (groupBy === 'status') key = t.status;
-    else if (groupBy === 'priority') key = t.priority;
+    if (groupBy === 'priority') key = t.priority;
     else key = t.project_name || 'No project';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
@@ -26,7 +39,7 @@ function buildGroups(tasks: Task[], groupBy: 'project' | 'status' | 'priority' |
       const completed = groupTasks.filter((t) => t.status === 'completed').length;
       const total = groupTasks.length;
       return {
-        name: groupBy === 'status' ? name.replace(/_/g, ' ') : name,
+        name,
         tasks: groupTasks,
         completed,
         total,

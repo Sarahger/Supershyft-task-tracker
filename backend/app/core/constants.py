@@ -29,14 +29,11 @@ class ProjectHealth(str, Enum):
 
 
 class TaskStatus(str, Enum):
-    UNASSIGNED = "unassigned"
-    BACKLOG = "backlog"
     TODO = "to_do"
     IN_PROGRESS = "in_progress"
     BLOCKED = "blocked"
     READY_FOR_REVIEW = "ready_for_review"
     IN_REVIEW = "in_review"
-    CHANGES_REQUESTED = "changes_requested"
     APPROVED = "approved"
     TESTING = "testing"
     BUGS_FOUND = "bugs_found"
@@ -86,6 +83,42 @@ class NotificationType(str, Enum):
     PROJECT_UPDATE = "project_update"
     OVERDUE_TASK = "overdue_task"
     DEPENDENCY_UPDATED = "dependency_updated"
+    TASK_CALL = "task_call"
+
+
+class MeetingLogType(str, Enum):
+    MORNING_ATTENDANCE = "Morning Attendance"
+    GENERAL = "General"
+    TASK_DISCUSSION = "Task Discussion"
+
+
+class MeetingAttendanceStatus(str, Enum):
+    ON_TIME = "On-Time"
+    LATE = "Late"
+    DELAYED_RESPONSE = "Delayed Response"
+
+
+class MeetingPoolType(str, Enum):
+    TASK = "Task"
+    INSTANT = "Instant"
+
+
+class AttendanceStatus(str, Enum):
+    WFO = "WFO"
+    WFH = "WFH"
+    LEAVE = "LEAVE"
+    HALF_DAY = "HALF_DAY"
+    CAMP = "CAMP"
+
+
+class AttendanceFilterStatus(str, Enum):
+    WFO = "WFO"
+    WFH = "WFH"
+    LEAVE = "LEAVE"
+    HALF_DAY = "HALF_DAY"
+    CAMP = "CAMP"
+    NOT_MARKED = "NOT_MARKED"
+    ALL = "ALL"
 
 
 class ActivityType(str, Enum):
@@ -112,3 +145,20 @@ class ActivityType(str, Enum):
     TASK_BLOCKED = "task_blocked"
     TASK_UNBLOCKED = "task_unblocked"
     TASK_COMPLETED = "task_completed"
+    DUE_DATE_CHANGED = "due_date_changed"
+
+
+class WeeklyReportStatus(str, Enum):
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+
+
+class WeeklyCompletionSource(str, Enum):
+    SUGGESTED = "suggested"
+    MANUAL = "manual"
+
+
+class WeeklyCommitmentType(str, Enum):
+    EXISTING = "existing"
+    NEW = "new"
+    CARRIED_FORWARD = "carried_forward"

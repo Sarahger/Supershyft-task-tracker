@@ -31,13 +31,24 @@ def _bootstrap_database() -> None:
 
         Base.metadata.create_all(bind=engine)
         run_lightweight_migrations(engine)
+        from app.db.database import SessionLocal
+        from app.services.meet_pool_service import seed_meet_pool
+
+        db = SessionLocal()
+        try:
+            seed_meet_pool(db)
+            from app.services.task_cleanup import maybe_run_task_retention_cleanup
+
+            maybe_run_task_retention_cleanup(db, force=True)
+        finally:
+            db.close()
         if settings.AUTO_SEED:
             from app.db.seed import seed
 
             seed()
         logger.info("Vercel database bootstrap complete")
     except Exception as exc:
-        logger.warning("Vercel database bootstrap failed: %s", exc)
+        logger.error("Vercel database bootstrap failed: %s", exc, exc_info=True)
 
 
 _bootstrap_database()

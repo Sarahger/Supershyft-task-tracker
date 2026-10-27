@@ -1,6 +1,6 @@
-# Work OS — Notion-Inspired Internal Task Platform
+# Supershyft Task Tracker
 
-An internal Work Operating System where **tasks are the product**. Everything else—projects, reports, analytics—exists to support getting work done.
+An internal task platform where **tasks are the product**. Everything else—projects, reports, analytics—exists to support getting work done.
 
 Built for startup teams (~15–100 employees) with full review workflows, dependencies, multi-assignee support, and role-based access.
 
@@ -42,13 +42,17 @@ npm run dev
 
 Open http://localhost:5173
 
+## Sign in
+
+Users sign in with a **one-time email code** (OTP). SMTP must be configured in `backend/.env` (`EMAIL_ENABLED=true` and Gmail/SMTP credentials).
+
 ## Demo Accounts
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@company.com | admin123 |
-| Manager | james@company.com | manager123 |
-| Employee | alex@company.com | employee123 |
+| Role | Email |
+|------|-------|
+| Admin | `admin@company.com` |
+
+(Only when `AUTO_SEED=true` — demo seed is disabled for production.)
 
 ## Key Pages
 
@@ -58,6 +62,7 @@ Open http://localhost:5173
 | `/my-tasks` | Personal tasks grouped by urgency |
 | `/projects` | Project containers with embedded task databases |
 | `/reports` | Analytics for managers (health, trends, exports) |
+| `/weekly-updates` | Person-wise weekly reports, commitments, and deadline history |
 
 ## Features
 
@@ -67,6 +72,7 @@ Open http://localhost:5173
 - Kanban board with drag-and-drop
 - Review and testing workflows, bug tracking, block/unblock, reopen
 - JWT auth, RBAC, email notifications, global search
+- Telegram bot (`@supershyftbot`) for tasks, attendance, daily notes (`/dailyupdates`), and weekly updates (`/weeklyupdates`)
 
 ## Deploy to production (Vercel + Neon)
 
