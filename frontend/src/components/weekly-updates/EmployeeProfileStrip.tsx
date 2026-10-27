@@ -6,10 +6,12 @@ export function EmployeeProfileStrip({
   employees,
   selectedId,
   onSelect,
+  className,
 }: {
   employees: WeeklyEmployee[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  className?: string;
 }) {
   if (!employees.length) {
     return (
@@ -18,8 +20,8 @@ export function EmployeeProfileStrip({
   }
 
   return (
-    <div className="overflow-x-auto -mx-1 px-1 pb-1">
-      <div className="flex gap-2 min-w-min">
+    <div className={clsx('min-h-0 overflow-y-auto', className)}>
+      <div className="flex flex-wrap gap-2">
         {employees.map((emp) => {
           const name = `${emp.first_name} ${emp.last_name}`.trim();
           const selected = emp.id === selectedId;
@@ -29,7 +31,7 @@ export function EmployeeProfileStrip({
               type="button"
               onClick={() => onSelect(emp.id)}
               className={clsx(
-                'flex items-center gap-2 shrink-0 rounded-full border px-2.5 py-1.5 text-left transition-colors',
+                'inline-flex items-center gap-2 w-fit shrink-0 rounded-full border px-2.5 py-1.5 text-left transition-colors',
                 selected
                   ? 'border-accent-primary bg-accent-primary/10 text-text-primary'
                   : 'border-dark-border bg-dark-card text-text-secondary hover:border-text-muted hover:text-text-primary',

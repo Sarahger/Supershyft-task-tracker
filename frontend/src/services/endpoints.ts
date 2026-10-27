@@ -204,6 +204,7 @@ export const weeklyUpdatesApi = {
   upsert: (data: {
     period_start: string;
     leave_notes?: string;
+    mentioned_user_ids?: number[];
     completions: Array<{
       task_id?: number | null;
       title: string;

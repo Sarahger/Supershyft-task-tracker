@@ -39,6 +39,7 @@ class WeeklyCommitmentIn(BaseModel):
 class WeeklyReportUpsert(BaseModel):
     period_start: date
     leave_notes: str | None = Field(None, max_length=4000)
+    mentioned_user_ids: list[int] = []
     completions: list[WeeklyCompletionIn] = []
     commitments: list[WeeklyCommitmentIn] = []
 

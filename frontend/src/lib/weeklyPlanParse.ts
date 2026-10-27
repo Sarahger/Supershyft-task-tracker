@@ -1,9 +1,10 @@
-import { format, parseISO } from 'date-fns';
+import { addDays, format, parseISO, startOfDay } from 'date-fns';
 import {
   WORKDAY_HOURS,
   formatHoursLabel,
   parseTimeEstimate,
 } from './dailyTaskListParse';
+import { parseRelativeDateToken, WEEKDAY_MAP } from './quickTaskParse';
 
 const NUMBERED_LINE_RE =
   /^\s*(?:\d+[.)\]:]\s*|\d+\s*[-–—]\s+|[-*•]\s+)(.+)$/;
@@ -14,6 +15,9 @@ const REMAINING_RE =
   /\s*[-–—:(]?\s*(?:remaining\s+available\s+time|rest\s+of\s+(?:the\s+)?(?:day|week)|remaining\s+time)\s*\)?\s*$/i;
 const DUE_TAIL_RE =
   /\s*(?:due|by|deadline)?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)\s*$/i;
+const SLASH_DUE_RE = /(?:^|[\s\-–—:(])\/([a-zA-Z0-9._-]+)/gi;
+const HASH_TIME_RE =
+  /#\s*(\d+(?:\.\d+)?)\s*(days?|d|hrs?|hours?|h|mins?|minutes?|m)\b/gi;
 
 export interface ParsedWeeklyPlanItem {
   title: string;
@@ -100,7 +104,78 @@ function parseWeeklyEstimate(text: string): {
   };
 }
 
-export function parseWeeklyPlanList(text: string): ParsedWeeklyPlan {
+export function planningMondayOf(periodStart?: string | Date, now: Date = new Date()): Date {
+  const base = periodStart
+    ? typeof periodStart === 'string'
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(periodStart) ? new Date(`${periodStart}T12:00:00`) : parseISO(periodStart))
+      : periodStart
+    : now;
+  return addDays(mondayOf(base), 7);
+}
+
+function weekdayInWeek(token: string, weekMonday: Date): Date | null {
+  const weekday = WEEKDAY_MAP[token.trim().toLowerCase()];
+  if (weekday === undefined) return null;
+  const offset = weekday === 0 ? 6 : weekday - 1;
+  return startOfDay(addDays(mondayOf(weekMonday), offset));
+}
+
+function resolveWeeklyDueToken(token: string, planningMonday: Date, now: Date): Date | null {
+  return weekdayInWeek(token, planningMonday) ?? parseRelativeDateToken(token, now);
+}
+
+function hoursFromCountUnit(count: number, unit: string): { hours: number; label: string } {
+  const u = unit.toLowerCase();
+  if (u.startsWith('d')) {
+    return {
+      hours: Math.round(count * WORKDAY_HOURS * 100) / 100,
+      label: `${count} day${count === 1 ? '' : 's'}`,
+    };
+  }
+  if (u.startsWith('h')) return { hours: count, label: `${count}h` };
+  return { hours: Math.round((count / 60) * 100) / 100, label: `${count}m` };
+}
+
+function tidyTitle(text: string): string {
+  return text.replace(/[\s\-–—:(]+$/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function stripSlashDue(
+  text: string,
+  planningMonday: Date,
+  now: Date,
+): { title: string; dueDate: string | null } {
+  let dueDate: string | null = null;
+  let cleaned = text;
+  for (const match of text.matchAll(SLASH_DUE_RE)) {
+    const resolved = resolveWeeklyDueToken(match[1], planningMonday, now);
+    if (!resolved) continue;
+    dueDate = format(resolved, 'yyyy-MM-dd');
+    cleaned = cleaned.replace(match[0], match[0].startsWith('/') ? '' : match[0][0] === '/' ? '' : ' ');
+  }
+  return { title: tidyTitle(cleaned), dueDate };
+}
+
+function stripHashTime(text: string): { title: string; hours: number | null; label: string | null } {
+  let hours: number | null = null;
+  let label: string | null = null;
+  let cleaned = text;
+  for (const match of text.matchAll(HASH_TIME_RE)) {
+    const parsed = hoursFromCountUnit(Number(match[1]), match[2]);
+    hours = parsed.hours;
+    label = parsed.label;
+    cleaned = cleaned.replace(match[0], ' ');
+  }
+  return { title: tidyTitle(cleaned), hours, label };
+}
+
+export function parseWeeklyPlanList(
+  text: string,
+  options?: { periodStart?: string | Date; now?: Date },
+): ParsedWeeklyPlan {
+  const now = options?.now ?? new Date();
+  const planningMonday = planningMondayOf(options?.periodStart, now);
+
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -112,23 +187,34 @@ export function parseWeeklyPlanList(text: string): ParsedWeeklyPlan {
     const body = numbered ? numbered[1].trim() : rawLine;
     if (!numbered && rawItems.length > 0 && body.length < 4) continue;
 
-    const dueParsed = stripDue(body);
-    const estimate = parseWeeklyEstimate(dueParsed.title || body);
-    const title = estimate.title || dueParsed.title || body;
+    const slashDue = stripSlashDue(body, planningMonday, now);
+    const hashTime = stripHashTime(slashDue.title || body);
+    const dueParsed = stripDue(hashTime.title || slashDue.title || body);
+    const estimate = parseWeeklyEstimate(dueParsed.title || hashTime.title || body);
+    const title = estimate.title || dueParsed.title || hashTime.title || slashDue.title || body;
+    const dueDate = slashDue.dueDate || dueParsed.dueDate;
+    const estimatedHours = hashTime.hours ?? estimate.hours;
+    const timeLabel = hashTime.label ?? estimate.label;
     if (!title) continue;
-    if (!numbered && lines.length > 1 && estimate.hours == null && !estimate.isRemainingTime && !dueParsed.dueDate) {
+    if (
+      !numbered
+      && lines.length > 1
+      && estimatedHours == null
+      && !estimate.isRemainingTime
+      && !dueDate
+    ) {
       continue;
     }
 
     rawItems.push({
       title,
-      estimatedHours: estimate.hours,
-      timeLabel: estimate.label,
-      dueDate: dueParsed.dueDate,
+      estimatedHours,
+      timeLabel,
+      dueDate,
       isRemainingTime: estimate.isRemainingTime,
       rawLine,
-      missingDueDate: !dueParsed.dueDate,
-      missingEffort: estimate.hours == null && !estimate.isRemainingTime,
+      missingDueDate: !dueDate,
+      missingEffort: estimatedHours == null && !estimate.isRemainingTime,
     });
   }
 

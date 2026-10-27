@@ -18,6 +18,8 @@ interface DailyUpdateEditorProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  showExtras?: boolean;
+  compact?: boolean;
 }
 
 function getActiveMention(text: string, cursor: number): { query: string; start: number } | null {
@@ -97,6 +99,8 @@ export function DailyUpdateEditor({
   disabled,
   placeholder = 'What did you get done today? Use @name or :emoji…',
   className,
+  showExtras = true,
+  compact = false,
 }: DailyUpdateEditorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -273,7 +277,8 @@ export function DailyUpdateEditor({
           }
         }}
         className={clsx(
-          'w-full resize-y min-h-[160px] bg-transparent border-0 p-0 text-[15px] leading-relaxed',
+          'w-full resize-y bg-transparent border-0 p-0 text-[15px] leading-relaxed',
+          compact ? 'min-h-[88px]' : 'min-h-[160px]',
           'text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-0',
           disabled && 'opacity-70 cursor-not-allowed',
         )}
@@ -348,7 +353,7 @@ export function DailyUpdateEditor({
         </div>
       )}
 
-      {!disabled && (
+      {!disabled && showExtras && (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-2xs text-text-muted">
             Type @ to mention · : for emoji · Voice note appends English text you can edit

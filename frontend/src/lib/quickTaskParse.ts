@@ -13,7 +13,7 @@ import {
   type MentionUser,
 } from './mentions';
 
-const WEEKDAY_MAP: Record<string, Day> = {
+export const WEEKDAY_MAP: Record<string, Day> = {
   sunday: 0,
   sun: 0,
   monday: 1,

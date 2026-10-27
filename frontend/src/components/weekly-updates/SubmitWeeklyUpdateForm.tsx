@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/Button';
-import { Input, Textarea } from '../ui/Input';
+import { Input } from '../ui/Input';
 import { toast } from '../ui/Toast';
-import { tasksApi, weeklyUpdatesApi } from '../../services/endpoints';
+import { DailyUpdateEditor } from '../daily-updates/DailyUpdateEditor';
+import { tasksApi, usersApi, weeklyUpdatesApi } from '../../services/endpoints';
+import { extractMentionedUserIds, type MentionUser } from '../../lib/mentions';
 import {
   formatDueNoonForApi,
   formatHoursLabel,
@@ -75,6 +77,16 @@ export function SubmitWeeklyUpdateForm({
     queryKey: ['tasks', 'my'],
     queryFn: () => tasksApi.my().then((r) => r.data.data ?? []),
   });
+  const { data: usersList } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: async () => {
+      const r = await usersApi.list({ page_size: 100 });
+      const items = r.data?.data?.items;
+      return Array.isArray(items) ? items : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const mentionUsers: MentionUser[] = (usersList ?? []).filter((u) => u.status !== 'inactive');
 
   const carried = carry?.items ?? [];
 
@@ -124,7 +136,10 @@ export function SubmitWeeklyUpdateForm({
   }, [suggestions, myTasks]);
 
   const parsedDone = useMemo(() => parseWeeklyDoneList(doneText), [doneText]);
-  const parsedPlan = useMemo(() => parseWeeklyPlanList(planText), [planText]);
+  const parsedPlan = useMemo(
+    () => parseWeeklyPlanList(planText, { periodStart }),
+    [planText, periodStart],
+  );
 
   const togglePill = (taskId: number) => {
     setSelectedTaskIds((prev) => {
@@ -204,9 +219,12 @@ export function SubmitWeeklyUpdateForm({
         }
       }
 
+      const mentionSource = [doneText, planText, leaveNotes, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
+
       return weeklyUpdatesApi.upsert({
         period_start: periodStart,
         leave_notes: leaveNotes.trim() || undefined,
+        mentioned_user_ids: extractMentionedUserIds(mentionSource, mentionUsers),
         completions: completions.map((c) => ({
           task_id: c.task_id ?? null,
           title: c.title.trim(),
@@ -248,15 +266,17 @@ export function SubmitWeeklyUpdateForm({
   });
 
   return (
-    <div className="rounded-2xl border border-dark-border bg-dark-card px-4 py-4 space-y-6">
+    <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-text-primary">Write weekly update</h2>
+          <h2 className="text-sm font-medium text-text-primary">Write weekly update</h2>
           <p className="text-xs text-text-muted mt-0.5">
-            Week of {format(parseISO(periodStart), 'd MMM yyyy')}
+            Week of {format(parseISO(periodStart), 'd MMM yyyy')} · Type @ to tag someone
           </p>
         </div>
-        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+        <button type="button" onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary">
+          Cancel
+        </button>
       </header>
 
       <section className="space-y-3">
@@ -288,11 +308,12 @@ export function SubmitWeeklyUpdateForm({
             })}
           </div>
         )}
-        <Textarea
+        <DailyUpdateEditor
           value={doneText}
-          onChange={(e) => setDoneText(e.target.value)}
-          placeholder={'1) Server updates\n2) Diwali website animation\n3) PDF automation for Diwali website'}
-          className="min-h-[140px]"
+          onChange={setDoneText}
+          users={mentionUsers}
+          showExtras={false}
+          placeholder={'1. Server updates with @Name\n2. Diwali website animation\n3. PDF automation for Diwali website'}
         />
         {parsedDone.length > 0 && (
           <p className="text-xs text-text-muted">{parsedDone.length} written item{parsedDone.length === 1 ? '' : 's'} will be included.</p>
@@ -303,7 +324,7 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">This week’s tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Write a numbered list with time required, e.g. (4hrs), (2days), (remaining time). Then add a due date for each.
+            Numbered list with /friday or /tuesday for due date and #3h for time. Tag people with @name.
           </p>
         </div>
         {carried.length > 0 && (
@@ -325,11 +346,12 @@ export function SubmitWeeklyUpdateForm({
             ))}
           </div>
         )}
-        <Textarea
+        <DailyUpdateEditor
           value={planText}
-          onChange={(e) => setPlanText(e.target.value)}
-          placeholder={'1. Custom Packages on Flutter - 2days\n2. Change icons of Navbar - 1hr\n3. AWS final integration - 3hrs'}
-          className="min-h-[160px]"
+          onChange={setPlanText}
+          users={mentionUsers}
+          showExtras={false}
+          placeholder={'1. Custom Packages on Flutter /wednesday #2d\n2. Review with @Name /tuesday #1h\n3. AWS final integration /friday #3h'}
         />
         {parsedPlan.items.length > 0 && (
           <div className="space-y-2">
@@ -342,7 +364,7 @@ export function SubmitWeeklyUpdateForm({
                   <div>
                     <p className="text-sm text-text-primary">{item.title}</p>
                     {item.missingEffort && (
-                      <p className="text-2xs text-accent-danger">Add time required in the list, e.g. (4hrs)</p>
+                      <p className="text-2xs text-accent-danger">Add time required in the list, e.g. #3h or (4hrs)</p>
                     )}
                   </div>
                   <p className="text-xs text-text-muted pt-2">{item.timeLabel || formatHoursLabel(item.estimatedHours)}</p>
@@ -369,12 +391,13 @@ export function SubmitWeeklyUpdateForm({
         ) : (
           <p className="text-sm text-text-muted">Loading leave context…</p>
         )}
-        <Textarea
-          label="Optional note"
+        <DailyUpdateEditor
           value={leaveNotes}
-          onChange={(e) => setLeaveNotes(e.target.value)}
-          placeholder="Anything else about time off this week or next?"
-          className="min-h-[64px]"
+          onChange={setLeaveNotes}
+          users={mentionUsers}
+          showExtras={false}
+          compact
+          placeholder="Anything else about time off this week or next? Use @name if needed."
         />
       </section>
 

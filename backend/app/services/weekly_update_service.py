@@ -10,6 +10,7 @@ from app.core.company_holidays import is_listed_company_holiday, is_weekend_off,
 from app.core.constants import (
     ActivityType,
     AttendanceStatus,
+    NotificationType,
     TaskStatus,
     UserStatus,
     WeeklyCommitmentType,
@@ -29,7 +30,9 @@ from app.models import (
     user_departments,
 )
 from app.repositories.base import ActivityRepository, user_to_brief_dict
+from app.services.notification_service import NotificationService
 from app.services.task_service import TaskService
+from app.utils.mentions import resolve_mentioned_user_ids
 from app.utils.week_periods import (
     RESOLVED_STATUSES,
     as_local_date,
@@ -458,6 +461,14 @@ class WeeklyUpdateService:
         commitments_in: list[dict] = payload.get("commitments") or []
         self._validate_payload(user, completions_in, commitments_in)
 
+        previous_mention_text = "\n".join(
+            [(report.leave_notes or "") if report else ""]
+            + [row.title or "" for row in (report.completions if report else [])]
+            + [row.title or "" for row in (report.commitments if report else [])]
+            + [row.description or "" for row in (report.commitments if report else [])]
+        )
+        previous_mentioned = resolve_mentioned_user_ids(previous_mention_text, self.db)
+
         if report is None:
             report = WeeklyReport(
                 user_id=user.id,
@@ -498,6 +509,32 @@ class WeeklyUpdateService:
             report.submitted_at = _utc_now()
         self.db.commit()
         self.db.refresh(report)
+
+        mention_text = "\n".join(
+            [payload.get("leave_notes") or ""]
+            + [item.get("title") or "" for item in completions_in]
+            + [item.get("title") or "" for item in commitments_in]
+            + [item.get("description") or "" for item in commitments_in]
+        )
+        mentioned_ids = resolve_mentioned_user_ids(
+            mention_text,
+            self.db,
+            payload.get("mentioned_user_ids") or [],
+        )
+        mentioned_ids.discard(user.id)
+        newly_mentioned = mentioned_ids - previous_mentioned
+        preview = mention_text.replace("\n", " ").strip()
+        if len(preview) > 120:
+            preview = preview[:117] + "..."
+        for uid in newly_mentioned:
+            NotificationService(self.db).notify(
+                uid,
+                NotificationType.MENTION.value,
+                f"Mentioned in {user.full_name}'s weekly update",
+                f'{user.full_name}: "{preview}"',
+                "/weekly-updates",
+            )
+
         view = self._report_view(self._report_for(user.id, start) or report)
         view["create_errors"] = create_errors
         return view
