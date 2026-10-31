@@ -8,8 +8,9 @@ import { Button } from '../components/ui/Button';
 import { UploadResourceModal } from '../components/work-vault/UploadResourceModal';
 import { ResourceDetailDrawer } from '../components/work-vault/ResourceDetailDrawer';
 import { PeopleFolders } from '../components/work-vault/PeopleFolders';
-import { FILE_KIND_LABELS, uploaderName } from '../lib/workVault';
-import type { WorkVaultResource } from '../types';
+import { PeriodFilter } from '../components/work-vault/PeriodFilter';
+import { FILE_KIND_LABELS, periodLabel, periodRange, uploaderName, type WorkVaultPeriod } from '../lib/workVault';
+import type { WorkVaultResource, WorkVaultTitleFolder } from '../types';
 
 export default function WorkVaultPage() {
   const qc = useQueryClient();
@@ -20,7 +21,10 @@ export default function WorkVaultPage() {
   const [fileKind, setFileKind] = useState('');
   const [uploaderId, setUploaderId] = useState('');
   const [sort, setSort] = useState('recent');
+  const [period, setPeriod] = useState<WorkVaultPeriod>('');
+  const [periodValue, setPeriodValue] = useState('');
   const [showUpload, setShowUpload] = useState(false);
+  const [uploadFolder, setUploadFolder] = useState<WorkVaultTitleFolder | null>(null);
   const [selected, setSelected] = useState<WorkVaultResource | null>(null);
   const [openFolderId, setOpenFolderId] = useState<number | null>(null);
 
@@ -39,11 +43,14 @@ export default function WorkVaultPage() {
     }).catch(() => undefined);
   }, [qc]);
 
+  const dateRange = periodRange(period, periodValue);
   const facetParams = {
     q: debounced || undefined,
     category: category || undefined,
     file_kind: fileKind || undefined,
     uploaded_by_id: uploaderId ? Number(uploaderId) : undefined,
+    created_from: dateRange.created_from,
+    created_to: dateRange.created_to,
   };
 
   const { data: facets } = useQuery({
@@ -95,11 +102,26 @@ export default function WorkVaultPage() {
         title="Work Vault"
         subtitle="Your team's shared space for documents, designs and work resources."
         action={
-          <Button size="sm" onClick={() => setShowUpload(true)} className="gap-1.5">
+          <Button size="sm" onClick={() => { setUploadFolder(null); setShowUpload(true); }} className="gap-1.5">
             <Plus className="h-3.5 w-3.5" /> Upload Resource
           </Button>
         }
       />
+
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-sm text-text-secondary min-w-0">
+          <span className="text-text-muted">Showing </span>
+          <span className="font-medium text-text-primary">{periodLabel(period, periodValue)}</span>
+        </p>
+        <PeriodFilter
+          mode={period}
+          value={periodValue}
+          onChange={(nextMode, nextValue) => {
+            setPeriod(nextMode);
+            setPeriodValue(nextValue);
+          }}
+        />
+      </div>
 
       <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
@@ -130,12 +152,12 @@ export default function WorkVaultPage() {
             <option key={row.id} value={row.id}>{uploaderName(row)}</option>
           ))}
         </select>
-        <select className="input py-1 text-xs w-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="recent">Recently added</option>
-          <option value="oldest">Oldest first</option>
-          <option value="title">Title A–Z</option>
-        </select>
-        <span className="text-2xs text-text-muted ml-auto">{isFetching && !peopleLoading ? 'Updating…' : `${total} resources`}</span>
+          <select className="input py-1 text-xs w-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="recent">Recently added</option>
+            <option value="oldest">Oldest first</option>
+            <option value="title">Title A–Z</option>
+          </select>
+          <span className="text-2xs text-text-muted ml-auto">{isFetching && !peopleLoading ? 'Updating…' : `${total} resources`}</span>
       </div>
 
       <PeopleFolders
@@ -146,11 +168,16 @@ export default function WorkVaultPage() {
         onOpenFolder={setOpenFolderId}
         listParams={{ ...facetParams, sort }}
         onOpenResource={openResource}
+        onUpload={(folder) => {
+          setUploadFolder(folder ?? null);
+          setShowUpload(true);
+        }}
       />
 
       <UploadResourceModal
         isOpen={showUpload}
-        onClose={() => setShowUpload(false)}
+        folder={uploadFolder}
+        onClose={() => { setShowUpload(false); setUploadFolder(null); }}
         onUploaded={() => { qc.invalidateQueries({ queryKey: ['work-vault'] }); }}
       />
       <ResourceDetailDrawer resource={selected} onClose={closeResource} onChanged={setSelected} />

@@ -145,6 +145,69 @@ def run_lightweight_migrations(engine) -> None:
             )
             if result.rowcount:
                 logger.info("Renamed %s Work Vault categories to API Integration", result.rowcount)
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        dialect = engine.dialect.name
+        if "work_vault_folders" not in tables:
+            if dialect == "postgresql":
+                create_sql = (
+                    "CREATE TABLE IF NOT EXISTS work_vault_folders ("
+                    "id SERIAL PRIMARY KEY, "
+                    "name VARCHAR(300) NOT NULL, "
+                    "owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                    "created_by_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                    "created_at TIMESTAMPTZ, "
+                    "CONSTRAINT uq_work_vault_folder_owner_name UNIQUE (owner_id, name)"
+                    ")"
+                )
+            else:
+                create_sql = (
+                    "CREATE TABLE IF NOT EXISTS work_vault_folders ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "name VARCHAR(300) NOT NULL, "
+                    "owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                    "created_by_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                    "created_at DATETIME, "
+                    "CONSTRAINT uq_work_vault_folder_owner_name UNIQUE (owner_id, name)"
+                    ")"
+                )
+            with engine.begin() as conn:
+                conn.execute(text(create_sql))
+            logger.info("Created work_vault_folders table")
+            inspector = inspect(engine)
+        vault_cols = {c["name"] for c in inspector.get_columns("work_vault_resources")}
+        if "folder_id" not in vault_cols:
+            if dialect == "postgresql":
+                col_sql = (
+                    "ALTER TABLE work_vault_resources ADD COLUMN IF NOT EXISTS folder_id INTEGER "
+                    "REFERENCES work_vault_folders(id) ON DELETE SET NULL"
+                )
+            else:
+                col_sql = "ALTER TABLE work_vault_resources ADD COLUMN folder_id INTEGER REFERENCES work_vault_folders(id)"
+            with engine.begin() as conn:
+                conn.execute(text(col_sql))
+            logger.info("Added work_vault_resources.folder_id column")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO work_vault_folders (name, owner_id, created_by_id, created_at) "
+                    "SELECT r.title, r.uploaded_by_id, r.uploaded_by_id, MIN(r.created_at) "
+                    "FROM work_vault_resources r "
+                    "LEFT JOIN work_vault_folders f "
+                    "ON f.owner_id = r.uploaded_by_id AND f.name = r.title "
+                    "WHERE r.folder_id IS NULL AND f.id IS NULL "
+                    "GROUP BY r.uploaded_by_id, r.title"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE work_vault_resources SET folder_id = ("
+                    "SELECT id FROM work_vault_folders "
+                    "WHERE owner_id = work_vault_resources.uploaded_by_id "
+                    "AND name = work_vault_resources.title"
+                    ") WHERE folder_id IS NULL"
+                )
+            )
         existing_indexes = {idx["name"] for idx in inspector.get_indexes("work_vault_resources")}
         wanted = {
             "ix_work_vault_category_created": ("category", "created_at"),

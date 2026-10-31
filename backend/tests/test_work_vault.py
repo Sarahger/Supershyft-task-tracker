@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -7,7 +9,7 @@ from app.core.security import create_access_token, get_password_hash
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
-from app.models import Department, User
+from app.models import Department, User, WorkVaultResource
 
 
 def auth_header(user: User) -> dict:
@@ -288,6 +290,48 @@ def test_api_integration_method_and_path():
             headers=auth_header(emp),
         )
         assert rejected.status_code == 400
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_title_folders_and_date_filter():
+    client, session, engine = setup_client()
+    try:
+        emp, other, _admin = make_users(session)
+        first = create_link(client, emp, title="App screens", url="https://www.figma.com/file/one")
+        second = create_link(client, emp, title="App screens", url="https://www.figma.com/file/two")
+        assert first.status_code == 200, first.text
+        assert second.status_code == 200, second.text
+        assert first.json()["data"]["folder_id"]
+        assert first.json()["data"]["folder_id"] == second.json()["data"]["folder_id"]
+        assert first.json()["data"]["folder_name"] == "App screens"
+
+        empty = client.post(
+            "/api/work-vault/folders",
+            json={"name": "Later uploads"},
+            headers=auth_header(emp),
+        )
+        assert empty.status_code == 200, empty.text
+        folders = client.get("/api/work-vault/folders", params={"owner_id": emp.id}, headers=auth_header(other))
+        names = {row["name"] for row in folders.json()["data"]["items"]}
+        assert names == {"App screens", "Later uploads"}
+
+        old = session.query(WorkVaultResource).filter(WorkVaultResource.id == first.json()["data"]["id"]).one()
+        old.created_at = datetime.now(timezone.utc) - timedelta(days=40)
+        session.commit()
+        today = datetime.now(timezone.utc).date()
+        month_start = today.replace(day=1).isoformat()
+        listed = client.get(
+            "/api/work-vault/resources",
+            params={"created_from": month_start, "created_to": today.isoformat(), "uploaded_by_id": emp.id},
+            headers=auth_header(other),
+        )
+        assert listed.status_code == 200
+        assert listed.json()["data"]["total"] == 1
+        assert listed.json()["data"]["items"][0]["id"] == second.json()["data"]["id"]
     finally:
         app.dependency_overrides.clear()
         session.close()

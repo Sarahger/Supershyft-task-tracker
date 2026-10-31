@@ -859,6 +859,8 @@ export interface WorkVaultResource {
   mime_type?: string | null;
   url?: string | null;
   http_method?: string | null;
+  folder_id?: number | null;
+  folder_name?: string | null;
   uploaded_by: WorkVaultUploader;
   created_at: string;
   updated_at: string;
@@ -880,6 +882,16 @@ export interface WorkVaultFacets {
   categories: WorkVaultFacet[];
   file_kinds: WorkVaultFacet[];
   uploaders: WorkVaultUploaderFacet[];
+}
+
+export interface WorkVaultTitleFolder {
+  id: number;
+  name: string;
+  owner_id: number;
+  count: number;
+  created_at: string;
+  updated_at?: string | null;
+  can_delete: boolean;
 }
 
 export interface WorkVaultPersonFolder {

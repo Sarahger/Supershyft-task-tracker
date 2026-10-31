@@ -1,5 +1,5 @@
 import api from './api';
-import type { Announcement, AnnouncementAttachment, AnnouncementWeek, APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory, WorkVaultFacets, WorkVaultPersonFolder, WorkVaultResource } from '../types';
+import type { Announcement, AnnouncementAttachment, AnnouncementWeek, APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory, WorkVaultFacets, WorkVaultPersonFolder, WorkVaultResource, WorkVaultTitleFolder } from '../types';
 
 export const authApi = {
   requestOtp: (email: string) =>
@@ -314,6 +314,12 @@ export const workVaultApi = {
     api.get<APIResponse<PaginatedResponse<WorkVaultResource>>>('/work-vault/resources', { params }),
   people: (params?: Record<string, unknown>) =>
     api.get<APIResponse<{ items: WorkVaultPersonFolder[] }>>('/work-vault/people', { params }),
+  folders: (params?: Record<string, unknown>) =>
+    api.get<APIResponse<{ items: WorkVaultTitleFolder[] }>>('/work-vault/folders', { params }),
+  createFolder: (name: string) =>
+    api.post<APIResponse<WorkVaultTitleFolder>>('/work-vault/folders', { name }),
+  removeFolder: (id: number) =>
+    api.delete<APIResponse<null>>(`/work-vault/folders/${id}`),
   unreadCount: () =>
     api.get<APIResponse<{ count: number }>>('/work-vault/unread-count'),
   markSeen: () => api.post<APIResponse<{ count: number }>>('/work-vault/seen'),

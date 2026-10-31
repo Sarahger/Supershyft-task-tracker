@@ -1,5 +1,6 @@
 import math
 import os
+from datetime import date, datetime, time, timedelta
 from urllib.parse import urlparse
 
 from fastapi import HTTPException
@@ -15,7 +16,8 @@ from app.core.constants import (
     UserRole,
 )
 from app.core.datetime_utils import utcnow
-from app.models import Project, User, WorkVaultResource, user_departments
+from app.models import Project, User, WorkVaultFolder, WorkVaultResource, user_departments
+from app.utils.month_weeks import get_app_timezone
 from app.repositories.base import user_to_brief_dict
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp"}
@@ -119,6 +121,25 @@ def can_manage(user: User, resource: WorkVaultResource) -> bool:
     return user.id == resource.uploaded_by_id or user.role == UserRole.ADMIN.value
 
 
+def can_manage_folder(user: User, folder: WorkVaultFolder) -> bool:
+    return user.id == folder.owner_id or user.role == UserRole.ADMIN.value
+
+
+def parse_day_bound(value: str | None, *, end: bool = False) -> datetime | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        day = date.fromisoformat(raw[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Use a valid date filter") from exc
+    zone = get_app_timezone()
+    start = datetime.combine(day, time.min, tzinfo=zone)
+    if end:
+        return start + timedelta(days=1)
+    return start
+
+
 class WorkVaultService:
     def __init__(self, db: Session):
         self.db = db
@@ -129,6 +150,7 @@ class WorkVaultService:
             .options(
                 joinedload(WorkVaultResource.uploader),
                 joinedload(WorkVaultResource.project),
+                joinedload(WorkVaultResource.folder),
             )
             .join(User, WorkVaultResource.uploaded_by_id == User.id)
         )
@@ -142,6 +164,9 @@ class WorkVaultService:
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
         project_id: int | None = None,
+        folder_id: int | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
     ):
         term = (q or "").strip()
         if term:
@@ -169,6 +194,14 @@ class WorkVaultService:
             query = query.filter(WorkVaultResource.uploaded_by_id == uploaded_by_id)
         if project_id:
             query = query.filter(WorkVaultResource.project_id == project_id)
+        if folder_id:
+            query = query.filter(WorkVaultResource.folder_id == folder_id)
+        start = parse_day_bound(created_from)
+        end = parse_day_bound(created_to, end=True)
+        if start:
+            query = query.filter(WorkVaultResource.created_at >= start)
+        if end:
+            query = query.filter(WorkVaultResource.created_at < end)
         return query
 
     def _apply_sort(self, query, sort: str | None):
@@ -196,6 +229,8 @@ class WorkVaultService:
             "mime_type": resource.mime_type,
             "url": resource.url if resource.resource_type == "link" else None,
             "http_method": resource.http_method,
+            "folder_id": resource.folder_id,
+            "folder_name": resource.folder.name if resource.folder else None,
             "uploaded_by": user_to_brief_dict(resource.uploader),
             "created_at": resource.created_at,
             "updated_at": resource.updated_at,
@@ -212,6 +247,9 @@ class WorkVaultService:
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
         project_id: int | None = None,
+        folder_id: int | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
         sort: str | None = "recent",
         page: int = 1,
         page_size: int = 20,
@@ -223,6 +261,9 @@ class WorkVaultService:
             file_kind=file_kind,
             uploaded_by_id=uploaded_by_id,
             project_id=project_id,
+            folder_id=folder_id,
+            created_from=created_from,
+            created_to=created_to,
         )
         total = query.order_by(None).count()
         query = self._apply_sort(query, sort)
@@ -243,6 +284,9 @@ class WorkVaultService:
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
         project_id: int | None = None,
+        folder_id: int | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
     ) -> dict:
         filtered = self._apply_filters(
             self.db.query(WorkVaultResource).join(User, WorkVaultResource.uploaded_by_id == User.id),
@@ -251,6 +295,9 @@ class WorkVaultService:
             file_kind=file_kind,
             uploaded_by_id=uploaded_by_id,
             project_id=project_id,
+            folder_id=folder_id,
+            created_from=created_from,
+            created_to=created_to,
         )
         category_rows = (
             filtered.with_entities(WorkVaultResource.category, func.count(WorkVaultResource.id))
@@ -345,6 +392,8 @@ class WorkVaultService:
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
         project_id: int | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
     ) -> dict:
         filtered = self._apply_filters(
             self.db.query(WorkVaultResource).join(User, WorkVaultResource.uploaded_by_id == User.id),
@@ -353,6 +402,8 @@ class WorkVaultService:
             file_kind=file_kind,
             uploaded_by_id=uploaded_by_id,
             project_id=project_id,
+            created_from=created_from,
+            created_to=created_to,
         )
         count_rows = (
             filtered.with_entities(WorkVaultResource.uploaded_by_id, func.count(WorkVaultResource.id))
@@ -386,20 +437,21 @@ class WorkVaultService:
             else:
                 people_query = people_query.filter(name_match)
         people = people_query.order_by(func.lower(User.first_name), func.lower(User.last_name)).all()
-        return {
-            "items": [
-                {
-                    "id": person.id,
-                    "first_name": person.first_name,
-                    "last_name": person.last_name,
-                    "profile_picture": person.profile_picture,
-                    "job_title": person.job_title,
-                    "count": counts.get(person.id, 0),
-                    "has_new": person.id in unread_ids,
-                }
-                for person in people
-            ]
-        }
+        items = [
+            {
+                "id": person.id,
+                "first_name": person.first_name,
+                "last_name": person.last_name,
+                "profile_picture": person.profile_picture,
+                "job_title": person.job_title,
+                "count": counts.get(person.id, 0),
+                "has_new": person.id in unread_ids,
+            }
+            for person in people
+        ]
+        if created_from or created_to:
+            items = [row for row in items if row["count"] > 0]
+        return {"items": items}
 
     def get(self, resource_id: int) -> WorkVaultResource:
         resource = (
@@ -407,6 +459,7 @@ class WorkVaultService:
             .options(
                 joinedload(WorkVaultResource.uploader),
                 joinedload(WorkVaultResource.project),
+                joinedload(WorkVaultResource.folder),
             )
             .filter(WorkVaultResource.id == resource_id)
             .first()
@@ -414,6 +467,120 @@ class WorkVaultService:
         if not resource:
             raise HTTPException(status_code=404, detail="Resource not found")
         return resource
+
+    def get_folder(self, folder_id: int) -> WorkVaultFolder:
+        folder = self.db.query(WorkVaultFolder).filter(WorkVaultFolder.id == folder_id).first()
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        return folder
+
+    def get_or_create_folder(self, user: User, name: str, owner_id: int | None = None) -> WorkVaultFolder:
+        title = " ".join((name or "").split())[:300]
+        if not title:
+            raise HTTPException(status_code=400, detail="Folder name is required")
+        owner = owner_id or user.id
+        folder = (
+            self.db.query(WorkVaultFolder)
+            .filter(WorkVaultFolder.owner_id == owner, func.lower(WorkVaultFolder.name) == title.lower())
+            .first()
+        )
+        if folder:
+            return folder
+        folder = WorkVaultFolder(name=title, owner_id=owner, created_by_id=user.id)
+        self.db.add(folder)
+        self.db.flush()
+        return folder
+
+    def create_folder(self, user: User, name: str) -> WorkVaultFolder:
+        title = " ".join((name or "").split())[:300]
+        if not title:
+            raise HTTPException(status_code=400, detail="Folder name is required")
+        existing = (
+            self.db.query(WorkVaultFolder)
+            .filter(WorkVaultFolder.owner_id == user.id, func.lower(WorkVaultFolder.name) == title.lower())
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=400, detail="You already have a folder with that name")
+        folder = WorkVaultFolder(name=title, owner_id=user.id, created_by_id=user.id)
+        self.db.add(folder)
+        self.db.commit()
+        self.db.refresh(folder)
+        return folder
+
+    def list_folders(
+        self,
+        viewer: User,
+        *,
+        owner_id: int,
+        q: str | None = None,
+        category: str | None = None,
+        file_kind: str | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
+    ) -> dict:
+        folders = (
+            self.db.query(WorkVaultFolder)
+            .filter(WorkVaultFolder.owner_id == owner_id)
+            .order_by(func.lower(WorkVaultFolder.name))
+            .all()
+        )
+        counts: dict[int, int] = {}
+        latest: dict[int, datetime] = {}
+        if folders:
+            filtered = self._apply_filters(
+                self.db.query(WorkVaultResource).join(User, WorkVaultResource.uploaded_by_id == User.id),
+                q=q,
+                category=category,
+                file_kind=file_kind,
+                uploaded_by_id=owner_id,
+                created_from=created_from,
+                created_to=created_to,
+            ).filter(WorkVaultResource.folder_id.in_([folder.id for folder in folders]))
+            rows = (
+                filtered.with_entities(
+                    WorkVaultResource.folder_id,
+                    func.count(WorkVaultResource.id),
+                    func.max(WorkVaultResource.created_at),
+                )
+                .group_by(WorkVaultResource.folder_id)
+                .all()
+            )
+            counts = {folder_id: count for folder_id, count, _created in rows if folder_id}
+            latest = {folder_id: created for folder_id, _count, created in rows if folder_id}
+        items = []
+        for folder in folders:
+            count = counts.get(folder.id, 0)
+            if (created_from or created_to) and count == 0:
+                continue
+            items.append({
+                "id": folder.id,
+                "name": folder.name,
+                "owner_id": folder.owner_id,
+                "count": count,
+                "created_at": folder.created_at,
+                "updated_at": latest.get(folder.id) or folder.created_at,
+                "can_delete": can_manage_folder(viewer, folder) and count == 0,
+            })
+        return {"items": items}
+
+    def delete_folder(self, user: User, folder_id: int) -> None:
+        folder = self.get_folder(folder_id)
+        if not can_manage_folder(user, folder):
+            raise HTTPException(status_code=403, detail="You can only delete your own folders")
+        remaining = self.db.query(WorkVaultResource).filter(WorkVaultResource.folder_id == folder.id).count()
+        if remaining:
+            raise HTTPException(status_code=400, detail="Move or delete the files in this folder first")
+        self.db.delete(folder)
+        self.db.commit()
+
+    def _require_folder(self, user: User, folder_id: int | None, title: str) -> WorkVaultFolder:
+        if folder_id:
+            folder = self.get_folder(folder_id)
+            if folder.owner_id != user.id and user.role != UserRole.ADMIN.value:
+                raise HTTPException(status_code=403, detail="You can only upload into your own folders")
+            return folder
+        return self.get_or_create_folder(user, title)
 
     def _require_project(self, project_id: int | None) -> int | None:
         if project_id is None:
@@ -434,6 +601,7 @@ class WorkVaultService:
         project_id: int | None = None,
         url: str | None = None,
         http_method: str | None = None,
+        folder_id: int | None = None,
         filename: str | None = None,
         file_path: str | None = None,
         file_size: int | None = None,
@@ -447,6 +615,8 @@ class WorkVaultService:
         if not description_value:
             raise HTTPException(status_code=400, detail="Description is required")
         category_value = validate_category(category)
+        folder = self._require_folder(user, folder_id, title_value)
+        title_value = folder.name
         has_file = bool(file_path)
         has_url = bool((url or "").strip())
 
@@ -460,6 +630,7 @@ class WorkVaultService:
                 category=category_value,
                 tags=parse_tags(tags),
                 project_id=None,
+                folder_id=folder.id,
                 resource_type="link",
                 file_kind="api",
                 http_method=method,
@@ -483,6 +654,7 @@ class WorkVaultService:
                 category=category_value,
                 tags=parse_tags(tags),
                 project_id=self._require_project(project_id),
+                folder_id=folder.id,
                 resource_type=resource_type,
                 file_kind="link",
                 url=external_url,
@@ -496,6 +668,7 @@ class WorkVaultService:
                 category=category_value,
                 tags=parse_tags(tags),
                 project_id=self._require_project(project_id),
+                folder_id=folder.id,
                 resource_type="file",
                 file_kind=infer_file_kind("file", safe_name, mime_type),
                 filename=safe_name,

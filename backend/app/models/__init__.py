@@ -785,6 +785,24 @@ class AnnouncementReaction(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
+class WorkVaultFolder(Base):
+    __tablename__ = "work_vault_folders"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_work_vault_folder_owner_name"),
+        Index("ix_work_vault_folder_owner", "owner_id", "name"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(300), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    creator = relationship("User", foreign_keys=[created_by_id])
+    resources = relationship("WorkVaultResource", back_populates="folder")
+
+
 class WorkVaultResource(Base):
     __tablename__ = "work_vault_resources"
     __table_args__ = (
@@ -799,6 +817,7 @@ class WorkVaultResource(Base):
     category = Column(String(100), nullable=False, index=True)
     tags = Column(String(1000), nullable=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    folder_id = Column(Integer, ForeignKey("work_vault_folders.id", ondelete="SET NULL"), nullable=True, index=True)
     resource_type = Column(String(20), nullable=False, default="file")
     file_kind = Column(String(40), nullable=False, default="other", index=True)
     filename = Column(String(500), nullable=True)
@@ -813,6 +832,7 @@ class WorkVaultResource(Base):
 
     uploader = relationship("User", foreign_keys=[uploaded_by_id])
     project = relationship("Project")
+    folder = relationship("WorkVaultFolder", back_populates="resources")
 
 
 class AnnouncementAttachment(Base):

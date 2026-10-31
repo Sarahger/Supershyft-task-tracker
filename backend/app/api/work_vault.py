@@ -11,7 +11,7 @@ from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.models import User
 from app.schemas.common import APIResponse
-from app.schemas.work_vault import WorkVaultResourceUpdate
+from app.schemas.work_vault import WorkVaultFolderCreate, WorkVaultResourceUpdate
 from app.services.storage import (
     StorageError,
     delete_stored_file,
@@ -67,6 +67,8 @@ def list_people(
     file_kind: str | None = Query(None),
     uploaded_by_id: int | None = Query(None),
     project_id: int | None = Query(None),
+    created_from: str | None = Query(None),
+    created_to: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -77,8 +79,64 @@ def list_people(
         file_kind=file_kind,
         uploaded_by_id=uploaded_by_id,
         project_id=project_id,
+        created_from=created_from,
+        created_to=created_to,
     )
     return APIResponse(data=data)
+
+
+@router.get("/folders")
+def list_folders(
+    owner_id: int = Query(...),
+    q: str | None = Query(None),
+    category: str | None = Query(None),
+    file_kind: str | None = Query(None),
+    created_from: str | None = Query(None),
+    created_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    data = WorkVaultService(db).list_folders(
+        current_user,
+        owner_id=owner_id,
+        q=q,
+        category=category,
+        file_kind=file_kind,
+        created_from=created_from,
+        created_to=created_to,
+    )
+    return APIResponse(data=data)
+
+
+@router.post("/folders")
+def create_folder(
+    body: WorkVaultFolderCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    folder = WorkVaultService(db).create_folder(current_user, body.name)
+    return APIResponse(
+        data={
+            "id": folder.id,
+            "name": folder.name,
+            "owner_id": folder.owner_id,
+            "count": 0,
+            "created_at": folder.created_at,
+            "updated_at": folder.created_at,
+            "can_delete": True,
+        },
+        message="Folder created",
+    )
+
+
+@router.delete("/folders/{folder_id}")
+def delete_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    WorkVaultService(db).delete_folder(current_user, folder_id)
+    return APIResponse(data=None, message="Folder deleted")
 
 
 @router.get("/facets")
@@ -88,6 +146,9 @@ def list_facets(
     file_kind: str | None = Query(None),
     uploaded_by_id: int | None = Query(None),
     project_id: int | None = Query(None),
+    folder_id: int | None = Query(None),
+    created_from: str | None = Query(None),
+    created_to: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -97,6 +158,9 @@ def list_facets(
         file_kind=file_kind,
         uploaded_by_id=uploaded_by_id,
         project_id=project_id,
+        folder_id=folder_id,
+        created_from=created_from,
+        created_to=created_to,
     )
     return APIResponse(data=data)
 
@@ -108,6 +172,9 @@ def list_resources(
     file_kind: str | None = Query(None),
     uploaded_by_id: int | None = Query(None),
     project_id: int | None = Query(None),
+    folder_id: int | None = Query(None),
+    created_from: str | None = Query(None),
+    created_to: str | None = Query(None),
     sort: str = Query("recent"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -121,6 +188,9 @@ def list_resources(
         file_kind=file_kind,
         uploaded_by_id=uploaded_by_id,
         project_id=project_id,
+        folder_id=folder_id,
+        created_from=created_from,
+        created_to=created_to,
         sort=sort,
         page=page,
         page_size=page_size,
@@ -138,6 +208,7 @@ async def create_resource(
     project_id: int | None = Form(None),
     url: str | None = Form(None),
     http_method: str | None = Form(None),
+    folder_id: int | None = Form(None),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -182,6 +253,7 @@ async def create_resource(
             project_id=project_id,
             url=url,
             http_method=http_method,
+            folder_id=folder_id,
             filename=filename,
             file_path=stored_path,
             file_size=file_size,

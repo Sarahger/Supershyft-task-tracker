@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link2, Plus, Trash2, Upload } from 'lucide-react';
 import { Modal } from '../ui/Modal';
@@ -14,9 +14,11 @@ import {
   WORK_VAULT_HTTP_METHODS,
 } from '../../lib/workVault';
 import { TagMentionInput } from './TagMentionInput';
+import type { WorkVaultTitleFolder } from '../../types';
 
 interface UploadResourceModalProps {
   isOpen: boolean;
+  folder?: WorkVaultTitleFolder | null;
   onClose: () => void;
   onUploaded: () => void;
 }
@@ -34,9 +36,9 @@ function emptyApiItem(): DraftItem {
   return { key: newKey(), kind: 'api', method: 'GET', path: '' };
 }
 
-export function UploadResourceModal({ isOpen, onClose, onUploaded }: UploadResourceModalProps) {
+export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: UploadResourceModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(folder?.name ?? '');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<string>('Technical Documentation');
   const [tags, setTags] = useState<string[]>([]);
@@ -44,6 +46,10 @@ export function UploadResourceModal({ isOpen, onClose, onUploaded }: UploadResou
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) setTitle(folder?.name ?? '');
+  }, [isOpen, folder]);
 
   const { data: users } = useQuery({
     queryKey: ['users'],
@@ -62,7 +68,7 @@ export function UploadResourceModal({ isOpen, onClose, onUploaded }: UploadResou
   const isApi = category === WORK_VAULT_API_CATEGORY;
 
   const reset = () => {
-    setTitle('');
+    setTitle(folder?.name ?? '');
     setDescription('');
     setCategory('Technical Documentation');
     setTags([]);
@@ -143,6 +149,7 @@ export function UploadResourceModal({ isOpen, onClose, onUploaded }: UploadResou
       form.append('title', sharedTitle);
       form.append('description', sharedDescription);
       form.append('category', category);
+      if (folder?.id) form.append('folder_id', String(folder.id));
       if (tags.length) form.append('tags', tags.join(', '));
       if (item.kind === 'file') form.append('file', item.file);
       if (item.kind === 'url') form.append('url', item.url.trim());
@@ -183,6 +190,7 @@ export function UploadResourceModal({ isOpen, onClose, onUploaded }: UploadResou
           onChange={(e) => setTitle(e.target.value)}
           placeholder="App screens"
           required
+          disabled={!!folder}
         />
         <Textarea
           label="Description"
