@@ -301,6 +301,10 @@ html.light {
     outline: none;
     box-shadow: 0 0 0 3px var(--focus-ring);
   }
+  .input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
   .chip {
     @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium leading-none whitespace-nowrap;
   }

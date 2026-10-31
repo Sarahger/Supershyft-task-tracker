@@ -39,14 +39,16 @@ from app.utils.week_periods import (
     current_week_start,
     due_at_noon,
     editable_until_for,
+    is_auto_sync_open,
     is_report_editable,
     monday_of,
-    now_local,
     period_datetime_bounds,
     period_end_for_submit,
     planning_window,
     resolve_period,
+    saturday_of,
     today_local,
+    week_datetime_bounds,
 )
 
 
@@ -72,6 +74,14 @@ def _author(user: User | None) -> dict | None:
     brief = user_to_brief_dict(user) or {}
     brief["job_title"] = user.job_title
     return brief
+
+
+def _task_hours(task: Task | None) -> float | None:
+    if not task:
+        return None
+    if task.estimated_hours is not None:
+        return task.estimated_hours
+    return task.actual_hours
 
 
 def _coerce_due(value: datetime | date) -> datetime:
@@ -147,7 +157,7 @@ class WeeklyUpdateService:
                     {
                         "date": cursor.isoformat(),
                         "status": status,
-                        "label": "Half day" if status == AttendanceStatus.HALF_DAY.value else "Leave",
+                        "label": "Half day" if status == AttendanceStatus.HALF_DAY.value else "Annual leave",
                     }
                 )
             if is_working_day(cursor):
@@ -168,67 +178,197 @@ class WeeklyUpdateService:
 
     def get_leave_context(self, user: User, period_start: date | None = None) -> dict:
         period = self._period(period_start)
+        reporting_end = max(period.period_end, saturday_of(period.period_start))
         return {
             "period_start": period.period_start.isoformat(),
-            "reporting": self.leave_context(user.id, period.period_start, period.period_end),
+            "reporting": self.leave_context(user.id, period.period_start, reporting_end),
             "planning": self.leave_context(user.id, period.planning_start, period.planning_end),
         }
 
     def suggestions(self, user: User, period_start: date | None = None) -> dict:
         period = self._period(period_start)
-        adopted_at = user.weekly_updates_adopted_at
-        if not adopted_at:
-            return {
-                "period_start": period.period_start.isoformat(),
-                "period_end": period.period_end.isoformat(),
-                "adopted_at": None,
-                "items": [],
-            }
-        start_dt, end_dt = period_datetime_bounds(period.period_start, period.period_end)
-        if adopted_at.tzinfo is None:
-            adopted_at = adopted_at.replace(tzinfo=timezone.utc)
-        already = set()
-        existing = self._report_for(user.id, period.period_start)
-        if existing:
-            already = {c.task_id for c in existing.completions if c.task_id and c.included}
+        self.sync_week_completions(user, period.period_start)
+        report = self._report_for(user.id, period.period_start)
+        items = []
+        if report:
+            for row in report.completions:
+                if not row.included or not row.task_id:
+                    continue
+                items.append(
+                    {
+                        "task_id": row.task_id,
+                        "title": row.title,
+                        "completion_date": row.completion_date,
+                        "completed_at": row.task.completed_at if row.task else None,
+                        "estimated_hours": _task_hours(row.task),
+                        "source": row.source or WeeklyCompletionSource.SUGGESTED.value,
+                        "included": True,
+                    }
+                )
+        return {
+            "period_start": period.period_start.isoformat(),
+            "period_end": period.period_end.isoformat(),
+            "adopted_at": user.weekly_updates_adopted_at,
+            "items": items,
+        }
 
+    def record_completed_task(self, task: Task) -> None:
+        if not task or task.status != TaskStatus.COMPLETED.value:
+            return
+        completed_day = as_local_date(task.completed_at) or today_local()
+        period_start = monday_of(completed_day)
+        if not is_auto_sync_open(period_start):
+            return
+        assignee_ids = [a.user_id for a in (task.assignees or [])]
+        if not assignee_ids:
+            return
+        for user_id in assignee_ids:
+            report = self._ensure_editable_report(user_id, period_start)
+            if report is None:
+                continue
+            existing_ids = {c.task_id for c in report.completions if c.task_id}
+            if task.id in existing_ids:
+                continue
+            report.completions.append(
+                WeeklyReportCompletion(
+                    task_id=task.id,
+                    title=task.title,
+                    completion_date=completed_day,
+                    source=WeeklyCompletionSource.SUGGESTED.value,
+                    included=True,
+                )
+            )
+        self.db.commit()
+
+    def remove_completed_task(self, task_id: int) -> None:
+        rows = (
+            self.db.query(WeeklyReportCompletion)
+            .options(joinedload(WeeklyReportCompletion.report))
+            .filter(
+                WeeklyReportCompletion.task_id == task_id,
+                WeeklyReportCompletion.source == WeeklyCompletionSource.SUGGESTED.value,
+            )
+            .all()
+        )
+        changed = False
+        report_ids: set[int] = set()
+        for row in rows:
+            report = row.report
+            if report is None or not is_report_editable(report.period_start, report.status):
+                continue
+            report_ids.add(report.id)
+            self.db.delete(row)
+            changed = True
+        self.db.flush()
+        for report_id in report_ids:
+            report = self.db.query(WeeklyReport).filter(WeeklyReport.id == report_id).first()
+            if report is None:
+                continue
+            if (
+                report.status == WeeklyReportStatus.DRAFT.value
+                and not report.completions
+                and not report.commitments
+                and not report.leave_notes
+            ):
+                self.db.delete(report)
+        if changed:
+            self.db.commit()
+
+    def sync_week_completions(self, user: User, period_start: date | None = None) -> None:
+        period = self._period(period_start)
+        if not is_auto_sync_open(period.period_start):
+            return
+        tasks = self._completed_tasks_for_user(user.id, period.period_start)
+        report = self._report_for(user.id, period.period_start)
+        if not tasks and report is None:
+            return
+        if report is None:
+            report = self._ensure_editable_report(user.id, period.period_start)
+        elif not is_report_editable(report.period_start, report.status):
+            return
+        if report is None:
+            return
+        completed_ids = {task.id for task in tasks}
+        existing_ids = {c.task_id for c in report.completions if c.task_id}
+        for task in tasks:
+            if task.id in existing_ids:
+                continue
+            report.completions.append(
+                WeeklyReportCompletion(
+                    task_id=task.id,
+                    title=task.title,
+                    completion_date=as_local_date(task.completed_at) or today_local(),
+                    source=WeeklyCompletionSource.SUGGESTED.value,
+                    included=True,
+                )
+            )
+            existing_ids.add(task.id)
+        for row in list(report.completions):
+            if row.source != WeeklyCompletionSource.SUGGESTED.value:
+                continue
+            if row.task_id and row.task_id not in completed_ids:
+                report.completions.remove(row)
+        if (
+            report.status == WeeklyReportStatus.DRAFT.value
+            and not report.completions
+            and not report.commitments
+            and not report.leave_notes
+        ):
+            self.db.delete(report)
+        self.db.commit()
+
+    def _completed_tasks_for_user(self, user_id: int, period_start: date) -> list[Task]:
+        start_dt, end_dt = week_datetime_bounds(period_start)
         rows = (
             self.db.query(Task)
             .join(TaskAssignee, TaskAssignee.task_id == Task.id)
             .filter(
-                TaskAssignee.user_id == user.id,
+                TaskAssignee.user_id == user_id,
                 Task.status == TaskStatus.COMPLETED.value,
                 Task.is_archived.is_(False),
                 Task.completed_at.isnot(None),
                 Task.completed_at >= start_dt,
                 Task.completed_at < end_dt,
-                Task.completed_at >= adopted_at,
             )
-            .order_by(Task.completed_at.desc())
+            .order_by(Task.completed_at.asc())
             .all()
         )
-        items = []
         seen: set[int] = set()
+        unique: list[Task] = []
         for task in rows:
-            if task.id in already or task.id in seen:
+            if task.id in seen:
                 continue
             seen.add(task.id)
-            items.append(
-                {
-                    "task_id": task.id,
-                    "title": task.title,
-                    "completion_date": as_local_date(task.completed_at),
-                    "completed_at": task.completed_at,
-                    "source": WeeklyCompletionSource.SUGGESTED.value,
-                    "included": True,
-                }
-            )
-        return {
-            "period_start": period.period_start.isoformat(),
-            "period_end": period.period_end.isoformat(),
-            "adopted_at": adopted_at,
-            "items": items,
-        }
+            unique.append(task)
+        return unique
+
+    def _ensure_editable_report(self, user_id: int, period_start: date) -> WeeklyReport | None:
+        report = self._report_for(user_id, period_start)
+        if report:
+            if not is_report_editable(report.period_start, report.status):
+                return None
+            return report
+        if not is_auto_sync_open(period_start):
+            return None
+        today = today_local()
+        plan_start, plan_end = planning_window(period_start)
+        report = WeeklyReport(
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end_for_submit(period_start, today),
+            planning_start=plan_start,
+            planning_end=plan_end,
+            status=WeeklyReportStatus.DRAFT.value,
+        )
+        self.db.add(report)
+        try:
+            self.db.flush()
+        except IntegrityError:
+            self.db.rollback()
+            report = self._report_for(user_id, period_start)
+            if report is None or not is_report_editable(report.period_start, report.status):
+                return None
+        return report
 
     def carry_forward(self, user: User, period_start: date | None = None) -> dict:
         period = self._period(period_start)
@@ -393,6 +533,11 @@ class WeeklyUpdateService:
         if not user or user.status == UserStatus.INACTIVE.value:
             raise HTTPException(status_code=404, detail="User not found")
         period = self._period(week_start)
+        current = current_week_start()
+        if is_auto_sync_open(period.period_start):
+            self.sync_week_completions(user, period.period_start)
+        if current != period.period_start and is_auto_sync_open(current):
+            self.sync_week_completions(user, current)
         reports = (
             self.db.query(WeeklyReport)
             .options(
@@ -451,10 +596,10 @@ class WeeklyUpdateService:
         plan_start, plan_end = planning_window(start)
 
         report = self._report_for(user.id, start)
-        if report and not is_report_editable(report.period_start, report.status):
+        if not is_report_editable(start, report.status if report else WeeklyReportStatus.DRAFT.value):
             raise HTTPException(
                 status_code=403,
-                detail="This weekly update can only be edited until 10:30 AM on the following Monday",
+                detail="This weekly update can only be edited until 12:00 PM on the following Monday",
             )
 
         completions_in: list[dict] = payload.get("completions") or []
@@ -489,7 +634,7 @@ class WeeklyUpdateService:
                 if not is_report_editable(report.period_start, report.status):
                     raise HTTPException(
                         status_code=403,
-                        detail="This weekly update can only be edited until 10:30 AM on the following Monday",
+                        detail="This weekly update can only be edited until 12:00 PM on the following Monday",
                     )
 
         report.period_end = period_end
@@ -547,12 +692,8 @@ class WeeklyUpdateService:
         new_due_date: datetime,
         weekly_report_id: int | None = None,
     ) -> dict:
-        if user.id not in {a.user_id for a in (task.assignees or [])}:
-            raise HTTPException(status_code=403, detail="Only the assignee can revise this deadline")
         if task.status in RESOLVED_STATUSES:
             raise HTTPException(status_code=400, detail="Resolved tasks cannot have their deadline revised")
-        if not _is_overdue(task):
-            raise HTTPException(status_code=400, detail="Only overdue tasks require a deadline revision")
         cleaned = (reason or "").strip()
         if not cleaned:
             raise HTTPException(status_code=400, detail="A reason for the delay is required")
@@ -643,23 +784,25 @@ class WeeklyUpdateService:
         self.db.flush()
         seen: set[int] = set()
         for item in items:
-            if not item.get("included", True):
-                continue
+            included = bool(item.get("included", True))
             task_id = item.get("task_id")
             if task_id:
                 if task_id in seen:
                     continue
                 seen.add(task_id)
+            title = (item.get("title") or "").strip()
+            if included and not title:
+                continue
             source = item.get("source") or WeeklyCompletionSource.MANUAL.value
             if source not in {s.value for s in WeeklyCompletionSource}:
                 source = WeeklyCompletionSource.MANUAL.value
             report.completions.append(
                 WeeklyReportCompletion(
                     task_id=task_id,
-                    title=(item.get("title") or "").strip(),
+                    title=title or "Completed task",
                     completion_date=item.get("completion_date") or today_local(),
                     source=source,
-                    included=True,
+                    included=included,
                 )
             )
         self.db.flush()
@@ -742,23 +885,7 @@ class WeeklyUpdateService:
                 task.original_due_date = row.original_due_date
             if item.get("estimated_hours"):
                 task.estimated_hours = float(item["estimated_hours"])
-            if _is_overdue(task):
-                reason = (item.get("revision_reason") or "").strip()
-                new_due = due
-                if as_local_date(task.due_date) != as_local_date(new_due):
-                    if not reason:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"'{task.title}' is overdue and needs a reason plus a revised deadline",
-                        )
-                    self._record_revision(task, user, reason, new_due, report.id)
-                elif not reason and as_local_date(task.due_date) <= today_local():
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"'{task.title}' is overdue and needs a reason plus a revised deadline",
-                    )
-            else:
-                task.due_date = due
+            self._set_or_revise_due(task, user, due, item.get("revision_reason"), report.id)
             return
 
         if row.task_id:
@@ -768,7 +895,7 @@ class WeeklyUpdateService:
                     task.original_due_date = row.original_due_date or due
                 if row.original_due_date is None:
                     row.original_due_date = task.original_due_date or due
-                task.due_date = due
+                self._set_or_revise_due(task, user, due, item.get("revision_reason"), report.id)
                 if item.get("estimated_hours"):
                     task.estimated_hours = float(item["estimated_hours"])
                 return
@@ -790,6 +917,29 @@ class WeeklyUpdateService:
         created.original_due_date = created.original_due_date or due
         created.due_date = due
         self.db.flush()
+
+    def _set_or_revise_due(
+        self,
+        task: Task,
+        user: User,
+        due: datetime,
+        reason: str | None,
+        weekly_report_id: int | None,
+    ) -> None:
+        if task.original_due_date is None and (task.due_date or due):
+            task.original_due_date = task.due_date or due
+        if task.due_date is None:
+            task.due_date = due
+            return
+        if as_local_date(task.due_date) == as_local_date(due):
+            return
+        cleaned = (reason or "").strip()
+        if not cleaned:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{task.title}' needs a reason for changing the due date",
+            )
+        self._record_revision(task, user, cleaned, due, weekly_report_id)
 
     def _record_revision(
         self,
@@ -843,7 +993,11 @@ class WeeklyUpdateService:
             "author": _author(report.user),
             "completions": [self._completion_view(c) for c in report.completions if c.included],
             "commitments": [self._commitment_view(c) for c in report.commitments],
-            "leave": self.leave_context(report.user_id, report.period_start, report.period_end),
+            "leave": self.leave_context(
+                report.user_id,
+                report.period_start,
+                max(report.period_end, saturday_of(report.period_start)),
+            ),
             "planning_leave": self.leave_context(report.user_id, report.planning_start, report.planning_end),
             "created_at": report.created_at,
             "updated_at": report.updated_at,
@@ -860,6 +1014,7 @@ class WeeklyUpdateService:
             "included": row.included,
             "task_status": task.status if task else None,
             "completed_at": task.completed_at if task else None,
+            "estimated_hours": _task_hours(task),
         }
 
     def _commitment_view(self, row: WeeklyReportCommitment, carried: bool = False) -> dict:

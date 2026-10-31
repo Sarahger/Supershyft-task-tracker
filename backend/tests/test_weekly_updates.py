@@ -10,8 +10,11 @@ from app.core.security import create_access_token, get_password_hash
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
-from app.models import Department, Task, TaskAssignee, User, WeeklyReport, WeeklyReportCommitment
+from app.models import Attendance, Department, Task, TaskAssignee, User, WeeklyReport, WeeklyReportCommitment
+from app.utils.month_weeks import get_app_timezone
 from app.utils.week_periods import (
+    editable_until_for,
+    is_report_editable,
     monday_of,
     period_end_for_submit,
     planning_window,
@@ -95,6 +98,17 @@ def test_period_math_friday_and_late_submit():
     assert plan_end == date(2026, 11, 8)
 
 
+def test_weekly_edit_window_ends_monday_noon():
+    monday = date(2026, 10, 26)
+    until = editable_until_for(monday)
+    zone = get_app_timezone()
+    assert until.date() == date(2026, 11, 2)
+    assert until.hour == 12
+    assert until.minute == 0
+    assert is_report_editable(monday, "submitted", datetime(2026, 11, 2, 11, 59, tzinfo=zone))
+    assert not is_report_editable(monday, "draft", datetime(2026, 11, 2, 12, 0, tzinfo=zone))
+
+
 def test_resolve_period_requires_monday():
     try:
         resolve_period(date(2026, 10, 28))
@@ -142,11 +156,8 @@ def test_submit_creates_task_and_is_idempotent(client, users, db_session):
     assert emp.weekly_updates_adopted_at is not None
 
 
-def test_suggestions_respect_adoption_and_completed_at(client, users, db_session):
+def test_suggestions_only_include_this_weeks_completed_tasks(client, users, db_session):
     emp = users["employee"]
-    emp.weekly_updates_adopted_at = datetime.now(timezone.utc)
-    db_session.commit()
-
     monday = monday_of(date.today())
     old = Task(
         title="Old work",
@@ -178,6 +189,88 @@ def test_suggestions_respect_adoption_and_completed_at(client, users, db_session
     titles = [i["title"] for i in res.json()["data"]["items"]]
     assert "Finished this week" in titles
     assert "Old work" not in titles
+
+
+def test_completing_task_adds_it_to_this_weeks_draft(client, users, db_session):
+    emp = users["employee"]
+    task = Task(
+        title="Ship weekly auto-complete",
+        status="in_progress",
+        priority="medium",
+        estimated_hours=2,
+        created_by_id=emp.id,
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    res = client.patch(
+        f"/api/tasks/{task.id}/status",
+        json={"status": "completed"},
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200, res.text
+
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200, history.text
+    reports = history.json()["data"]["reports"]
+    assert len(reports) == 1
+    assert reports[0]["status"] == "draft"
+    titles = [item["title"] for item in reports[0]["completions"]]
+    assert "Ship weekly auto-complete" in titles
+    assert reports[0]["completions"][0]["task_id"] == task.id
+
+
+def test_history_backfills_this_weeks_completed_tasks(client, users, db_session):
+    emp = users["employee"]
+    task = Task(
+        title="Already done",
+        status="completed",
+        priority="medium",
+        estimated_hours=1,
+        created_by_id=emp.id,
+        completed_at=datetime.now(timezone.utc),
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200, history.text
+    reports = history.json()["data"]["reports"]
+    assert len(reports) == 1
+    assert reports[0]["status"] == "draft"
+    assert reports[0]["completions"][0]["title"] == "Already done"
+
+
+def test_reopening_task_removes_suggested_completion(client, users, db_session):
+    emp = users["employee"]
+    task = Task(
+        title="Reopen me",
+        status="in_progress",
+        priority="medium",
+        estimated_hours=1,
+        created_by_id=emp.id,
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    complete = client.patch(
+        f"/api/tasks/{task.id}/status",
+        json={"status": "completed"},
+        headers=auth_header(emp),
+    )
+    assert complete.status_code == 200, complete.text
+    reopen = client.post(f"/api/tasks/{task.id}/reopen", headers=auth_header(emp))
+    assert reopen.status_code == 200, reopen.text
+
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    reports = history.json()["data"]["reports"]
+    completions = reports[0]["completions"] if reports else []
+    assert all(item["task_id"] != task.id for item in completions)
 
 
 def test_carry_forward_reuses_task(client, users, db_session):
@@ -263,6 +356,51 @@ def test_deadline_revision_keeps_history(client, users, db_session):
     assert task.original_due_date is not None
 
 
+def test_due_date_locks_and_revision_works_before_overdue(client, users, db_session):
+    emp = users["employee"]
+    first_due = (date.today() + timedelta(days=5)).isoformat() + "T12:00:00+05:30"
+    created = client.post(
+        "/api/tasks",
+        json={
+            "title": "Lockable due",
+            "priority": "medium",
+            "estimated_hours": 2,
+            "due_date": first_due,
+            "assignee_ids": [emp.id],
+        },
+        headers=auth_header(emp),
+    )
+    assert created.status_code == 200, created.text
+    task_id = created.json()["data"]["id"]
+    original = created.json()["data"]["due_date"]
+
+    later = (date.today() + timedelta(days=8)).isoformat() + "T12:00:00+05:30"
+    updated = client.put(
+        f"/api/tasks/{task_id}",
+        json={"due_date": later, "title": "Lockable due"},
+        headers=auth_header(emp),
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["data"]["due_date"] == original
+    db_session.expire_all()
+    task = db_session.query(Task).filter(Task.id == task_id).first()
+    assert task is not None
+    assert task.due_date is not None
+    assert task.original_due_date is not None
+
+    revised = client.post(
+        f"/api/tasks/{task_id}/deadline-revision",
+        json={"reason": "Scope grew", "new_due_date": later},
+        headers=auth_header(emp),
+    )
+    assert revised.status_code == 200, revised.text
+    assert revised.json()["data"]["reason"] == "Scope grew"
+    history = client.get(f"/api/tasks/{task_id}/deadline-revisions", headers=auth_header(emp))
+    assert history.status_code == 200
+    assert len(history.json()["data"]) == 1
+    assert original is not None
+
+
 def test_leave_context_does_not_change_due_dates(client, users, db_session):
     emp = users["employee"]
     monday = monday_of(date.today())
@@ -277,6 +415,25 @@ def test_leave_context_does_not_change_due_dates(client, users, db_session):
     assert "planning" in data
     assert "working_days" in data["reporting"]
     assert db_session.query(Task).count() == 0
+
+
+def test_leave_context_uses_attendance_leave(client, users, db_session):
+    emp = users["employee"]
+    monday = monday_of(date.today())
+    leave_day = monday + timedelta(days=2)
+    db_session.add(
+        Attendance(user_id=emp.id, attendance_date=leave_day, status="LEAVE")
+    )
+    db_session.commit()
+
+    res = client.get(
+        "/api/weekly-updates/leave-context",
+        params={"week_start": monday.isoformat()},
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200
+    days = res.json()["data"]["reporting"]["leave_days"]
+    assert any(d["date"] == leave_day.isoformat() and d["label"] == "Annual leave" for d in days)
 
 
 def test_history_is_newest_first_and_readable(client, users, db_session):

@@ -172,7 +172,12 @@ export function DailyUpdateEditor({
   const optionCount = showMentionMenu ? mentionSuggestions.length : emojiSuggestions.length;
 
   return (
-    <div className={clsx('relative', className)}>
+    <div
+      className={clsx(
+        'relative rounded-xl border border-dark-border bg-dark-card/40 px-3 py-2.5',
+        className,
+      )}
+    >
       <textarea
         ref={textareaRef}
         value={value}

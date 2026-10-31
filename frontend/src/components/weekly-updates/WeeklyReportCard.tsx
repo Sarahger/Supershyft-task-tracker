@@ -4,7 +4,7 @@ import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { isMentionPart, splitCommentMentions } from '../../lib/mentions';
 import { formatHoursLabel, toDateInput } from '../../lib/weeklyPlanParse';
 import { Avatar } from '../ui/Avatar';
-import type { WeeklyAuthor, WeeklyCommitment, WeeklyReport } from '../../types';
+import type { WeeklyAuthor, WeeklyCommitment, WeeklyCompletion, WeeklyLeaveContext, WeeklyReport } from '../../types';
 
 function formatRange(start: string, end: string) {
   return `${format(parseISO(start), 'd MMM')} – ${format(parseISO(end), 'd MMM yyyy')}`;
@@ -17,6 +17,17 @@ function formatShortDate(value?: string | null) {
   } catch {
     return null;
   }
+}
+
+function leaveSummary(ctx?: WeeklyLeaveContext | null) {
+  if (!ctx) return [];
+  const items = [
+    ...ctx.leave_days.map((d) => `${d.label} ${formatShortDate(d.date) ?? d.date}`),
+    ...ctx.holidays
+      .filter((h) => h.kind === 'holiday')
+      .map((d) => `${d.label} ${formatShortDate(d.date) ?? d.date}`),
+  ];
+  return items;
 }
 
 function hasRevisedDue(item: WeeklyCommitment): boolean {
@@ -44,26 +55,53 @@ function MentionText({ text }: { text: string }) {
 function TaskTitle({
   title,
   taskId,
+  className,
 }: {
   title: string;
   taskId?: number | null;
+  className?: string;
 }) {
   const { openTask } = useTaskDrawer();
+  const textClass = clsx('text-[15px] leading-relaxed text-left', className ?? 'text-text-primary');
   if (taskId) {
     return (
       <button
         type="button"
         onClick={() => openTask(taskId)}
-        className="text-[15px] leading-relaxed text-text-primary hover:underline text-left"
+        className={clsx(textClass, 'hover:underline')}
       >
         <MentionText text={title} />
       </button>
     );
   }
   return (
-    <p className="text-[15px] leading-relaxed text-text-primary">
+    <p className={textClass}>
       <MentionText text={title} />
     </p>
+  );
+}
+
+function metaLine(timeLabel: string | null, dateLabel: string | null, datePrefix: string) {
+  return [timeLabel, dateLabel ? `${datePrefix} ${dateLabel}` : null].filter(Boolean).join(' · ');
+}
+
+function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number }) {
+  const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
+  const doneLabel = formatShortDate(item.completion_date || item.completed_at);
+  const meta = metaLine(timeLabel, doneLabel, 'Completed');
+
+  return (
+    <li className="flex items-start gap-2 py-1">
+      <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{index}.</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-4">
+          <TaskTitle title={item.title} taskId={item.task_id} />
+          {meta ? (
+            <p className="shrink-0 text-xs tabular-nums text-text-muted pt-1 text-right">{meta}</p>
+          ) : null}
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -78,21 +116,24 @@ function CommitmentRow({
 }) {
   const revised = hasRevisedDue(item);
   const dueLabel = formatShortDate(item.due_date);
-  const timeLabel = formatHoursLabel(item.estimated_hours ?? null);
-  const latestReason = item.deadline_revisions?.at(-1)?.reason;
+  const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
+  const latestReason = item.deadline_revisions?.[item.deadline_revisions.length - 1]?.reason;
+  const carried = Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward');
+  const meta = metaLine(timeLabel, dueLabel, revised ? 'Revised due' : 'Due');
 
   return (
     <li className="flex items-start gap-2 py-1">
       <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{index}.</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-4">
-          <TaskTitle title={item.title} taskId={item.task_id} />
-          <p className="shrink-0 text-xs tabular-nums text-text-muted pt-1 text-right">
-            {[
-              timeLabel,
-              dueLabel ? (revised ? `Revised due ${dueLabel}` : `Due ${dueLabel}`) : null,
-            ].filter(Boolean).join(' · ')}
-          </p>
+          <TaskTitle
+            title={item.title}
+            taskId={item.task_id}
+            className={carried ? 'text-amber-400' : undefined}
+          />
+          {meta ? (
+            <p className="shrink-0 text-xs tabular-nums text-text-muted pt-1 text-right">{meta}</p>
+          ) : null}
         </div>
         {revised && latestReason && (
           <p className="text-2xs text-text-muted mt-0.5">{latestReason}</p>
@@ -112,18 +153,21 @@ export function WeeklyReportCard({
   author,
   onRevise,
   onEdit,
+  actionLabel = 'Edit',
 }: {
   report: WeeklyReport;
   author?: WeeklyAuthor | null;
   onRevise?: (item: WeeklyCommitment) => void;
   onEdit?: () => void;
+  actionLabel?: string;
 }) {
   const person = author ?? report.author;
   const personName = person ? `${person.first_name} ${person.last_name}`.trim() : 'Weekly update';
-  const leaveItems = [
-    ...report.leave.leave_days,
-    ...report.leave.holidays.filter((h) => h.kind === 'holiday'),
-  ];
+  const thisWeekLeave = leaveSummary(report.leave);
+  const nextWeekLeave = leaveSummary(report.planning_leave);
+  const hasCarriedForward = report.commitments.some(
+    (item) => item.is_carried_forward || item.commitment_type === 'carried_forward',
+  );
 
   return (
     <article
@@ -144,7 +188,7 @@ export function WeeklyReportCard({
         </div>
         {onEdit && (
           <button type="button" onClick={onEdit} className="text-sm text-accent-primary hover:underline">
-            Edit
+            {actionLabel}
           </button>
         )}
       </div>
@@ -153,16 +197,6 @@ export function WeeklyReportCard({
         <div className="flex items-center gap-2">
           <Avatar name={personName} size="sm" src={person.profile_picture ?? undefined} />
           <p className="text-sm font-medium text-text-primary truncate">{personName}</p>
-          <span
-            className={clsx(
-              'ml-auto shrink-0 text-2xs rounded-full border px-2 py-0.5',
-              report.status === 'submitted'
-                ? 'border-accent-success/30 text-accent-success'
-                : 'border-dark-border text-text-muted',
-            )}
-          >
-            {report.status === 'submitted' ? 'Submitted' : 'Draft'}
-          </span>
         </div>
       )}
 
@@ -173,10 +207,11 @@ export function WeeklyReportCard({
         ) : (
           <ol className="space-y-1">
             {report.completions.map((item, i) => (
-              <li key={`${item.task_id ?? item.title}-${i}`} className="flex items-start gap-2">
-                <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
-                <TaskTitle title={item.title} taskId={item.task_id} />
-              </li>
+              <CompletionRow
+                key={`${item.task_id ?? item.title}-${i}`}
+                item={item}
+                index={i + 1}
+              />
             ))}
           </ol>
         )}
@@ -185,7 +220,14 @@ export function WeeklyReportCard({
       <div className="border-t border-dark-border" />
 
       <section className="space-y-1">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Next week</p>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Next week</p>
+          {hasCarriedForward && (
+            <p className="text-2xs text-text-muted">
+              <span className="text-amber-400">Yellow</span> = carried forward
+            </p>
+          )}
+        </div>
         {report.commitments.length === 0 ? (
           <p className="text-sm text-text-muted">No commitments recorded.</p>
         ) : (
@@ -202,16 +244,10 @@ export function WeeklyReportCard({
         )}
       </section>
 
-      {(leaveItems.length > 0 || report.leave_notes) && (
+      {(thisWeekLeave.length > 0 || nextWeekLeave.length > 0) && (
         <footer className="text-xs text-text-muted space-y-0.5">
-          {leaveItems.length > 0 && (
-            <p>{leaveItems.map((d) => `${d.label} ${toDateInput(d.date)}`).join(' · ')}</p>
-          )}
-          {report.leave_notes && (
-            <p className="text-text-secondary">
-              <MentionText text={report.leave_notes} />
-            </p>
-          )}
+          {thisWeekLeave.length > 0 && <p>{thisWeekLeave.join(' · ')}</p>}
+          {nextWeekLeave.length > 0 && <p>Next week {nextWeekLeave.join(' · ')}</p>}
         </footer>
       )}
     </article>

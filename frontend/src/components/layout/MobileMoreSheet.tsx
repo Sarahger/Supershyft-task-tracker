@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FolderKanban, BarChart3, Users, Settings } from 'lucide-react';
+import { FolderKanban, BarChart3, Users, Settings, Video } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../contexts/AuthContext';
 import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
@@ -17,6 +17,7 @@ const moreItems: {
   label: string;
   roles?: User['role'][];
 }[] = [
+  { to: '/meetings', icon: Video, label: 'Meetings' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },
   { to: '/users', icon: Users, label: 'Users', roles: MANAGER_ACCESS_ROLES },

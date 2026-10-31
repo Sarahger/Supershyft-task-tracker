@@ -182,7 +182,9 @@ export function WeeklyUpdatesPanel() {
             </div>
           )}
 
-          {history?.reports.map((report) => (
+          {history?.reports
+            .filter((report) => !(writing && report.period_start === writePeriod))
+            .map((report) => (
             <WeeklyReportCard
               key={report.id}
               report={report}
@@ -190,6 +192,7 @@ export function WeeklyUpdatesPanel() {
               onEdit={isOwn && canWrite && !writing && report.period_start === writePeriod
                 ? () => setWriting(true)
                 : undefined}
+              actionLabel={report.status === 'draft' && report.commitments.length === 0 ? 'Write next week' : 'Edit'}
               onRevise={isOwn ? setReviseItem : undefined}
             />
           ))}

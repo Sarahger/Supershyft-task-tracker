@@ -245,12 +245,9 @@ function UserProfileContent({
                         )}
                       </div>
                     </div>
-                    <div className="text-right shrink-0 text-2xs tabular-nums space-y-0.5">
+                    <div className="text-right shrink-0 text-2xs tabular-nums">
                       <p className="text-text-secondary">
-                        Req {formatTimeTakenHours(task.estimated_hours) ?? '—'}
-                      </p>
-                      <p className="text-text-muted">
-                        Taken {formatTimeTakenHours(task.actual_hours) ?? '—'}
+                        {formatTimeTakenHours(task.estimated_hours) ?? '—'}
                       </p>
                     </div>
                   </div>

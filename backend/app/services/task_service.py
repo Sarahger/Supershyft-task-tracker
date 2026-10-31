@@ -79,6 +79,7 @@ class TaskService:
             start_date=data.get("start_date"),
             end_date=data.get("end_date"),
             due_date=data.get("due_date"),
+            original_due_date=data.get("due_date"),
             project_id=data.get("project_id"),
             client_id=data.get("client_id"),
             sprint_id=data.get("sprint_id"),
@@ -146,17 +147,23 @@ class TaskService:
 
         # Ignore client-sent actual_hours — always derived from start/end.
         data.pop("actual_hours", None)
+        data.pop("start_date", None)
+        data.pop("end_date", None)
+        if task.due_date is not None:
+            data.pop("due_date", None)
         if "estimated_hours" in data:
             estimated = data["estimated_hours"]
             if estimated is not None and estimated <= 0:
                 raise HTTPException(status_code=400, detail="Time required must be greater than 0")
 
         old_status = task.status
-        dates_touched = "start_date" in data or "end_date" in data
 
         for key, value in data.items():
             if hasattr(task, key):
                 setattr(task, key, value)
+
+        if task.due_date is not None and task.original_due_date is None:
+            task.original_due_date = task.due_date
 
         if "status" in data and task.status != old_status:
             apply_status_timing(task, task.status)
@@ -166,16 +173,13 @@ class TaskService:
                 task.completed_at = None
                 task.end_date = None
                 task.actual_hours = None
-        elif dates_touched:
-            if task.end_date and task.start_date:
-                task.actual_hours = compute_time_taken_hours(task)
-            elif task.status != TaskStatus.COMPLETED.value:
-                task.actual_hours = None
 
         task.updated_by_id = updater.id
         task = self.repo.update(task)
         self.activity.log(updater.id, ActivityType.TASK_UPDATED.value, f"Updated task: {task.title}", task.id)
-        return self.repo.get_by_id(task.id)
+        task = self.repo.get_by_id(task.id)
+        self._sync_weekly_completion(task, old_status)
+        return task
 
     def change_status(self, task: Task, new_status: str, user: User, **kwargs) -> Task:
         old_status = task.status
@@ -229,7 +233,9 @@ class TaskService:
             task.id,
             metadata={"old_status": old_status, "new_status": task.status},
         )
-        return self.repo.get_by_id(task.id)
+        task = self.repo.get_by_id(task.id)
+        self._sync_weekly_completion(task, old_status)
+        return task
 
     def mark_assignee_complete(self, task: Task, user_id: int, is_completed: bool) -> Task:
         assignee = next((a for a in task.assignees if a.user_id == user_id), None)
@@ -288,6 +294,7 @@ class TaskService:
         if reviewer.id in [a.user_id for a in task.assignees]:
             raise ValueError("Reviewer cannot be an assignee")
 
+        old_status = task.status
         version = (
             self.db.query(TaskVersion)
             .filter(TaskVersion.task_id == task.id, TaskVersion.version_number == task.current_version)
@@ -326,7 +333,9 @@ class TaskService:
             raise ValueError("Invalid review action")
 
         task = self.repo.update(task)
-        return self.repo.get_by_id(task.id)
+        task = self.repo.get_by_id(task.id)
+        self._sync_weekly_completion(task, old_status)
+        return task
 
     def reopen_task(self, task: Task, user: User) -> Task:
         task.current_version += 1
@@ -343,7 +352,20 @@ class TaskService:
         self.notifications.notify_assignees(
             task, NotificationType.TASK_REOPENED.value, f"Task reopened: {task.title}", ""
         )
-        return self.repo.get_by_id(task.id)
+        task = self.repo.get_by_id(task.id)
+        self._sync_weekly_completion(task, TaskStatus.COMPLETED.value)
+        return task
+
+    def _sync_weekly_completion(self, task: Task | None, old_status: str) -> None:
+        if task is None or task.status == old_status:
+            return
+        from app.services.weekly_update_service import WeeklyUpdateService
+
+        weekly = WeeklyUpdateService(self.db)
+        if task.status == TaskStatus.COMPLETED.value:
+            weekly.record_completed_task(task)
+        elif old_status == TaskStatus.COMPLETED.value:
+            weekly.remove_completed_task(task.id)
 
     def add_dependency(self, task: Task, depends_on_id: int, depends_on_user_id: int | None = None) -> TaskDependency:
         if task.id == depends_on_id:

@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -66,6 +67,8 @@ class User(Base):
     telegram_notifications_enabled = Column(Boolean, default=True, nullable=False)
     telegram_daily_digest_enabled = Column(Boolean, default=False, nullable=False)
     weekly_updates_adopted_at = Column(DateTime(timezone=True), nullable=True)
+    last_seen_announcements_at = Column(DateTime(timezone=True), nullable=True)
+    last_seen_work_vault_at = Column(DateTime(timezone=True), nullable=True)
     last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -722,3 +725,111 @@ class TaskDeadlineRevision(Base):
     task = relationship("Task", back_populates="deadline_revisions")
     changed_by = relationship("User", foreign_keys=[changed_by_id])
     weekly_report = relationship("WeeklyReport", foreign_keys=[weekly_report_id])
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    week_start = Column(Date, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    author = relationship("User", foreign_keys=[author_id])
+    mentions = relationship(
+        "AnnouncementMention",
+        back_populates="announcement",
+        cascade="all, delete-orphan",
+    )
+    reactions = relationship(
+        "AnnouncementReaction",
+        back_populates="announcement",
+        cascade="all, delete-orphan",
+    )
+    attachments = relationship(
+        "AnnouncementAttachment",
+        back_populates="announcement",
+        cascade="all, delete-orphan",
+    )
+
+
+class AnnouncementMention(Base):
+    __tablename__ = "announcement_mentions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    announcement_id = Column(
+        Integer, ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    mentioned_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    announcement = relationship("Announcement", back_populates="mentions")
+    mentioned_user = relationship("User", foreign_keys=[mentioned_user_id])
+
+
+class AnnouncementReaction(Base):
+    __tablename__ = "announcement_reactions"
+    __table_args__ = (UniqueConstraint("announcement_id", "user_id", name="uq_announcement_reaction_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    announcement_id = Column(
+        Integer, ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    announcement = relationship("Announcement", back_populates="reactions")
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class WorkVaultResource(Base):
+    __tablename__ = "work_vault_resources"
+    __table_args__ = (
+        Index("ix_work_vault_category_created", "category", "created_at"),
+        Index("ix_work_vault_uploader_created", "uploaded_by_id", "created_at"),
+        Index("ix_work_vault_kind_created", "file_kind", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(300), nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    category = Column(String(100), nullable=False, index=True)
+    tags = Column(String(1000), nullable=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    resource_type = Column(String(20), nullable=False, default="file")
+    file_kind = Column(String(40), nullable=False, default="other", index=True)
+    filename = Column(String(500), nullable=True)
+    file_path = Column(String(1000), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    mime_type = Column(String(200), nullable=True)
+    url = Column(String(2000), nullable=True)
+    http_method = Column(String(10), nullable=True)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    uploader = relationship("User", foreign_keys=[uploaded_by_id])
+    project = relationship("Project")
+
+
+class AnnouncementAttachment(Base):
+    __tablename__ = "announcement_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    announcement_id = Column(
+        Integer, ForeignKey("announcements.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    attachment_type = Column(String(20), nullable=False, default="file")
+    filename = Column(String(500), nullable=True)
+    file_path = Column(String(1000), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    mime_type = Column(String(200), nullable=True)
+    url = Column(String(2000), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    announcement = relationship("Announcement", back_populates="attachments")
+    uploader = relationship("User", foreign_keys=[uploaded_by_id])

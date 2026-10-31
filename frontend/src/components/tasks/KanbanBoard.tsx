@@ -48,7 +48,11 @@ export function KanbanBoard({ tasks, queryKey = ['tasks-kanban'] }: KanbanBoardP
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) => tasksApi.updateStatus(id, status),
-    onSuccess: () => { qc.invalidateQueries({ queryKey }); toast.success('Status updated'); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
+      toast.success('Status updated');
+    },
     onError: () => toast.error('Failed to update status'),
   });
 

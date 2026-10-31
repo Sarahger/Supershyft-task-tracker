@@ -1,5 +1,5 @@
 import api from './api';
-import type { APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory } from '../types';
+import type { Announcement, AnnouncementAttachment, AnnouncementWeek, APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory, WorkVaultFacets, WorkVaultPersonFolder, WorkVaultResource } from '../types';
 
 export const authApi = {
   requestOtp: (email: string) =>
@@ -275,4 +275,74 @@ export const attendanceApi = {
     }),
   exportCsv: (filters: Record<string, unknown>) =>
     api.post('/attendance/export/csv', filters, { responseType: 'blob' }),
+};
+
+export const announcementsApi = {
+  list: (params?: { week_start?: string; author_id?: number; on_date?: string }) =>
+    api.get<APIResponse<AnnouncementWeek>>('/announcements', { params }),
+  unreadCount: () =>
+    api.get<APIResponse<{ count: number; week_start: string }>>('/announcements/unread-count'),
+  markSeen: () => api.post<APIResponse<{ count: number; week_start: string }>>('/announcements/seen'),
+  create: (data: { body: string; mentioned_user_ids?: number[]; links?: { url: string; title?: string }[] }) =>
+    api.post<APIResponse<Announcement>>('/announcements', data),
+  addLink: (id: number, data: { url: string; title?: string }) =>
+    api.post<APIResponse<Announcement>>(`/announcements/${id}/links`, data),
+  uploadAttachment: (id: number, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<APIResponse<AnnouncementAttachment>>(`/announcements/${id}/attachments`, form);
+  },
+  toggleReaction: (id: number) =>
+    api.post<APIResponse<Announcement>>(`/announcements/${id}/reactions`),
+  remove: (id: number) => api.delete<APIResponse<null>>(`/announcements/${id}`),
+  downloadAttachment: async (attachmentId: number, filename: string) => {
+    const response = await api.get(`/announcements/attachments/${attachmentId}/download`, { responseType: 'blob' });
+    const mime = response.data?.type || 'application/octet-stream';
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: mime }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  },
+  attachmentBlob: (attachmentId: number) =>
+    api.get(`/announcements/attachments/${attachmentId}/download`, { responseType: 'blob' }),
+};
+
+export const workVaultApi = {
+  list: (params?: Record<string, unknown>) =>
+    api.get<APIResponse<PaginatedResponse<WorkVaultResource>>>('/work-vault/resources', { params }),
+  people: (params?: Record<string, unknown>) =>
+    api.get<APIResponse<{ items: WorkVaultPersonFolder[] }>>('/work-vault/people', { params }),
+  unreadCount: () =>
+    api.get<APIResponse<{ count: number }>>('/work-vault/unread-count'),
+  markSeen: () => api.post<APIResponse<{ count: number }>>('/work-vault/seen'),
+  facets: (params?: Record<string, unknown>) =>
+    api.get<APIResponse<WorkVaultFacets>>('/work-vault/facets', { params }),
+  categories: () =>
+    api.get<APIResponse<{ value: string; label: string }[]>>('/work-vault/categories'),
+  get: (id: number) =>
+    api.get<APIResponse<WorkVaultResource>>(`/work-vault/resources/${id}`),
+  create: (form: FormData) =>
+    api.post<APIResponse<WorkVaultResource>>('/work-vault/resources', form),
+  update: (id: number, data: Record<string, unknown>) =>
+    api.patch<APIResponse<WorkVaultResource>>(`/work-vault/resources/${id}`, data),
+  replaceFile: (id: number, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<APIResponse<WorkVaultResource>>(`/work-vault/resources/${id}/file`, form);
+  },
+  remove: (id: number) => api.delete<APIResponse<null>>(`/work-vault/resources/${id}`),
+  download: async (id: number, filename: string) => {
+    const response = await api.get(`/work-vault/resources/${id}/download`, { responseType: 'blob' });
+    const mime = response.data?.type || 'application/octet-stream';
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: mime }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  },
+  fileBlob: (id: number) =>
+    api.get(`/work-vault/resources/${id}/download`, { responseType: 'blob' }),
 };

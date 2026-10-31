@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta
 
 from app.utils.month_weeks import get_app_timezone
 
-EDIT_CUTOFF = time(10, 30)
+EDIT_CUTOFF = time(12, 0)
 RESOLVED_STATUSES = frozenset({"completed", "cancelled"})
 
 
@@ -83,10 +83,7 @@ def editable_until_for(period_start: date) -> datetime:
 
 
 def is_report_editable(period_start: date, status: str, now: datetime | None = None) -> bool:
-    local = now_local(now)
-    if status != "submitted":
-        return True
-    return local < editable_until_for(period_start)
+    return now_local(now) < editable_until_for(period_start)
 
 
 def local_day_bounds(day: date) -> tuple[datetime, datetime]:
@@ -100,6 +97,17 @@ def period_datetime_bounds(period_start: date, period_end: date) -> tuple[dateti
     start, _ = local_day_bounds(period_start)
     _, end = local_day_bounds(period_end)
     return start, end
+
+
+def week_datetime_bounds(period_start: date) -> tuple[datetime, datetime]:
+    """Monday 00:00 through next Monday 00:00 in the company timezone."""
+    start, _ = local_day_bounds(period_start)
+    end, _ = local_day_bounds(next_monday(period_start))
+    return start, end
+
+
+def is_auto_sync_open(period_start: date, now: datetime | None = None) -> bool:
+    return now_local(now) < editable_until_for(period_start)
 
 
 def due_at_noon(day: date) -> datetime:

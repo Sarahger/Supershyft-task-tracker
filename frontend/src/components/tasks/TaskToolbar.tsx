@@ -309,7 +309,7 @@ export function TaskToolbar({
               {showColumns && (
                 <div className="absolute top-full left-0 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
                   {visibleColumns
-                    .filter((c) => c.id !== 'indicators' && c.id !== 'assignees' && c.id !== 'priority')
+                    .filter((c) => c.id !== 'indicators' && c.id !== 'assignees' && c.id !== 'priority' && c.id !== 'actual_hours' && c.id !== 'start_date' && c.id !== 'end_date')
                     .map((col) => (
                     <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-dark-hover rounded cursor-pointer">
                       <input

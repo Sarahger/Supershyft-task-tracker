@@ -694,6 +694,7 @@ export interface WeeklyCompletion {
   included: boolean;
   task_status?: string | null;
   completed_at?: string | null;
+  estimated_hours?: number | null;
 }
 
 export interface WeeklyCommitment {
@@ -785,4 +786,108 @@ export interface WeeklySuggestions {
   period_end: string;
   adopted_at?: string | null;
   items: WeeklyCompletion[];
+}
+
+export interface AnnouncementAuthor {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+}
+
+export interface AnnouncementAttachment {
+  id: number;
+  attachment_type: 'file' | 'link';
+  filename?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
+  url?: string | null;
+  created_at: string;
+}
+
+export interface Announcement {
+  id: number;
+  body: string;
+  week_start: string;
+  created_at: string;
+  author: AnnouncementAuthor;
+  mentions: AnnouncementAuthor[];
+  reaction_count: number;
+  reacted: boolean;
+  attachments: AnnouncementAttachment[];
+  can_delete: boolean;
+}
+
+export interface AnnouncementWeek {
+  week_start: string;
+  week_end: string;
+  current_week_start: string;
+  items: Announcement[];
+  authors: AnnouncementAuthor[];
+}
+
+export type WorkVaultFileKind =
+  | 'image'
+  | 'pdf'
+  | 'document'
+  | 'spreadsheet'
+  | 'presentation'
+  | 'code'
+  | 'link'
+  | 'api'
+  | 'other';
+
+export interface WorkVaultUploader {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+}
+
+export interface WorkVaultResource {
+  id: number;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  project_id?: number | null;
+  project_name?: string | null;
+  resource_type: 'file' | 'link';
+  file_kind: WorkVaultFileKind;
+  filename?: string | null;
+  file_size?: number | null;
+  mime_type?: string | null;
+  url?: string | null;
+  http_method?: string | null;
+  uploaded_by: WorkVaultUploader;
+  created_at: string;
+  updated_at: string;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface WorkVaultFacet {
+  value: string;
+  label: string;
+  count: number;
+}
+
+export interface WorkVaultUploaderFacet extends WorkVaultUploader {
+  count: number;
+}
+
+export interface WorkVaultFacets {
+  categories: WorkVaultFacet[];
+  file_kinds: WorkVaultFacet[];
+  uploaders: WorkVaultUploaderFacet[];
+}
+
+export interface WorkVaultPersonFolder {
+  id: number;
+  first_name: string;
+  last_name: string;
+  profile_picture?: string | null;
+  job_title?: string | null;
+  count: number;
+  has_new: boolean;
 }

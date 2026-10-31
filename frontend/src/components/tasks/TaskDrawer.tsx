@@ -535,7 +535,7 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             </div>
           </div>
 
-          <TaskPropertiesEditor task={task} taskId={task.id} />
+          <TaskPropertiesEditor key={task.id} task={task} taskId={task.id} />
 
           {(taskMeetingLogs?.length ?? 0) > 0 && (
             <DrawerSection title="Task calls" defaultOpen>
@@ -1014,28 +1014,10 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           {/* Metadata — tertiary, always collapsed */}
           <DrawerSection title="Details" defaultOpen={false}>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {task.start_date && (
-                <div>
-                  <span className="text-text-muted">Start</span>
-                  <p className="text-text-primary">{format(new Date(task.start_date), 'MMM d, yyyy h:mm a')}</p>
-                </div>
-              )}
-              {task.end_date && (
-                <div>
-                  <span className="text-text-muted">End</span>
-                  <p className="text-text-primary">{format(new Date(task.end_date), 'MMM d, yyyy h:mm a')}</p>
-                </div>
-              )}
               <div>
                 <span className="text-text-muted">Time required</span>
                 <p className="text-text-primary">{formatTimeTakenHours(task.estimated_hours) ?? '—'}</p>
               </div>
-              {task.actual_hours != null && (
-                <div>
-                  <span className="text-text-muted">Time taken</span>
-                  <p className="text-text-primary">{formatTimeTakenHours(task.actual_hours)}</p>
-                </div>
-              )}
               {task.departments?.length ? (
                 <div className="col-span-2">
                   <span className="text-text-muted">Departments</span>

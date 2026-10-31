@@ -54,6 +54,14 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added users.%s column", col_name)
+        if "last_seen_announcements_at" not in user_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_announcements_at TIMESTAMP WITH TIME ZONE"
+            else:
+                sql = "ALTER TABLE users ADD COLUMN last_seen_announcements_at DATETIME"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added users.last_seen_announcements_at column")
         if "weekly_updates_adopted_at" not in user_cols:
             if dialect == "postgresql":
                 sql = "ALTER TABLE users ADD COLUMN IF NOT EXISTS weekly_updates_adopted_at TIMESTAMP WITH TIME ZONE"
@@ -62,6 +70,14 @@ def run_lightweight_migrations(engine) -> None:
             with engine.begin() as conn:
                 conn.execute(text(sql))
             logger.info("Added users.weekly_updates_adopted_at column")
+        if "last_seen_work_vault_at" not in user_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_work_vault_at TIMESTAMP WITH TIME ZONE"
+            else:
+                sql = "ALTER TABLE users ADD COLUMN last_seen_work_vault_at DATETIME"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added users.last_seen_work_vault_at column")
 
     if "tasks" in tables:
         task_cols = {c["name"] for c in inspector.get_columns("tasks")}
@@ -108,6 +124,44 @@ def run_lightweight_migrations(engine) -> None:
                 with engine.begin() as conn:
                     conn.execute(text(sql))
                 logger.info("Added meeting_logs.%s column", col_name)
+
+    if "work_vault_resources" in tables:
+        dialect = engine.dialect.name
+        vault_cols = {c["name"] for c in inspector.get_columns("work_vault_resources")}
+        if "http_method" not in vault_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE work_vault_resources ADD COLUMN IF NOT EXISTS http_method VARCHAR(10)"
+            else:
+                sql = "ALTER TABLE work_vault_resources ADD COLUMN http_method VARCHAR(10)"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added work_vault_resources.http_method column")
+        with engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    "UPDATE work_vault_resources SET category = 'API Integration' "
+                    "WHERE category = 'API Documentation'"
+                )
+            )
+            if result.rowcount:
+                logger.info("Renamed %s Work Vault categories to API Integration", result.rowcount)
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes("work_vault_resources")}
+        wanted = {
+            "ix_work_vault_category_created": ("category", "created_at"),
+            "ix_work_vault_uploader_created": ("uploaded_by_id", "created_at"),
+            "ix_work_vault_kind_created": ("file_kind", "created_at"),
+        }
+        for name, cols in wanted.items():
+            if name in existing_indexes:
+                continue
+            col_sql = ", ".join(cols)
+            if dialect == "postgresql":
+                sql = f"CREATE INDEX IF NOT EXISTS {name} ON work_vault_resources ({col_sql})"
+            else:
+                sql = f"CREATE INDEX IF NOT EXISTS {name} ON work_vault_resources ({col_sql})"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added index %s", name)
 
     # Collapse legacy ready_for_review into the single Review status (in_review)
     if "tasks" in tables:

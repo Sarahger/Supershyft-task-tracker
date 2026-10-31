@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Video, NotebookPen, CalendarCheck,
+  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Video, NotebookPen, CalendarCheck, Library,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -13,6 +13,7 @@ import { MobileBottomNav } from './MobileBottomNav';
 import { MobileProfileSheet } from './MobileProfileSheet';
 import { MobileMoreSheet } from './MobileMoreSheet';
 import { MANAGER_ACCESS_ROLES } from '../../lib/roles';
+import { useWorkVaultUnread } from '../../hooks/useWorkVaultUnread';
 import type { User } from '../../types';
 
 const navItems: {
@@ -25,6 +26,7 @@ const navItems: {
   { to: '/', icon: LayoutList, label: 'Tasks', end: true },
   { to: '/my-tasks', icon: CheckSquare, label: 'My Tasks' },
   { to: '/weekly-updates', icon: NotebookPen, label: 'Weekly Updates' },
+  { to: '/work-vault', icon: Library, label: 'Work Vault' },
   { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
   { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/meetings', icon: Video, label: 'Meetings' },
@@ -39,6 +41,7 @@ export function AppLayout() {
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { data: unreadWorkVault = 0 } = useWorkVaultUnread();
 
   const visibleNav = navItems.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role))
@@ -72,7 +75,12 @@ export function AppLayout() {
                 isActive && 'sidebar-link-active',
               )}
             >
-              <item.icon className="sidebar-icon h-4 w-4 shrink-0 opacity-80" />
+              <span className="relative">
+                <item.icon className="sidebar-icon h-4 w-4 shrink-0 opacity-80" />
+                {item.to === '/work-vault' && unreadWorkVault > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-sky-400" aria-label="New team resources" />
+                )}
+              </span>
               {item.label}
             </NavLink>
           ))}

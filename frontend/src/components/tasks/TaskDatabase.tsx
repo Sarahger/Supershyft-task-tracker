@@ -48,16 +48,13 @@ export interface ColumnDef {
 }
 
 /** Columns never shown in the list (assignee lives in title; priority is title bg). */
-const HIDDEN_COLUMN_IDS = new Set<ColumnId>(['assignees', 'priority']);
+const HIDDEN_COLUMN_IDS = new Set<ColumnId>(['assignees', 'priority', 'actual_hours', 'start_date', 'end_date']);
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { id: 'title', label: 'Task name', width: 360, minWidth: 220, visible: true, sortable: true },
   { id: 'due_date', label: 'Due date', width: 100, minWidth: 80, visible: true, sortable: true },
   { id: 'estimated_hours', label: 'Time required', width: 100, minWidth: 80, visible: true },
-  { id: 'actual_hours', label: 'Time taken', width: 90, minWidth: 70, visible: true },
   { id: 'status', label: 'Status', width: 96, minWidth: 80, visible: true, sortable: true },
-  { id: 'start_date', label: 'Start', width: 120, minWidth: 100, visible: false },
-  { id: 'end_date', label: 'End', width: 120, minWidth: 100, visible: false },
   { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
 ];
 
@@ -361,31 +358,12 @@ export function TaskDatabase({
                         {formatTimeTakenHours(task.estimated_hours) ?? '—'}
                       </span>
                     )}
-                    {col.id === 'actual_hours' && (
-                      <span className="text-sm text-text-muted tabular-nums">
-                        {formatTimeTakenHours(task.actual_hours) ?? '—'}
-                      </span>
-                    )}
                     {col.id === 'status' && (
                       <InlineStatusSelect
                         task={task}
                         editable={editable}
                         onStatusChange={onStatusChange}
                       />
-                    )}
-                    {col.id === 'start_date' && (
-                      <span className="text-sm text-text-muted tabular-nums">
-                        {task.start_date
-                          ? format(new Date(task.start_date), 'MMM d, HH:mm')
-                          : '—'}
-                      </span>
-                    )}
-                    {col.id === 'end_date' && (
-                      <span className="text-sm text-text-muted tabular-nums">
-                        {task.end_date
-                          ? format(new Date(task.end_date), 'MMM d, HH:mm')
-                          : '—'}
-                      </span>
                     )}
                     {col.id === 'indicators' && <RowIndicators task={task} />}
                   </div>

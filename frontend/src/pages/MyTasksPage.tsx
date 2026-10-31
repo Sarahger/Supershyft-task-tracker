@@ -138,6 +138,7 @@ export default function MyTasksPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       setSelectedIds(new Set());
       toast.success('Tasks updated');
     },

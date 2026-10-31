@@ -84,6 +84,7 @@ class NotificationType(str, Enum):
     OVERDUE_TASK = "overdue_task"
     DEPENDENCY_UPDATED = "dependency_updated"
     TASK_CALL = "task_call"
+    ANNOUNCEMENT_MENTION = "announcement_mention"
 
 
 class MeetingLogType(str, Enum):
@@ -162,3 +163,38 @@ class WeeklyCommitmentType(str, Enum):
     EXISTING = "existing"
     NEW = "new"
     CARRIED_FORWARD = "carried_forward"
+
+
+WORK_VAULT_CATEGORIES = (
+    "API Integration",
+    "Technical Documentation",
+    "Designs & Creative Assets",
+    "Marketing Materials",
+    "Reports & Analytics",
+    "Business Documents",
+    "Templates & SOPs",
+    "Images & Media",
+    "Other",
+)
+
+WORK_VAULT_API_CATEGORY = "API Integration"
+WORK_VAULT_HTTP_METHODS = ("GET", "PUT", "POST", "PATCH", "DELETE")
+
+WORK_VAULT_FILE_KINDS = (
+    "image",
+    "pdf",
+    "document",
+    "spreadsheet",
+    "presentation",
+    "code",
+    "link",
+    "api",
+    "other",
+)
+
+WORK_VAULT_ALLOWED_EXTENSIONS = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp",
+    ".txt", ".md", ".csv", ".json", ".xml", ".yml", ".yaml",
+    ".html", ".css", ".js", ".ts", ".tsx", ".jsx", ".py", ".sql",
+}

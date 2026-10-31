@@ -22,6 +22,8 @@ import NotFoundPage from './pages/NotFoundPage';
 
 const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
 const WeeklyUpdatesPage = lazy(() => import('./pages/WeeklyUpdatesPage'));
+const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage'));
+const WorkVaultPage = lazy(() => import('./pages/WorkVaultPage'));
 const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
@@ -146,6 +148,22 @@ export default function App() {
                     element={
                       <Suspense fallback={<PageLoader />}>
                         <WeeklyUpdatesPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="announcements"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <AnnouncementsPage />
+                      </Suspense>
+                    }
+                  />
+                  <Route
+                    path="work-vault"
+                    element={
+                      <Suspense fallback={<PageLoader />}>
+                        <WorkVaultPage />
                       </Suspense>
                     }
                   />

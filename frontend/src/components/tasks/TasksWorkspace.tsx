@@ -304,6 +304,7 @@ export function TasksWorkspace({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       setSelectedIds(new Set());
       toast.success('Tasks updated');
     },
@@ -319,6 +320,7 @@ export function TasksWorkspace({
     mutationFn: ({ id, status }: { id: number; status: string }) => tasksApi.updateStatus(id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       toast.success('Status updated');
     },
     onError: () => toast.error('Failed to update status'),
@@ -602,7 +604,6 @@ export function TasksWorkspace({
                 editable
                 onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
                 onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
-                onTaskTypeChange={(id, taskTypeId) => taskTypeMutation.mutate({ id, taskTypeId })}
                 onDeleteTask={allowDelete && !isDeletedView ? requestDeleteTask : undefined}
               />
             </div>
