@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { LayoutList, CheckSquare, NotebookPen, CalendarCheck, Library } from 'lucide-react';
+import { LayoutList, CheckSquare, NotebookPen, CalendarCheck, Library, Video } from 'lucide-react';
 import clsx from 'clsx';
 import { useWorkVaultUnread } from '../../hooks/useWorkVaultUnread';
 
@@ -14,6 +14,7 @@ const items: {
   { to: '/weekly-updates', icon: NotebookPen, label: 'Weekly Updates', end: true },
   { to: '/work-vault', icon: Library, label: 'Work Vault', end: true },
   { to: '/attendance', icon: CalendarCheck, label: 'Attendance', end: true },
+  { to: '/meetings', icon: Video, label: 'Meetings', end: true },
 ];
 
 function NavItem({
@@ -37,7 +38,7 @@ function NavItem({
       to={to}
       end={end}
       className={clsx(
-        'mobile-nav-item flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 min-h-[56px] px-0.5 transition-colors duration-hover',
+        'mobile-nav-item flex flex-1 flex-col items-center justify-center gap-0.5 py-1.5 min-h-[56px] px-0 transition-colors duration-hover',
         isActive ? 'text-accent-primary' : 'text-text-muted',
       )}
     >
@@ -47,7 +48,7 @@ function NavItem({
           <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-sky-400" aria-label="New team resources" />
         )}
       </span>
-      <span className="text-[9px] font-medium leading-tight text-center max-w-[4.5rem]">{label}</span>
+      <span className="text-[8px] font-medium leading-tight text-center max-w-[3.4rem]">{label}</span>
     </NavLink>
   );
 }
