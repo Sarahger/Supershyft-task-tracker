@@ -46,13 +46,9 @@ Open http://localhost:5173
 
 Users sign in with a **one-time email code** (OTP). SMTP must be configured in `backend/.env` (`EMAIL_ENABLED=true` and Gmail/SMTP credentials).
 
-## Demo Accounts
+## Local demo data
 
-| Role | Email |
-|------|-------|
-| Admin | `admin@company.com` |
-
-(Only when `AUTO_SEED=true` — demo seed is disabled for production.)
+Set `AUTO_SEED=true` in `backend/.env` (SQLite only) to load sample users. This never runs against Neon or Vercel. Production uses real accounts and OTP email login.
 
 ## Key Pages
 
@@ -87,7 +83,7 @@ Users sign in with a **one-time email code** (OTP). SMTP must be configured in `
 1. Create **Neon** project → copy pooled `DATABASE_URL`  
 2. On **Vercel**, import repo with **Root Directory = repo root** (not `frontend`)  
 3. Link **Vercel Blob** storage to the project  
-4. Set env vars: `DATABASE_URL`, `SECRET_KEY`, `AUTO_SEED=true`, `CORS_ORIGINS`  
-5. Deploy → login with `admin@company.com` / `admin123`
+4. Set env vars: `DATABASE_URL`, `SECRET_KEY`, `AUTO_SEED=false`, `CORS_ORIGINS`, `EMAIL_ENABLED=true`  
+5. Deploy → sign in with an existing user email and the one-time code
 
 Local dev still uses SQLite by default (`backend/.env`).

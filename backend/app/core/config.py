@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Supershyft Task Tracker"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     DATABASE_URL: str = "sqlite:///./workmanager.db"
 
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     EMAIL_ENABLED: bool = False
 
     FRONTEND_URL: str = "http://localhost:5173"
-    AUTO_SEED: bool = True
+    AUTO_SEED: bool = False
 
     BLOB_READ_WRITE_TOKEN: str | None = None
 
@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.DATABASE_URL.startswith("sqlite")
+
+    @property
+    def allow_demo_seed(self) -> bool:
+        """Demo employees/tasks may run only on local SQLite when AUTO_SEED is explicit."""
+        return bool(self.AUTO_SEED) and self.is_sqlite and os.getenv("VERCEL") != "1"
 
 
 @lru_cache

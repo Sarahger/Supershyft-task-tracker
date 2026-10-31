@@ -31,20 +31,13 @@ async def lifespan(app: FastAPI):
             try:
                 seed_meet_pool(db)
                 maybe_run_task_retention_cleanup(db, force=True)
-                from app.db.seed_weekly_demo import DEMO_NOTE, seed_weekly_demo
-                from app.models import WeeklyReport
-
-                if db.query(WeeklyReport).filter(WeeklyReport.leave_notes == DEMO_NOTE).count() == 0:
-                    names = seed_weekly_demo()
-                    if names:
-                        logger.info("Loaded weekly demo data for %s", ", ".join(names))
             finally:
                 db.close()
         except Exception as exc:
             logger.warning("Meet pool seed / task cleanup skipped or failed: %s", exc)
     if os.getenv("VERCEL") != "1":
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    if settings.AUTO_SEED and os.getenv("VERCEL") != "1":
+    if settings.allow_demo_seed:
         try:
             from app.db.seed import seed
             seed()

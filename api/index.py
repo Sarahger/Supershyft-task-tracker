@@ -42,10 +42,18 @@ def _bootstrap_database() -> None:
             maybe_run_task_retention_cleanup(db, force=True)
         finally:
             db.close()
-        if settings.AUTO_SEED:
+        if settings.allow_demo_seed:
             from app.db.seed import seed
 
             seed()
+        if settings.SECRET_KEY == "change-this-secret-key-in-production-use-env-var":
+            logger.error("SECRET_KEY is the insecure default — set a unique value on Vercel")
+        if settings.is_sqlite:
+            logger.error("DATABASE_URL is SQLite — production needs a Neon PostgreSQL URL")
+        if settings.DEBUG:
+            logger.warning("DEBUG is true on Vercel")
+        if settings.AUTO_SEED:
+            logger.warning("AUTO_SEED is ignored on Vercel so demo users and tasks are not inserted")
         logger.info("Vercel database bootstrap complete")
     except Exception as exc:
         logger.error("Vercel database bootstrap failed: %s", exc, exc_info=True)

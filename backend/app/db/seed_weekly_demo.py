@@ -122,6 +122,13 @@ def _clear_demo(db) -> None:
 
 
 def seed_weekly_demo() -> list[str]:
+    import os
+
+    from app.core.config import settings
+
+    if os.getenv("VERCEL") == "1" or not settings.is_sqlite:
+        return []
+
     db = SessionLocal()
     created: list[str] = []
     try:

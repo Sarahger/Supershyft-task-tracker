@@ -62,7 +62,8 @@ Leave build/output settings — `vercel.json` at the repo root defines them.
 | `DATABASE_URL` | Neon **pooled** connection string |
 | `SECRET_KEY` | Long random string (e.g. `openssl rand -hex 32`) |
 | `DEBUG` | `false` |
-| `AUTO_SEED` | `true` |
+| `AUTO_SEED` | `false` (demo seed is local SQLite only) |
+| `EMAIL_ENABLED` | `true` (required for OTP login email) |
 | `CORS_ORIGINS` | `https://YOUR-PROJECT.vercel.app` (update after first deploy) |
 | `FRONTEND_URL` | Same as above |
 | `TELEGRAM_BOT_TOKEN` | BotFather token (never commit; revoke if leaked) |
@@ -86,7 +87,7 @@ Leave build/output settings — `vercel.json` at the repo root defines them.
 Open `https://YOUR-PROJECT.vercel.app`
 
 - [ ] `https://YOUR-PROJECT.vercel.app/api/health` → healthy JSON
-- [ ] Login: `admin@company.com` / `admin123`
+- [ ] Login with a real user email — a one-time code is sent (not a password)
 - [ ] Tasks load, create/edit works
 - [ ] Upload an attachment
 - [ ] Reports, users (admin)

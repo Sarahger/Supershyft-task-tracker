@@ -83,7 +83,10 @@ class AuthService:
 
         sent = send_otp_email(user.email, code)
         if not sent:
-            logger.warning("OTP email not sent. Login code for %s: %s", email, code)
+            if settings.DEBUG:
+                logger.warning("OTP email not sent. Login code for %s: %s", email, code)
+            else:
+                logger.warning("OTP email not sent for %s", email)
 
     def verify_otp(self, email: str, code: str) -> dict | None:
         user = self.user_repo.get_by_email(email)

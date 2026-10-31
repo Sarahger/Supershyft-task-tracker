@@ -1,5 +1,6 @@
 """Seed the database with realistic sample data."""
 
+import os
 from datetime import datetime, timedelta, timezone
 
 from app.core.security import get_password_hash
@@ -24,6 +25,12 @@ from app.models import (
 
 
 def seed():
+    from app.core.config import settings
+
+    if os.getenv("VERCEL") == "1" or not settings.is_sqlite:
+        print("Demo seed is for local SQLite only. Skipping.")
+        return
+
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
