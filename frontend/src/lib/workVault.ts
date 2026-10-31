@@ -47,9 +47,21 @@ export function titleFromFilename(filename: string) {
   return base || filename;
 }
 
-export function isPreviewable(kind?: WorkVaultFileKind, mime?: string | null) {
-  if (kind === 'image' || kind === 'pdf' || kind === 'code') return true;
-  return !!mime && (mime.startsWith('image/') || mime === 'application/pdf' || mime.startsWith('text/') || mime === 'application/json');
+export function isPreviewable(kind?: WorkVaultFileKind, mime?: string | null, filename?: string | null) {
+  return previewMedia(kind, mime, filename) !== 'none';
+}
+
+export function previewMedia(
+  kind?: WorkVaultFileKind,
+  mime?: string | null,
+  filename?: string | null,
+): 'image' | 'pdf' | 'text' | 'none' {
+  const type = (mime || '').toLowerCase();
+  const name = (filename || '').toLowerCase();
+  if (kind === 'image' || type.startsWith('image/')) return 'image';
+  if (kind === 'pdf' || type.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
+  if (kind === 'code' || type.startsWith('text/') || type === 'application/json') return 'text';
+  return 'none';
 }
 
 export function apiErrorMessage(error: unknown, fallback: string) {

@@ -94,10 +94,10 @@ function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number 
     <li className="flex items-start gap-2 py-1">
       <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{index}.</span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-1 md:gap-4">
           <TaskTitle title={item.title} taskId={item.task_id} />
           {meta ? (
-            <p className="shrink-0 text-xs tabular-nums text-text-muted pt-1 text-right">{meta}</p>
+            <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">{meta}</p>
           ) : null}
         </div>
       </div>
@@ -125,14 +125,14 @@ function CommitmentRow({
     <li className="flex items-start gap-2 py-1">
       <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{index}.</span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-1 md:gap-4">
           <TaskTitle
             title={item.title}
             taskId={item.task_id}
             className={carried ? 'text-amber-400' : undefined}
           />
           {meta ? (
-            <p className="shrink-0 text-xs tabular-nums text-text-muted pt-1 text-right">{meta}</p>
+            <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">{meta}</p>
           ) : null}
         </div>
         {revised && latestReason && (

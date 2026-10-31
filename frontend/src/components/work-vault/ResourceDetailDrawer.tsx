@@ -14,6 +14,7 @@ import {
   FILE_KIND_LABELS,
   formatFileSize,
   isPreviewable,
+  previewMedia,
   uploaderName,
   WORK_VAULT_ACCEPT,
   WORK_VAULT_API_CATEGORY,
@@ -76,7 +77,7 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
   }, [resource]);
 
   useEffect(() => {
-    if (!resource || resource.resource_type !== 'file' || !isPreviewable(resource.file_kind, resource.mime_type)) {
+    if (!resource || resource.resource_type !== 'file' || !isPreviewable(resource.file_kind, resource.mime_type, resource.filename)) {
       setPreviewUrl(null);
       setTextContent(null);
       setPreviewError(null);
@@ -95,9 +96,13 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
         const response = await workVaultApi.fileBlob(resource.id);
         if (!active) return;
         const mime = resource.mime_type || response.data.type || 'application/octet-stream';
-        const blob = new Blob([response.data], { type: mime });
-        if (resource.file_kind === 'code' || mime.startsWith('text/') || mime === 'application/json') {
+        const blob = new Blob([response.data], { type: mime || 'application/octet-stream' });
+        const media = previewMedia(resource.file_kind, mime, resource.filename);
+        if (media === 'text') {
           setTextContent(await blob.text());
+        } else if (media === 'pdf') {
+          objectUrl = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+          setPreviewUrl(objectUrl);
         } else {
           objectUrl = window.URL.createObjectURL(blob);
           setPreviewUrl(objectUrl);
@@ -162,6 +167,7 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
 
   if (!resource) return null;
   const name = uploaderName(resource.uploaded_by);
+  const media = previewMedia(resource.file_kind, resource.mime_type, resource.filename);
 
   const copyLink = async () => {
     const link = `${window.location.origin}/work-vault?resource=${resource.id}`;
@@ -209,6 +215,25 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
             </p>
           </div>
         </div>
+
+        {resource.resource_type === 'file' && (
+          <div className="rounded-lg border border-dark-border p-3">
+            {previewLoading && <p className="text-xs text-text-muted">Loading preview…</p>}
+            {previewError && <p className="text-sm text-red-400">{previewError}</p>}
+            {previewUrl && media === 'image' && (
+              <img src={previewUrl} alt={resource.title} className="max-h-[70vh] w-full object-contain rounded" />
+            )}
+            {previewUrl && media === 'pdf' && (
+              <PdfViewer url={previewUrl} filename={resource.filename || resource.title} className="min-h-[50vh]" />
+            )}
+            {textContent != null && (
+              <pre className="text-2xs text-text-secondary overflow-auto max-h-[60vh] whitespace-pre-wrap">{textContent}</pre>
+            )}
+            {!previewLoading && !previewError && !previewUrl && textContent == null && (
+              <p className="text-xs text-text-muted">Preview is not available for this file type. Download it to open.</p>
+            )}
+          </div>
+        )}
 
         {editing ? (
           <form
@@ -279,25 +304,6 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
               </div>
             </dl>
           </>
-        )}
-
-        {resource.resource_type === 'file' && (
-          <div className="rounded-lg border border-dark-border p-3">
-            {previewLoading && <p className="text-xs text-text-muted">Loading preview…</p>}
-            {previewError && <p className="text-xs text-text-muted">{previewError}</p>}
-            {previewUrl && resource.file_kind === 'image' && (
-              <img src={previewUrl} alt={resource.title} className="max-h-[420px] w-full object-contain rounded" />
-            )}
-            {previewUrl && resource.file_kind === 'pdf' && (
-              <PdfViewer url={previewUrl} filename={resource.filename || resource.title} className="min-h-[50vh]" />
-            )}
-            {textContent != null && (
-              <pre className="text-2xs text-text-secondary overflow-auto max-h-[420px] whitespace-pre-wrap">{textContent}</pre>
-            )}
-            {!previewLoading && !previewError && !previewUrl && textContent == null && (
-              <p className="text-xs text-text-muted">Preview is not available for this file type. Download it to open.</p>
-            )}
-          </div>
         )}
 
         <div className="flex flex-wrap gap-2">
