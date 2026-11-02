@@ -129,6 +129,8 @@ export interface Task {
   updated_at: string;
   completed_at?: string;
   original_due_date?: string | null;
+  due_date_locked?: boolean;
+  due_date_locks_at?: string | null;
   deadline_revisions?: TaskDeadlineRevision[];
 }
 

@@ -435,17 +435,37 @@ def test_due_date_locks_and_revision_works_before_overdue(client, users, db_sess
         headers=auth_header(emp),
     )
     assert created.status_code == 200, created.text
-    task_id = created.json()["data"]["id"]
-    original = created.json()["data"]["due_date"]
+    body = created.json()["data"]
+    task_id = body["id"]
+    original = body["due_date"]
+    assert body["due_date_locked"] is False
 
     later = (date.today() + timedelta(days=8)).isoformat() + "T12:00:00+05:30"
-    updated = client.put(
+    changed = client.put(
         f"/api/tasks/{task_id}",
         json={"due_date": later, "title": "Lockable due"},
         headers=auth_header(emp),
     )
+    assert changed.status_code == 200, changed.text
+    changed_due = changed.json()["data"]["due_date"]
+    assert changed_due != original
+    assert changed.json()["data"]["due_date_locked"] is False
+
+    db_session.expire_all()
+    task = db_session.query(Task).filter(Task.id == task_id).first()
+    assert task is not None
+    task.created_at = datetime.now(timezone.utc) - timedelta(hours=25)
+    db_session.commit()
+
+    too_late = (date.today() + timedelta(days=12)).isoformat() + "T12:00:00+05:30"
+    updated = client.put(
+        f"/api/tasks/{task_id}",
+        json={"due_date": too_late, "title": "Lockable due"},
+        headers=auth_header(emp),
+    )
     assert updated.status_code == 200, updated.text
-    assert updated.json()["data"]["due_date"] == original
+    assert updated.json()["data"]["due_date"] == changed_due
+    assert updated.json()["data"]["due_date_locked"] is True
     db_session.expire_all()
     task = db_session.query(Task).filter(Task.id == task_id).first()
     assert task is not None
@@ -454,7 +474,7 @@ def test_due_date_locks_and_revision_works_before_overdue(client, users, db_sess
 
     revised = client.post(
         f"/api/tasks/{task_id}/deadline-revision",
-        json={"reason": "Scope grew", "new_due_date": later},
+        json={"reason": "Scope grew", "new_due_date": too_late},
         headers=auth_header(emp),
     )
     assert revised.status_code == 200, revised.text

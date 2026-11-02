@@ -15,6 +15,13 @@ import { formatTimeTakenHours, parseDurationInput } from '../../lib/taskTiming';
 import { toDateInput } from '../../lib/weeklyPlanParse';
 
 const AUTOSAVE_MS = 500;
+const DUE_DATE_EDIT_MS = 24 * 60 * 60 * 1000;
+
+function isTaskDueDateLocked(task: Task) {
+  if (typeof task.due_date_locked === 'boolean') return task.due_date_locked;
+  if (!task.created_at) return Boolean(task.due_date);
+  return Date.now() >= new Date(task.created_at).getTime() + DUE_DATE_EDIT_MS;
+}
 
 interface TaskFormState {
   title: string;
@@ -33,15 +40,16 @@ interface TaskFormState {
 }
 
 function taskToForm(task: Task): TaskFormState {
+  const locked = isTaskDueDateLocked(task);
   const originalDue = toDateInput(task.original_due_date || task.due_date);
   const currentDue = toDateInput(task.due_date);
-  const revised = originalDue && currentDue && originalDue !== currentDue ? currentDue : '';
+  const revised = locked && originalDue && currentDue && originalDue !== currentDue ? currentDue : '';
   return {
     title: task.title,
     description: task.description || '',
     priority: task.priority,
     status: task.status,
-    due_date: originalDue,
+    due_date: locked ? originalDue : currentDue,
     revised_due_date: revised,
     revision_reason: '',
     project_id: task.project_id ? String(task.project_id) : '',
@@ -84,7 +92,7 @@ function canAutosave(form: TaskFormState) {
 }
 
 async function persistTaskProperties(taskId: number, snapshot: TaskFormState, currentTask: Task) {
-  const locked = Boolean(currentTask.due_date);
+  const locked = isTaskDueDateLocked(currentTask);
   const currentDue = toDateInput(currentTask.due_date);
   const nextRevised = snapshot.revised_due_date.trim();
   const reason = snapshot.revision_reason.trim();
@@ -126,7 +134,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
   const [timeRequiredError, setTimeRequiredError] = useState('');
   const [revisionError, setRevisionError] = useState('');
   const [justSaved, setJustSaved] = useState(false);
-  const dueLocked = Boolean(task.due_date);
+  const dueLocked = isTaskDueDateLocked(task);
   const formRef = useRef(form);
   const savedFormRef = useRef(savedForm);
   const taskRef = useRef(task);
@@ -138,7 +146,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     const current = formRef.current;
     const saved = savedFormRef.current;
     if (!sameForm(current, saved)) return;
-    if (pendingRevisedDue(current, task, Boolean(task.due_date))) return;
+    if (pendingRevisedDue(current, task, isTaskDueDateLocked(task))) return;
     const next = taskToForm(task);
     if (sameForm(current, next)) return;
     setForm(next);
@@ -165,7 +173,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     onSuccess: (_data, snapshot) => {
       setSavedForm(snapshot);
       setTimeRequiredError('');
-      if (!revisionNeedsReason(snapshot, taskRef.current, Boolean(taskRef.current.due_date))) {
+      if (!revisionNeedsReason(snapshot, taskRef.current, isTaskDueDateLocked(taskRef.current))) {
         setRevisionError('');
       }
       setJustSaved(true);
@@ -187,7 +195,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       if (sameForm(latest, snapshot)) return;
       if (!canAutosave(latest)) return;
       const currentTask = taskRef.current;
-      const incompleteRevision = revisionNeedsReason(latest, currentTask, Boolean(currentTask.due_date));
+      const incompleteRevision = revisionNeedsReason(latest, currentTask, isTaskDueDateLocked(currentTask));
       if (incompleteRevision && sameCore(latest, snapshot)) return;
       saveMutation.mutate(latest);
     },
@@ -199,7 +207,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     if (sameForm(snapshot, savedFormRef.current)) return;
     if (!canAutosave(snapshot)) return;
     const currentTask = taskRef.current;
-    if (revisionNeedsReason(snapshot, currentTask, Boolean(currentTask.due_date)) && sameCore(snapshot, savedFormRef.current)) {
+    if (revisionNeedsReason(snapshot, currentTask, isTaskDueDateLocked(currentTask)) && sameCore(snapshot, savedFormRef.current)) {
       return;
     }
     mutateSave(snapshot);
@@ -239,7 +247,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       const currentTask = taskRef.current;
       if (sameForm(latest, saved)) return;
       if (!canAutosave(latest)) return;
-      if (revisionNeedsReason(latest, currentTask, Boolean(currentTask.due_date)) && sameCore(latest, saved)) return;
+      if (revisionNeedsReason(latest, currentTask, isTaskDueDateLocked(currentTask)) && sameCore(latest, saved)) return;
       void persistTaskProperties(taskId, latest, currentTask).catch(() => undefined);
     };
   }, [taskId]);
@@ -388,9 +396,11 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
             onChange={(e) => setForm({ ...form, due_date: e.target.value })}
             onBlur={() => flushSave()}
           />
-          {dueLocked && (
-            <p className="text-2xs text-text-muted mt-1">Locked after it is saved. Use revised due date to change it.</p>
-          )}
+          <p className="text-2xs text-text-muted mt-1">
+            {dueLocked
+              ? 'Locked 24 hours after the task was created. Use revised due date to change it.'
+              : 'You can change this for 24 hours after the task is created.'}
+          </p>
         </div>
         {dueLocked && (
           <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">

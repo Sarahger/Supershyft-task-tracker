@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -19,10 +19,27 @@ from app.repositories.base import ActivityRepository, TaskRepository, user_to_br
 from app.services.notification_service import NotificationService
 
 
+DUE_DATE_EDIT_WINDOW = timedelta(hours=24)
+
+
 def _ensure_aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def due_date_locks_at(created_at: datetime | None) -> datetime | None:
+    if created_at is None:
+        return None
+    return _ensure_aware(created_at) + DUE_DATE_EDIT_WINDOW
+
+
+def is_due_date_locked(task: Task, now: datetime | None = None) -> bool:
+    created = getattr(task, "created_at", None)
+    if created is None:
+        return task.due_date is not None
+    current = now or datetime.now(timezone.utc)
+    return _ensure_aware(current) >= due_date_locks_at(created)
 
 
 def compute_time_taken_hours(task: Task, *, now: datetime | None = None) -> float | None:
@@ -149,7 +166,8 @@ class TaskService:
         data.pop("actual_hours", None)
         data.pop("start_date", None)
         data.pop("end_date", None)
-        if task.due_date is not None:
+        due_date_in_payload = "due_date" in data
+        if is_due_date_locked(task):
             data.pop("due_date", None)
         if "estimated_hours" in data:
             estimated = data["estimated_hours"]
@@ -162,7 +180,9 @@ class TaskService:
             if hasattr(task, key):
                 setattr(task, key, value)
 
-        if task.due_date is not None and task.original_due_date is None:
+        if due_date_in_payload and not is_due_date_locked(task):
+            task.original_due_date = task.due_date
+        elif task.due_date is not None and task.original_due_date is None:
             task.original_due_date = task.due_date
 
         if "status" in data and task.status != old_status:
@@ -472,6 +492,8 @@ class TaskService:
             "estimated_hours": task.estimated_hours,
             "actual_hours": compute_time_taken_hours(task),
             "is_blocked": task.status == "blocked",
+            "due_date_locked": is_due_date_locked(task),
+            "due_date_locks_at": due_date_locks_at(task.created_at),
             "created_at": task.created_at,
             "updated_at": task.updated_at,
         }
