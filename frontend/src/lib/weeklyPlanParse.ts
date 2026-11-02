@@ -244,34 +244,54 @@ export interface ParsedWeeklyDoneItem {
   title: string;
   description: string;
   rawLine: string;
+  estimatedHours: number | null;
+  timeLabel: string | null;
+  completionDate: string | null;
+  missingEffort: boolean;
+  missingDate: boolean;
 }
 
-export function parseWeeklyDoneList(text: string): ParsedWeeklyDoneItem[] {
+export function reportingMondayOf(periodStart?: string | Date, now: Date = new Date()): Date {
+  const base = periodStart
+    ? typeof periodStart === 'string'
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(periodStart) ? new Date(`${periodStart}T12:00:00`) : parseISO(periodStart))
+      : periodStart
+    : now;
+  return mondayOf(base);
+}
+
+export function parseWeeklyDoneList(
+  text: string,
+  options?: { periodStart?: string | Date; now?: Date },
+): ParsedWeeklyDoneItem[] {
+  const now = options?.now ?? new Date();
+  const reportingMonday = reportingMondayOf(options?.periodStart, now);
   const lines = text.split(/\r?\n/).map((l) => l.trimEnd());
   const items: ParsedWeeklyDoneItem[] = [];
   for (const rawLine of lines) {
     const trimmed = rawLine.trim();
     if (!trimmed || LIST_MARKER_ONLY_RE.test(trimmed)) continue;
     const numbered = trimmed.match(NUMBERED_LINE_RE);
-    if (numbered) {
-      items.push({ title: numbered[1].trim(), description: '', rawLine: trimmed });
-      continue;
-    }
-    if (items.length && /^[-*•]/.test(trimmed)) {
-      const extra = trimmed.replace(/^[-*•]\s*/, '').trim();
-      const last = items[items.length - 1];
-      last.description = last.description ? `${last.description}\n${extra}` : extra;
-      last.title = last.description ? `${last.title}` : last.title;
-      continue;
-    }
-    if (items.length && !/^\d+[.)]/.test(trimmed) && trimmed.length > 3) {
-      const last = items[items.length - 1];
-      last.description = last.description ? `${last.description}\n${trimmed}` : trimmed;
-      continue;
-    }
-    if (trimmed.length > 2) {
-      items.push({ title: trimmed, description: '', rawLine: trimmed });
-    }
+    const body = numbered ? numbered[1].trim() : trimmed;
+    if (!body) continue;
+    const slashDue = stripSlashDue(body, reportingMonday, now);
+    const hashTime = stripHashTime(slashDue.title || body);
+    const dueParsed = stripDue(hashTime.title || slashDue.title || body);
+    const estimate = parseWeeklyEstimate(dueParsed.title || hashTime.title || body);
+    const title = estimate.title || dueParsed.title || hashTime.title || slashDue.title || body;
+    if (!title) continue;
+    const estimatedHours = hashTime.hours ?? estimate.hours;
+    const completionDate = slashDue.dueDate || dueParsed.dueDate;
+    items.push({
+      title,
+      description: '',
+      rawLine: trimmed,
+      estimatedHours,
+      timeLabel: hashTime.label ?? estimate.label,
+      completionDate,
+      missingEffort: estimatedHours == null,
+      missingDate: !completionDate,
+    });
   }
   return items.filter((item) => item.title);
 }

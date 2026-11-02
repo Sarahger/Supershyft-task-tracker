@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -658,7 +658,7 @@ class WeeklyUpdateService:
         if user.weekly_updates_adopted_at is None:
             user.weekly_updates_adopted_at = _utc_now()
 
-        self._replace_completions(report, completions_in)
+        self._replace_completions(user, report, completions_in)
         create_errors = self._upsert_commitments(user, report, commitments_in)
 
         report.status = WeeklyReportStatus.SUBMITTED.value
@@ -769,6 +769,18 @@ class WeeklyUpdateService:
                 if task_id in seen_completion_tasks:
                     raise HTTPException(status_code=400, detail="The same task cannot appear twice in completed work")
                 seen_completion_tasks.add(task_id)
+            else:
+                hours = item.get("estimated_hours")
+                if hours is None or float(hours) <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Add time taken for '{title}', e.g. #3h",
+                    )
+                if not item.get("completion_date"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Add the completed day for '{title}', e.g. /thursday",
+                    )
 
         seen_commitment_tasks: set[int] = set()
         for item in commitments:
@@ -791,7 +803,9 @@ class WeeklyUpdateService:
                     raise HTTPException(status_code=400, detail="The same task cannot appear twice in next week's plan")
                 seen_commitment_tasks.add(task_id)
 
-    def _replace_completions(self, report: WeeklyReport, items: list[dict]) -> None:
+    def _replace_completions(self, user: User, report: WeeklyReport, items: list[dict]) -> None:
+        previous = list(report.completions)
+        by_title = {c.title.strip().lower(): c for c in previous if c.title}
         report.completions.clear()
         self.db.flush()
         seen: set[int] = set()
@@ -808,15 +822,88 @@ class WeeklyUpdateService:
             source = item.get("source") or WeeklyCompletionSource.MANUAL.value
             if source not in {s.value for s in WeeklyCompletionSource}:
                 source = WeeklyCompletionSource.MANUAL.value
+            if not task_id and title:
+                prev = by_title.get(title.lower())
+                if prev and prev.task_id and prev.task_id not in seen:
+                    task_id = prev.task_id
+            completion_day = item.get("completion_date") or today_local()
+            if isinstance(completion_day, datetime):
+                completion_day = as_local_date(completion_day) or today_local()
+            hours = item.get("estimated_hours")
+            if included and not task_id:
+                created = self._create_completed_from_update(user, title, completion_day, hours)
+                task_id = created.id
+            elif included and task_id and source == WeeklyCompletionSource.MANUAL.value:
+                self._update_completed_from_update(task_id, completion_day, hours)
+            if task_id:
+                seen.add(task_id)
             report.completions.append(
                 WeeklyReportCompletion(
                     task_id=task_id,
                     title=title or "Completed task",
-                    completion_date=item.get("completion_date") or today_local(),
+                    completion_date=completion_day,
                     source=source,
                     included=included,
                 )
             )
+        self.db.flush()
+
+    def _create_completed_from_update(
+        self,
+        user: User,
+        title: str,
+        completion_day: date,
+        hours: float | None,
+    ) -> Task:
+        effort = float(hours or 0)
+        if effort <= 0:
+            raise HTTPException(status_code=400, detail=f"Add time taken for '{title}', e.g. #3h")
+        completed_at = due_at_noon(completion_day)
+        start_at = completed_at - timedelta(hours=effort)
+        created = self.tasks.create_task(
+            {
+                "title": title,
+                "priority": "medium",
+                "status": TaskStatus.COMPLETED.value,
+                "estimated_hours": effort,
+                "start_date": start_at,
+                "end_date": completed_at,
+                "due_date": completed_at,
+                "assignee_ids": [user.id],
+            },
+            user,
+        )
+        created.completed_at = completed_at
+        created.actual_hours = effort
+        for assignee in created.assignees:
+            assignee.is_completed = True
+            assignee.completed_at = completed_at
+        self.db.flush()
+        return created
+
+    def _update_completed_from_update(
+        self,
+        task_id: int,
+        completion_day: date,
+        hours: float | None,
+    ) -> None:
+        task = self.db.query(Task).options(joinedload(Task.assignees)).filter(Task.id == task_id).first()
+        if not task or task.is_archived:
+            return
+        completed_at = due_at_noon(completion_day)
+        effort = float(hours) if hours is not None and float(hours) > 0 else task.estimated_hours
+        task.status = TaskStatus.COMPLETED.value
+        task.completed_at = completed_at
+        task.end_date = completed_at
+        task.due_date = task.due_date or completed_at
+        task.original_due_date = task.original_due_date or task.due_date
+        if effort:
+            task.estimated_hours = effort
+            task.start_date = completed_at - timedelta(hours=float(effort))
+            task.actual_hours = float(effort)
+        for assignee in task.assignees:
+            assignee.is_completed = True
+            assignee.completed_at = completed_at
         self.db.flush()
 
     def _upsert_commitments(self, user: User, report: WeeklyReport, items: list[dict]) -> list[dict]:

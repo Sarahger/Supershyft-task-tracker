@@ -22,6 +22,7 @@ class WeeklyCompletionIn(BaseModel):
     task_id: int | None = None
     title: str = Field(..., min_length=1, max_length=500)
     completion_date: date | None = None
+    estimated_hours: float | None = None
     source: str = "manual"
     included: bool = True
 

@@ -100,31 +100,31 @@ def test_period_math_friday_and_late_submit():
     assert plan_end == date(2026, 11, 8)
 
 
-def test_weekly_edit_window_ends_monday_night():
+def test_weekly_edit_window_ends_monday_2pm():
     monday = date(2026, 10, 26)
     until = editable_until_for(monday)
     zone = get_app_timezone()
-    assert until.date() == date(2026, 11, 3)
-    assert until.hour == 0
+    assert until.date() == date(2026, 11, 2)
+    assert until.hour == 14
     assert until.minute == 0
-    assert is_report_editable(monday, "submitted", datetime(2026, 11, 2, 23, 59, tzinfo=zone))
-    assert not is_report_editable(monday, "draft", datetime(2026, 11, 3, 0, 0, tzinfo=zone))
+    assert is_report_editable(monday, "submitted", datetime(2026, 11, 2, 13, 59, tzinfo=zone))
+    assert not is_report_editable(monday, "draft", datetime(2026, 11, 2, 14, 0, tzinfo=zone))
 
 
 def test_current_week_waits_until_previous_week_locks():
     previous = date(2026, 10, 26)
     current = date(2026, 11, 2)
     zone = get_app_timezone()
-    monday_night = datetime(2026, 11, 2, 23, 59, tzinfo=zone)
-    tuesday = datetime(2026, 11, 3, 0, 0, tzinfo=zone)
+    before_cutoff = datetime(2026, 11, 2, 13, 59, tzinfo=zone)
+    at_cutoff = datetime(2026, 11, 2, 14, 0, tzinfo=zone)
 
-    assert is_report_editable(previous, "submitted", monday_night)
-    assert not is_report_editable(current, "draft", monday_night)
-    assert writable_period_start(monday_night) == previous
+    assert is_report_editable(previous, "submitted", before_cutoff)
+    assert not is_report_editable(current, "draft", before_cutoff)
+    assert writable_period_start(before_cutoff) == previous
 
-    assert not is_report_editable(previous, "submitted", tuesday)
-    assert is_report_editable(current, "draft", tuesday)
-    assert writable_period_start(tuesday) == current
+    assert not is_report_editable(previous, "submitted", at_cutoff)
+    assert is_report_editable(current, "draft", at_cutoff)
+    assert writable_period_start(at_cutoff) == current
 
 
 def test_resolve_period_requires_monday():
@@ -141,7 +141,13 @@ def test_submit_creates_task_and_is_idempotent(client, users, db_session):
     due = (monday + timedelta(days=9)).isoformat() + "T12:00:00+05:30"
     payload = {
         "period_start": monday.isoformat(),
-        "completions": [{"title": "Shipped API", "source": "manual", "included": True}],
+        "completions": [{
+            "title": "Shipped API",
+            "source": "manual",
+            "included": True,
+            "estimated_hours": 2,
+            "completion_date": monday.isoformat(),
+        }],
         "commitments": [
             {
                 "title": "New API integration",
@@ -174,6 +180,51 @@ def test_submit_creates_task_and_is_idempotent(client, users, db_session):
     assert emp.weekly_updates_adopted_at is not None
 
 
+def test_extra_completed_item_creates_completed_tracker_task(client, users, db_session):
+    emp = users["employee"]
+    monday = writable_period_start()
+    done_on = monday + timedelta(days=3)
+    due = (monday + timedelta(days=9)).isoformat() + "T12:00:00+05:30"
+    payload = {
+        "period_start": monday.isoformat(),
+        "completions": [{
+            "title": "New app screens",
+            "source": "manual",
+            "included": True,
+            "estimated_hours": 3,
+            "completion_date": done_on.isoformat(),
+        }],
+        "commitments": [
+            {
+                "title": "Follow-up polish",
+                "estimated_hours": 2,
+                "due_date": due,
+                "commitment_type": "new",
+            }
+        ],
+    }
+    first = client.put("/api/weekly-updates", json=payload, headers=auth_header(emp))
+    assert first.status_code == 200, first.text
+    completion = first.json()["data"]["completions"][0]
+    task_id = completion["task_id"]
+    assert task_id
+    assert completion["title"] == "New app screens"
+    assert completion["completion_date"] == done_on.isoformat()
+
+    db_session.expire_all()
+    task = db_session.query(Task).filter(Task.id == task_id).first()
+    assert task is not None
+    assert task.status == "completed"
+    assert task.estimated_hours == 3
+    assert task.completed_at is not None
+    assert any(a.user_id == emp.id and a.is_completed for a in task.assignees)
+
+    second = client.put("/api/weekly-updates", json=payload, headers=auth_header(emp))
+    assert second.status_code == 200, second.text
+    assert second.json()["data"]["completions"][0]["task_id"] == task_id
+    assert db_session.query(Task).filter(Task.title == "New app screens").count() == 1
+
+
 def test_weekly_due_date_can_change_for_24_hours_then_needs_revision(client, users, db_session):
     emp = users["employee"]
     monday = writable_period_start()
@@ -181,7 +232,13 @@ def test_weekly_due_date_can_change_for_24_hours_then_needs_revision(client, use
     later = (monday + timedelta(days=11)).isoformat() + "T12:00:00+05:30"
     payload = {
         "period_start": monday.isoformat(),
-        "completions": [{"title": "Shipped API", "source": "manual", "included": True}],
+        "completions": [{
+            "title": "Shipped API",
+            "source": "manual",
+            "included": True,
+            "estimated_hours": 2,
+            "completion_date": monday.isoformat(),
+        }],
         "commitments": [
             {
                 "title": "New API integration",
@@ -273,7 +330,13 @@ def test_current_week_cannot_start_until_previous_week_locks(client, users):
     due = (previous + timedelta(days=9)).isoformat() + "T12:00:00+05:30"
     current_payload = {
         "period_start": current.isoformat(),
-        "completions": [{"title": "Too early", "source": "manual", "included": True}],
+        "completions": [{
+            "title": "Too early",
+            "source": "manual",
+            "included": True,
+            "estimated_hours": 1,
+            "completion_date": current.isoformat(),
+        }],
         "commitments": [],
     }
     if is_report_editable(current, "draft"):
@@ -287,7 +350,13 @@ def test_current_week_cannot_start_until_previous_week_locks(client, users):
 
     previous_payload = {
         "period_start": previous.isoformat(),
-        "completions": [{"title": "Wrapped last week", "source": "manual", "included": True}],
+        "completions": [{
+            "title": "Wrapped last week",
+            "source": "manual",
+            "included": True,
+            "estimated_hours": 2,
+            "completion_date": previous.isoformat(),
+        }],
         "commitments": [
             {
                 "title": "Next week work",

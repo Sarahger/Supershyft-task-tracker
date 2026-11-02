@@ -209,6 +209,7 @@ export const weeklyUpdatesApi = {
       task_id?: number | null;
       title: string;
       completion_date?: string | null;
+      estimated_hours?: number | null;
       source: string;
       included: boolean;
     }>;

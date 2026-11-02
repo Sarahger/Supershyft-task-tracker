@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 
 from app.utils.month_weeks import get_app_timezone
 
+EDIT_CUTOFF = time(14, 0)
 RESOLVED_STATUSES = frozenset({"completed", "cancelled"})
 
 
@@ -81,13 +82,13 @@ def previous_period_start(period_start: date) -> date:
 
 
 def editable_until_for(period_start: date) -> datetime:
-    """Last week stays open through the following Monday, locking at Tuesday 00:00."""
+    """Last week stays open until 2:00 PM on the following Monday."""
     zone = get_app_timezone()
-    return datetime.combine(next_monday(period_start) + timedelta(days=1), time.min, tzinfo=zone)
+    return datetime.combine(next_monday(period_start), EDIT_CUTOFF, tzinfo=zone)
 
 
 def period_unlocks_at(period_start: date) -> datetime:
-    """A week can start only after the previous week locks at the end of Monday."""
+    """A week can start only after the previous week locks at Monday 2:00 PM."""
     return editable_until_for(previous_period_start(period_start))
 
 
@@ -108,9 +109,9 @@ def writable_period_start(now: datetime | None = None) -> date:
 def report_edit_block_reason(period_start: date, now: datetime | None = None) -> str | None:
     current = now_local(now)
     if current < period_unlocks_at(period_start):
-        return "This week's update opens on Tuesday, after last week's update is locked"
+        return "This week's update opens at 2:00 PM Monday, after last week's update is locked"
     if current >= editable_until_for(period_start):
-        return "This weekly update can only be edited until 11:59 PM on the following Monday"
+        return "This weekly update can only be edited until 2:00 PM on the following Monday"
     return None
 
 

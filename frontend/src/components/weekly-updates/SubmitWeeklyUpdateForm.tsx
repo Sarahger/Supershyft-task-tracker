@@ -23,6 +23,7 @@ interface CompletionDraft {
   title: string;
   description?: string;
   completion_date: string;
+  estimated_hours?: number | null;
   source: 'suggested' | 'manual';
   included: boolean;
 }
@@ -166,7 +167,7 @@ export function SubmitWeeklyUpdateForm({
     return [...byId.values()];
   }, [existing, suggestions]);
 
-  const parsedDone = useMemo(() => parseWeeklyDoneList(doneText), [doneText]);
+  const parsedDone = useMemo(() => parseWeeklyDoneList(doneText, { periodStart }), [doneText, periodStart]);
   const parsedPlan = useMemo(
     () => parseWeeklyPlanList(planText, { periodStart }),
     [planText, periodStart],
@@ -198,14 +199,24 @@ export function SubmitWeeklyUpdateForm({
         });
       }
       for (const item of parsedDone) {
+        if (!item.title.trim()) continue;
         const match = completedTasks.find((t) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         if (match && seen.has(match.id)) continue;
+        if (!match) {
+          if (item.missingEffort || item.estimatedHours == null) {
+            throw new Error(`Add time taken for “${item.title}”, e.g. #3h`);
+          }
+          if (item.missingDate || !item.completionDate) {
+            throw new Error(`Add the completed day for “${item.title}”, e.g. /thursday`);
+          }
+        }
         completions.push({
           key: newKey(),
           task_id: match?.id ?? null,
           title: match && !seen.has(match.id) ? match.title : item.title,
           description: item.description,
-          completion_date: format(new Date(), 'yyyy-MM-dd'),
+          completion_date: item.completionDate || format(new Date(), 'yyyy-MM-dd'),
+          estimated_hours: item.estimatedHours,
           source: match ? 'suggested' : 'manual',
           included: true,
         });
@@ -277,6 +288,7 @@ export function SubmitWeeklyUpdateForm({
           task_id: c.task_id ?? null,
           title: c.title.trim(),
           completion_date: c.completion_date || null,
+          estimated_hours: c.estimated_hours ?? null,
           source: c.source,
           included: c.included,
         })),
@@ -331,7 +343,7 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">Last week’s tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Tasks marked complete this week are already included. Uncheck anything to leave out, or add extra work below. Press Enter for the next item — numbers are added for you.
+            Tasks marked complete this week are already included. Uncheck anything to leave out, or add extra work below as New app screens #3hr /thursday. Press Enter for the next item — numbers are added for you.
           </p>
         </div>
         {completedTasks.length > 0 ? (
@@ -374,10 +386,32 @@ export function SubmitWeeklyUpdateForm({
           users={mentionUsers}
           showExtras={false}
           numberedList
-          placeholder="Server updates with @Name"
+          placeholder={'New app screens #3hr /thursday'}
         />
         {parsedDone.length > 0 && (
-          <p className="text-xs text-text-muted">{parsedDone.length} extra item{parsedDone.length === 1 ? '' : 's'} will be included.</p>
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-text-secondary">
+              {parsedDone.length} extra item{parsedDone.length === 1 ? '' : 's'} will be added as completed tracker tasks.
+            </p>
+            {parsedDone.map((item) => (
+              <div key={item.rawLine} className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-text-primary">{item.title}</p>
+                  {item.missingEffort && (
+                    <p className="text-2xs text-accent-danger">Add time taken, e.g. #3h or #3hr</p>
+                  )}
+                  {item.missingDate && (
+                    <p className="text-2xs text-accent-danger">Add the completed day, e.g. /thursday</p>
+                  )}
+                </div>
+                <p className="shrink-0 text-xs tabular-nums text-text-muted pt-0.5">
+                  {[item.timeLabel, item.completionDate ? format(parseISO(item.completionDate), 'd MMM') : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
