@@ -283,7 +283,7 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
                 onClick={() => fileRef.current?.click()}
                 className="w-full rounded-lg border border-dashed border-dark-border px-4 py-6 text-sm text-text-muted hover:bg-dark-hover hover:text-text-secondary transition-colors"
               >
-                Click to browse files. PDF, Office, images, and common text files are supported.
+                Click to browse files. PDF, Office, images, videos, and common text files are supported.
               </button>
             ) : (
               <div className="space-y-2">

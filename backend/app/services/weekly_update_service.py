@@ -42,12 +42,14 @@ from app.utils.week_periods import (
     is_auto_sync_open,
     is_report_editable,
     monday_of,
+    report_edit_block_reason,
     period_datetime_bounds,
     period_end_for_submit,
     planning_window,
     resolve_period,
     saturday_of,
     today_local,
+    writable_period_start,
     week_datetime_bounds,
 )
 
@@ -202,6 +204,19 @@ class WeeklyUpdateService:
                         "completed_at": row.task.completed_at if row.task else None,
                         "estimated_hours": _task_hours(row.task),
                         "source": row.source or WeeklyCompletionSource.SUGGESTED.value,
+                        "included": True,
+                    }
+                )
+        else:
+            for task in self._completed_tasks_for_user(user.id, period.period_start):
+                items.append(
+                    {
+                        "task_id": task.id,
+                        "title": task.title,
+                        "completion_date": as_local_date(task.completed_at) or today_local(),
+                        "completed_at": task.completed_at,
+                        "estimated_hours": _task_hours(task),
+                        "source": WeeklyCompletionSource.SUGGESTED.value,
                         "included": True,
                     }
                 )
@@ -567,6 +582,7 @@ class WeeklyUpdateService:
                 "weekly_updates_adopted_at": user.weekly_updates_adopted_at,
             },
             "current_period_start": period.period_start.isoformat(),
+            "writable_period_start": writable_period_start().isoformat(),
             "focus_week": period.period_start.isoformat() if week_start else None,
             "reports": [self._report_view(r) for r in reports],
             "outstanding": outstanding,
@@ -596,11 +612,9 @@ class WeeklyUpdateService:
         plan_start, plan_end = planning_window(start)
 
         report = self._report_for(user.id, start)
-        if not is_report_editable(start, report.status if report else WeeklyReportStatus.DRAFT.value):
-            raise HTTPException(
-                status_code=403,
-                detail="This weekly update can only be edited until 12:00 PM on the following Monday",
-            )
+        blocked = report_edit_block_reason(start)
+        if blocked:
+            raise HTTPException(status_code=403, detail=blocked)
 
         completions_in: list[dict] = payload.get("completions") or []
         commitments_in: list[dict] = payload.get("commitments") or []
@@ -631,11 +645,9 @@ class WeeklyUpdateService:
                 report = self._report_for(user.id, start)
                 if report is None:
                     raise
-                if not is_report_editable(report.period_start, report.status):
-                    raise HTTPException(
-                        status_code=403,
-                        detail="This weekly update can only be edited until 12:00 PM on the following Monday",
-                    )
+                blocked_again = report_edit_block_reason(report.period_start)
+                if blocked_again:
+                    raise HTTPException(status_code=403, detail=blocked_again)
 
         report.period_end = period_end
         report.planning_start = plan_start

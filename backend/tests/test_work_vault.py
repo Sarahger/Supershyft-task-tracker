@@ -423,3 +423,37 @@ def test_department_unread_and_people_folders():
         session.close()
         Base.metadata.drop_all(bind=engine)
         engine.dispose()
+
+
+def test_video_upload_is_accepted():
+    client, session, engine = setup_client()
+    try:
+        emp, other, _admin = make_users(session)
+        upload = client.post(
+            "/api/work-vault/resources",
+            data={
+                "title": "Demo walkthrough",
+                "description": "Product recording",
+                "category": "Images & Media",
+            },
+            files={"file": ("walkthrough.mp4", b"\x00\x00fake-mp4", "video/mp4")},
+            headers=auth_header(emp),
+        )
+        assert upload.status_code == 200, upload.text
+        item = upload.json()["data"]
+        assert item["file_kind"] == "video"
+        assert item["filename"] == "walkthrough.mp4"
+
+        listed = client.get(
+            "/api/work-vault/resources",
+            params={"file_kind": "video"},
+            headers=auth_header(other),
+        )
+        assert listed.status_code == 200
+        titles = [row["title"] for row in listed.json()["data"]["items"]]
+        assert titles == ["Demo walkthrough"]
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()

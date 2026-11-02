@@ -77,13 +77,41 @@ def current_week_start(now: datetime | None = None) -> date:
     return monday_of(today_local(now))
 
 
+def previous_period_start(period_start: date) -> date:
+    return period_start - timedelta(days=7)
+
+
 def editable_until_for(period_start: date) -> datetime:
     zone = get_app_timezone()
     return datetime.combine(next_monday(period_start), EDIT_CUTOFF, tzinfo=zone)
 
 
+def period_unlocks_at(period_start: date) -> datetime:
+    """A week can start only after the previous week locks at Monday 12:00."""
+    return editable_until_for(previous_period_start(period_start))
+
+
 def is_report_editable(period_start: date, status: str, now: datetime | None = None) -> bool:
-    return now_local(now) < editable_until_for(period_start)
+    current = now_local(now)
+    return period_unlocks_at(period_start) <= current < editable_until_for(period_start)
+
+
+def writable_period_start(now: datetime | None = None) -> date:
+    current = now_local(now)
+    this_monday = monday_of(current.date())
+    last_monday = previous_period_start(this_monday)
+    if current < editable_until_for(last_monday):
+        return last_monday
+    return this_monday
+
+
+def report_edit_block_reason(period_start: date, now: datetime | None = None) -> str | None:
+    current = now_local(now)
+    if current < period_unlocks_at(period_start):
+        return "This week's update opens at 12:00 PM Monday, after last week's update is locked"
+    if current >= editable_until_for(period_start):
+        return "This weekly update can only be edited until 12:00 PM on the following Monday"
+    return None
 
 
 def local_day_bounds(day: date) -> tuple[datetime, datetime]:
@@ -107,7 +135,7 @@ def week_datetime_bounds(period_start: date) -> tuple[datetime, datetime]:
 
 
 def is_auto_sync_open(period_start: date, now: datetime | None = None) -> bool:
-    return now_local(now) < editable_until_for(period_start)
+    return is_report_editable(period_start, "draft", now)
 
 
 def due_at_noon(day: date) -> datetime:

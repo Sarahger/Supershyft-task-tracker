@@ -770,6 +770,7 @@ export interface WeeklyUserHistory {
     weekly_updates_adopted_at?: string | null;
   };
   current_period_start: string;
+  writable_period_start: string;
   focus_week?: string | null;
   reports: WeeklyReport[];
   outstanding: WeeklyCommitment[];
@@ -833,6 +834,7 @@ export type WorkVaultFileKind =
   | 'spreadsheet'
   | 'presentation'
   | 'code'
+  | 'video'
   | 'link'
   | 'api'
   | 'other';

@@ -226,6 +226,17 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
             {previewUrl && media === 'pdf' && (
               <PdfViewer url={previewUrl} filename={resource.filename || resource.title} className="min-h-[50vh]" />
             )}
+            {previewUrl && media === 'video' && (
+              <video
+                src={previewUrl}
+                controls
+                playsInline
+                preload="metadata"
+                className="max-h-[70vh] w-full rounded bg-black"
+              >
+                Your browser cannot play this video. Download it to watch.
+              </video>
+            )}
             {textContent != null && (
               <pre className="text-2xs text-text-secondary overflow-auto max-h-[60vh] whitespace-pre-wrap">{textContent}</pre>
             )}

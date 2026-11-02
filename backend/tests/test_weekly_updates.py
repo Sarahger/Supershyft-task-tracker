@@ -13,8 +13,10 @@ from app.main import app
 from app.models import Attendance, Department, Task, TaskAssignee, User, WeeklyReport, WeeklyReportCommitment
 from app.utils.month_weeks import get_app_timezone
 from app.utils.week_periods import (
+    current_week_start,
     editable_until_for,
     is_report_editable,
+    writable_period_start,
     monday_of,
     period_end_for_submit,
     planning_window,
@@ -109,6 +111,22 @@ def test_weekly_edit_window_ends_monday_noon():
     assert not is_report_editable(monday, "draft", datetime(2026, 11, 2, 12, 0, tzinfo=zone))
 
 
+def test_current_week_waits_until_previous_week_locks():
+    previous = date(2026, 10, 26)
+    current = date(2026, 11, 2)
+    zone = get_app_timezone()
+    monday_morning = datetime(2026, 11, 2, 11, 59, tzinfo=zone)
+    monday_noon = datetime(2026, 11, 2, 12, 0, tzinfo=zone)
+
+    assert is_report_editable(previous, "submitted", monday_morning)
+    assert not is_report_editable(current, "draft", monday_morning)
+    assert writable_period_start(monday_morning) == previous
+
+    assert not is_report_editable(previous, "submitted", monday_noon)
+    assert is_report_editable(current, "draft", monday_noon)
+    assert writable_period_start(monday_noon) == current
+
+
 def test_resolve_period_requires_monday():
     try:
         resolve_period(date(2026, 10, 28))
@@ -119,7 +137,7 @@ def test_resolve_period_requires_monday():
 
 def test_submit_creates_task_and_is_idempotent(client, users, db_session):
     emp = users["employee"]
-    monday = monday_of(date.today())
+    monday = writable_period_start()
     due = (monday + timedelta(days=9)).isoformat() + "T12:00:00+05:30"
     payload = {
         "period_start": monday.isoformat(),
@@ -154,6 +172,44 @@ def test_submit_creates_task_and_is_idempotent(client, users, db_session):
 
     db_session.refresh(emp)
     assert emp.weekly_updates_adopted_at is not None
+
+
+def test_current_week_cannot_start_until_previous_week_locks(client, users):
+    emp = users["employee"]
+    current = current_week_start()
+    previous = current - timedelta(days=7)
+    due = (previous + timedelta(days=9)).isoformat() + "T12:00:00+05:30"
+    current_payload = {
+        "period_start": current.isoformat(),
+        "completions": [{"title": "Too early", "source": "manual", "included": True}],
+        "commitments": [],
+    }
+    if is_report_editable(current, "draft"):
+        allowed = client.put("/api/weekly-updates", json=current_payload, headers=auth_header(emp))
+        assert allowed.status_code == 200, allowed.text
+        return
+
+    blocked = client.put("/api/weekly-updates", json=current_payload, headers=auth_header(emp))
+    assert blocked.status_code == 403
+    assert "12:00" in blocked.json()["detail"]
+
+    previous_payload = {
+        "period_start": previous.isoformat(),
+        "completions": [{"title": "Wrapped last week", "source": "manual", "included": True}],
+        "commitments": [
+            {
+                "title": "Next week work",
+                "estimated_hours": 2,
+                "due_date": due,
+                "commitment_type": "new",
+            }
+        ],
+    }
+    allowed = client.put("/api/weekly-updates", json=previous_payload, headers=auth_header(emp))
+    assert allowed.status_code == 200, allowed.text
+    data = allowed.json()["data"]
+    assert data["period_start"] == previous.isoformat()
+    assert data["editable"] is True
 
 
 def test_suggestions_only_include_this_weeks_completed_tasks(client, users, db_session):
@@ -215,11 +271,15 @@ def test_completing_task_adds_it_to_this_weeks_draft(client, users, db_session):
     history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
     assert history.status_code == 200, history.text
     reports = history.json()["data"]["reports"]
-    assert len(reports) == 1
-    assert reports[0]["status"] == "draft"
-    titles = [item["title"] for item in reports[0]["completions"]]
-    assert "Ship weekly auto-complete" in titles
-    assert reports[0]["completions"][0]["task_id"] == task.id
+    monday = current_week_start()
+    if is_report_editable(monday, "draft"):
+        assert len(reports) == 1
+        assert reports[0]["status"] == "draft"
+        titles = [item["title"] for item in reports[0]["completions"]]
+        assert "Ship weekly auto-complete" in titles
+        assert reports[0]["completions"][0]["task_id"] == task.id
+    else:
+        assert all(row["period_start"] != monday.isoformat() for row in reports)
 
 
 def test_history_backfills_this_weeks_completed_tasks(client, users, db_session):
@@ -239,9 +299,13 @@ def test_history_backfills_this_weeks_completed_tasks(client, users, db_session)
     history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
     assert history.status_code == 200, history.text
     reports = history.json()["data"]["reports"]
-    assert len(reports) == 1
-    assert reports[0]["status"] == "draft"
-    assert reports[0]["completions"][0]["title"] == "Already done"
+    monday = current_week_start()
+    if is_report_editable(monday, "draft"):
+        assert len(reports) == 1
+        assert reports[0]["status"] == "draft"
+        assert reports[0]["completions"][0]["title"] == "Already done"
+    else:
+        assert all(row["period_start"] != monday.isoformat() for row in reports)
 
 
 def test_reopening_task_removes_suggested_completion(client, users, db_session):
@@ -457,8 +521,10 @@ def test_history_is_newest_first_and_readable(client, users, db_session):
 
     res = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(other))
     assert res.status_code == 200
-    reports = res.json()["data"]["reports"]
+    body = res.json()["data"]
+    reports = body["reports"]
     assert [r["period_start"] for r in reports] == [newer.isoformat(), older.isoformat()]
+    assert body["writable_period_start"] == writable_period_start().isoformat()
 
 
 def test_overview_uses_real_counts(client, users):

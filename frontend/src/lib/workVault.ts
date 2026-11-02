@@ -16,7 +16,7 @@ export const WORK_VAULT_API_CATEGORY = 'API Integration';
 export const WORK_VAULT_HTTP_METHODS = ['GET', 'PUT', 'POST', 'PATCH', 'DELETE'] as const;
 
 export const WORK_VAULT_ACCEPT =
-  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,.txt,.md,.csv,.json,.xml,.yml,.yaml,.html,.css,.js,.ts,.tsx,.jsx,.py,.sql';
+  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,.mp4,.webm,.mov,.m4v,.ogv,.avi,.mkv,.txt,.md,.csv,.json,.xml,.yml,.yaml,.html,.css,.js,.ts,.tsx,.jsx,.py,.sql';
 
 export const FILE_KIND_LABELS: Record<WorkVaultFileKind, string> = {
   image: 'Images',
@@ -25,6 +25,7 @@ export const FILE_KIND_LABELS: Record<WorkVaultFileKind, string> = {
   spreadsheet: 'Spreadsheets',
   presentation: 'Presentations',
   code: 'Code & text',
+  video: 'Videos',
   link: 'Links',
   api: 'API',
   other: 'Other files',
@@ -55,10 +56,11 @@ export function previewMedia(
   kind?: WorkVaultFileKind,
   mime?: string | null,
   filename?: string | null,
-): 'image' | 'pdf' | 'text' | 'none' {
+): 'image' | 'pdf' | 'text' | 'video' | 'none' {
   const type = (mime || '').toLowerCase();
   const name = (filename || '').toLowerCase();
   if (kind === 'image' || type.startsWith('image/')) return 'image';
+  if (kind === 'video' || type.startsWith('video/') || /\.(mp4|webm|mov|m4v|ogv)$/i.test(name)) return 'video';
   if (kind === 'pdf' || type.includes('pdf') || name.endsWith('.pdf')) return 'pdf';
   if (kind === 'code' || type.startsWith('text/') || type === 'application/json') return 'text';
   return 'none';

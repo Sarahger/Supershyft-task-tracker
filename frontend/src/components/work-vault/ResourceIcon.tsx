@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   Link2,
   Presentation,
+  Video,
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { WorkVaultFileKind } from '../../types';
@@ -17,6 +18,7 @@ const icons: Record<WorkVaultFileKind, typeof FileText> = {
   spreadsheet: FileSpreadsheet,
   presentation: Presentation,
   code: FileCode2,
+  video: Video,
   link: Link2,
   api: Globe,
   other: FileText,
@@ -29,6 +31,7 @@ const tones: Record<WorkVaultFileKind, { icon: string; well: string }> = {
   spreadsheet: { icon: 'text-emerald-400/80', well: 'bg-emerald-500/10' },
   presentation: { icon: 'text-amber-400/80', well: 'bg-amber-500/10' },
   code: { icon: 'text-violet-400/80', well: 'bg-violet-500/10' },
+  video: { icon: 'text-fuchsia-400/80', well: 'bg-fuchsia-500/10' },
   link: { icon: 'text-cyan-400/75', well: 'bg-cyan-500/10' },
   api: { icon: 'text-teal-400/80', well: 'bg-teal-500/10' },
   other: { icon: 'text-text-muted', well: 'bg-dark-muted' },

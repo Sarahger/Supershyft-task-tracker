@@ -187,6 +187,7 @@ WORK_VAULT_FILE_KINDS = (
     "spreadsheet",
     "presentation",
     "code",
+    "video",
     "link",
     "api",
     "other",
@@ -195,6 +196,7 @@ WORK_VAULT_FILE_KINDS = (
 WORK_VAULT_ALLOWED_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp",
+    ".mp4", ".webm", ".mov", ".m4v", ".ogv", ".avi", ".mkv",
     ".txt", ".md", ".csv", ".json", ".xml", ".yml", ".yaml",
     ".html", ".css", ".js", ".ts", ".tsx", ".jsx", ".py", ".sql",
 }

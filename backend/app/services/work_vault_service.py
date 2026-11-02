@@ -21,6 +21,7 @@ from app.utils.month_weeks import get_app_timezone
 from app.repositories.base import user_to_brief_dict
 
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg", ".bmp"}
+VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v", ".ogv", ".avi", ".mkv"}
 PDF_EXT = {".pdf"}
 DOC_EXT = {".doc", ".docx", ".txt", ".md", ".rtf"}
 SHEET_EXT = {".xls", ".xlsx", ".csv"}
@@ -60,6 +61,8 @@ def infer_file_kind(resource_type: str, filename: str | None, mime_type: str | N
     mime = (mime_type or "").lower()
     if mime.startswith("image/") or ext in IMAGE_EXT:
         return "image"
+    if mime.startswith("video/") or ext in VIDEO_EXT:
+        return "video"
     if "pdf" in mime or ext in PDF_EXT:
         return "pdf"
     if ext in SHEET_EXT or "spreadsheet" in mime or "excel" in mime:
@@ -112,7 +115,7 @@ def validate_upload_filename(filename: str | None) -> str:
     if ext not in WORK_VAULT_ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail="That file type is not supported. Upload a document, image, or common text/code file.",
+            detail="That file type is not supported. Upload a document, image, video, or common text/code file.",
         )
     return name
 

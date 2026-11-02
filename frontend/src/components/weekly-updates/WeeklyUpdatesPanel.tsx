@@ -23,6 +23,7 @@ export function WeeklyUpdatesPanel() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(user?.id ?? null);
   const [writing, setWriting] = useState(false);
   const [reviseItem, setReviseItem] = useState<WeeklyCommitment | null>(null);
+  const [didAlignWriteWeek, setDidAlignWriteWeek] = useState(false);
 
   const params = {
     week_start: weekStart,
@@ -61,14 +62,27 @@ export function WeeklyUpdatesPanel() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [history?.focus_week, selectedUserId]);
 
+  useEffect(() => {
+    if (!history?.writable_period_start || didAlignWriteWeek) return;
+    if (weekStart === isoMonday() && history.writable_period_start < weekStart) {
+      setWeekStart(history.writable_period_start);
+    }
+    setDidAlignWriteWeek(true);
+  }, [history?.writable_period_start, weekStart, didAlignWriteWeek]);
+
   const selected = employees.find((e) => e.id === selectedUserId);
   const isOwn = selectedUserId === user?.id;
-  const currentPeriod = history?.current_period_start ?? weekStart;
-  const writePeriod = weekStart <= currentPeriod ? weekStart : currentPeriod;
+  const writablePeriod = history?.writable_period_start ?? history?.current_period_start ?? weekStart;
+  const selectedReport = history?.reports.find((r) => r.period_start === weekStart);
+  const canWriteSelected = isOwn && Boolean(
+    selectedReport?.editable || (!selectedReport && weekStart === writablePeriod),
+  );
+  const writePeriod = canWriteSelected ? weekStart : writablePeriod;
   const currentReport = history?.reports.find((r) => r.period_start === writePeriod);
-  const canWrite = isOwn && (!currentReport || currentReport.editable);
-  const weekEnd = format(addDays(parseISO(weekStart), 6), 'MMMM d, yyyy');
-  const weekLabel = `${format(parseISO(weekStart), 'MMMM d')} – ${weekEnd}`;
+  const canWrite = isOwn && Boolean(currentReport?.editable || (!currentReport && writePeriod === writablePeriod));
+  const writeWeekEnd = format(addDays(parseISO(writePeriod), 6), 'MMMM d, yyyy');
+  const weekLabel = `${format(parseISO(writePeriod), 'MMMM d')} – ${writeWeekEnd}`;
+  const waitingOnPreviousLock = isOwn && weekStart > writablePeriod;
 
   const jumpToWeek = (value: string) => {
     if (!value) return;
@@ -142,7 +156,22 @@ export function WeeklyUpdatesPanel() {
         </aside>
 
         <section className="min-h-[280px] min-w-0 space-y-4 md:overflow-y-auto">
-          {isOwn && canWrite && !writing && !currentReport && (
+          {waitingOnPreviousLock && !writing && (
+            <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-text-secondary">
+                Last week&apos;s update stays editable until 12:00 PM Monday. This week&apos;s update starts after that lock.
+              </p>
+              <button
+                type="button"
+                onClick={() => jumpToWeek(writablePeriod)}
+                className="shrink-0 text-sm text-accent-primary hover:underline"
+              >
+                Open last week
+              </button>
+            </div>
+          )}
+
+          {isOwn && canWrite && !writing && !currentReport && !waitingOnPreviousLock && (
             <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 flex items-center justify-between gap-3">
               <div>
                 <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Week of</p>
@@ -176,7 +205,9 @@ export function WeeklyUpdatesPanel() {
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5">
               <p className="text-sm text-text-muted">
                 {isOwn
-                  ? 'No weekly update yet — write one when you are ready.'
+                  ? waitingOnPreviousLock
+                    ? "This week's update opens at 12:00 PM Monday, after last week's update is locked."
+                    : 'No weekly update yet — write one when you are ready.'
                   : `${selected?.first_name ?? 'This person'} has no weekly updates yet.`}
               </p>
             </div>
