@@ -44,6 +44,15 @@ function newKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+const DUE_DATE_EDIT_MS = 24 * 60 * 60 * 1000;
+
+function isDueDateLocked(item?: { due_date_locked?: boolean; created_at?: string | null } | null) {
+  if (!item) return false;
+  if (typeof item.due_date_locked === 'boolean') return item.due_date_locked;
+  if (!item.created_at) return false;
+  return Date.now() >= new Date(item.created_at).getTime() + DUE_DATE_EDIT_MS;
+}
+
 export function SubmitWeeklyUpdateForm({
   periodStart,
   existing,
@@ -244,12 +253,17 @@ export function SubmitWeeklyUpdateForm({
         if (!item.due_date) throw new Error(`Add a due date for “${item.title}”`);
         const hours = Number(item.estimated_hours);
         if (!hours || hours <= 0) throw new Error(`Add time required for “${item.title}”`);
+        const source = item.commitment_type === 'carried_forward'
+          ? carried.find((c) => c.task_id === item.task_id)
+          : item.commitment_type === 'existing'
+            ? (myTasks ?? []).find((t: Task) => t.id === item.task_id)
+            : existing?.commitments.find((c) => c.task_id === item.task_id || c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         const previousDue = item.commitment_type === 'carried_forward'
           ? toDateInput(carried.find((c) => c.task_id === item.task_id)?.due_date)
           : item.commitment_type === 'existing'
             ? toDateInput((myTasks ?? []).find((t: Task) => t.id === item.task_id)?.due_date)
-            : '';
-        if (previousDue && item.due_date !== previousDue && !item.revision_reason.trim()) {
+            : toDateInput(existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase())?.due_date);
+        if (previousDue && item.due_date !== previousDue && isDueDateLocked(source) && !item.revision_reason.trim()) {
           throw new Error(`Add a reason for changing the due date of “${item.title}”`);
         }
       }
@@ -387,6 +401,8 @@ export function SubmitWeeklyUpdateForm({
               const currentDue = toDateInput(item.due_date);
               const nextDue = dueDates[key] || currentDue;
               const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
+              const locked = isDueDateLocked(item);
+              const needsRevision = dateChanged && locked;
               return (
                 <div key={item.task_id ?? item.title} className="space-y-2">
                   <div className="grid sm:grid-cols-[1fr_140px] gap-2 items-center">
@@ -395,14 +411,14 @@ export function SubmitWeeklyUpdateForm({
                       {item.is_overdue && <span className="ml-2 text-2xs text-accent-danger">Overdue</span>}
                     </p>
                     <Input
-                      label={dateChanged ? 'Revised due date' : undefined}
+                      label={needsRevision ? 'Revised due date' : undefined}
                       type="date"
                       value={nextDue}
                       onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
                       error={!nextDue ? 'Required' : undefined}
                     />
                   </div>
-                  {dateChanged && (
+                  {needsRevision && (
                     <Input
                       label="Reason for changing"
                       value={revisionReasons[key] || ''}
@@ -431,8 +447,11 @@ export function SubmitWeeklyUpdateForm({
               const key = item.title.trim().toLowerCase();
               const due = dueDates[key] || item.dueDate || '';
               const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === key);
-              const currentDue = match ? toDateInput(match.due_date) : '';
-              const dateChanged = Boolean(match && currentDue && due && due !== currentDue);
+              const existingItem = existing?.commitments.find((c) => c.title.trim().toLowerCase() === key);
+              const currentDue = toDateInput(match?.due_date || existingItem?.due_date);
+              const dateChanged = Boolean((match || existingItem) && currentDue && due && due !== currentDue);
+              const locked = isDueDateLocked(match ?? existingItem);
+              const needsRevision = dateChanged && locked;
               return (
                 <div key={key} className="space-y-2">
                   <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-start">
@@ -444,14 +463,14 @@ export function SubmitWeeklyUpdateForm({
                     </div>
                     <p className="text-xs text-text-muted pt-2">{item.timeLabel || formatHoursLabel(item.estimatedHours)}</p>
                     <Input
-                      label={dateChanged ? 'Revised due date' : undefined}
+                      label={needsRevision ? 'Revised due date' : undefined}
                       type="date"
                       value={due}
                       onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
                       error={!due ? 'Required' : undefined}
                     />
                   </div>
-                  {dateChanged && (
+                  {needsRevision && (
                     <Input
                       label="Reason for changing"
                       value={revisionReasons[key] || ''}

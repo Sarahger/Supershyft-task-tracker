@@ -715,6 +715,9 @@ export interface WeeklyCommitment {
   is_resolved?: boolean;
   period_start?: string | null;
   deadline_revisions?: TaskDeadlineRevision[];
+  due_date_locked?: boolean;
+  due_date_locks_at?: string | null;
+  created_at?: string | null;
 }
 
 export interface WeeklyReport {

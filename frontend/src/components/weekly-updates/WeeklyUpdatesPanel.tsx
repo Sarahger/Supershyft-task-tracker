@@ -159,7 +159,7 @@ export function WeeklyUpdatesPanel() {
           {waitingOnPreviousLock && !writing && (
             <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 flex items-center justify-between gap-3">
               <p className="text-sm text-text-secondary">
-                Last week&apos;s update stays editable until 12:00 PM Monday. This week&apos;s update starts after that lock.
+                Last week&apos;s update stays editable until 11:59 PM Monday. This week&apos;s update starts after that lock.
               </p>
               <button
                 type="button"
@@ -206,7 +206,7 @@ export function WeeklyUpdatesPanel() {
               <p className="text-sm text-text-muted">
                 {isOwn
                   ? waitingOnPreviousLock
-                    ? "This week's update opens at 12:00 PM Monday, after last week's update is locked."
+                    ? "This week's update opens on Tuesday, after last week's update is locked."
                     : 'No weekly update yet — write one when you are ready.'
                   : `${selected?.first_name ?? 'This person'} has no weekly updates yet.`}
               </p>

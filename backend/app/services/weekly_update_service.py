@@ -31,7 +31,7 @@ from app.models import (
 )
 from app.repositories.base import ActivityRepository, user_to_brief_dict
 from app.services.notification_service import NotificationService
-from app.services.task_service import TaskService
+from app.services.task_service import TaskService, due_date_locks_at, is_due_date_locked
 from app.utils.mentions import resolve_mentioned_user_ids
 from app.utils.week_periods import (
     RESOLVED_STATUSES,
@@ -853,6 +853,7 @@ class WeeklyUpdateService:
             row.title = title
             row.description = item.get("description") or None
             row.estimated_hours = float(item["estimated_hours"])
+            previous_due = row.due_date
             row.due_date = due
             row.commitment_type = ctype
             if task_id:
@@ -863,6 +864,7 @@ class WeeklyUpdateService:
                 self._apply_commitment_task(user, report, row, item, due)
                 row.create_error = None
             except HTTPException as exc:
+                row.due_date = previous_due
                 row.create_error = str(exc.detail)
                 errors.append({"title": title, "task_id": row.task_id, "error": str(exc.detail)})
             except Exception as exc:  # noqa: BLE001 — surface create failures without aborting the report
@@ -898,6 +900,8 @@ class WeeklyUpdateService:
             if item.get("estimated_hours"):
                 task.estimated_hours = float(item["estimated_hours"])
             self._set_or_revise_due(task, user, due, item.get("revision_reason"), report.id)
+            if not is_due_date_locked(task):
+                row.original_due_date = task.original_due_date or due
             return
 
         if row.task_id:
@@ -908,6 +912,8 @@ class WeeklyUpdateService:
                 if row.original_due_date is None:
                     row.original_due_date = task.original_due_date or due
                 self._set_or_revise_due(task, user, due, item.get("revision_reason"), report.id)
+                if not is_due_date_locked(task):
+                    row.original_due_date = task.original_due_date or due
                 if item.get("estimated_hours"):
                     task.estimated_hours = float(item["estimated_hours"])
                 return
@@ -944,6 +950,10 @@ class WeeklyUpdateService:
             task.due_date = due
             return
         if as_local_date(task.due_date) == as_local_date(due):
+            return
+        if not is_due_date_locked(task):
+            task.due_date = due
+            task.original_due_date = due
             return
         cleaned = (reason or "").strip()
         if not cleaned:
@@ -1064,6 +1074,9 @@ class WeeklyUpdateService:
             "is_resolved": bool(task and task.status in RESOLVED_STATUSES),
             "period_start": row.report.period_start.isoformat() if row.report else None,
             "deadline_revisions": revisions,
+            "due_date_locked": is_due_date_locked(task) if task else False,
+            "due_date_locks_at": due_date_locks_at(task.created_at) if task else due_date_locks_at(row.created_at),
+            "created_at": (task.created_at if task and task.created_at else row.created_at),
         }
 
     def _revision_view(self, row: TaskDeadlineRevision, task: Task) -> dict:
