@@ -49,9 +49,9 @@ from app.utils.week_periods import (
     resolve_period,
     saturday_of,
     today_local,
+    working_week_end,
     writable_period_start,
-    week_datetime_bounds,
-)
+    week_datetime_bounds,)
 
 
 def _utc_now() -> datetime:
@@ -387,6 +387,8 @@ class WeeklyUpdateService:
 
     def carry_forward(self, user: User, period_start: date | None = None) -> dict:
         period = self._period(period_start)
+        plan_monday = monday_of(period.planning_start)
+        plan_sunday = plan_monday + timedelta(days=6)
         rows = (
             self.db.query(WeeklyReportCommitment)
             .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
@@ -403,17 +405,73 @@ class WeeklyUpdateService:
             .all()
         )
         items: list[dict] = []
+        due_this_week: list[dict] = []
         seen: set[int] = set()
         for row in rows:
             task = row.task
             if not task or task.id in seen or task.is_archived or task.status in RESOLVED_STATUSES:
                 continue
             seen.add(task.id)
-            items.append(self._commitment_view(row, carried=True))
+            overdue = _is_overdue(task)
+            due = as_local_date(task.due_date)
+            in_week = bool(due and plan_monday <= due <= plan_sunday)
+            if overdue or not in_week:
+                items.append(self._commitment_view(row, carried=True))
+            else:
+                due_this_week.append(self._commitment_view(row, carried=False))
+        for task in self._open_assigned_tasks(user.id):
+            if task.id in seen:
+                continue
+            seen.add(task.id)
+            overdue = _is_overdue(task)
+            due = as_local_date(task.due_date)
+            in_week = bool(due and plan_monday <= due <= plan_sunday)
+            if overdue:
+                items.append(self._task_commitment_view(task, carried=True))
+            elif in_week:
+                due_this_week.append(self._task_commitment_view(task, carried=False))
         return {
             "period_start": period.period_start.isoformat(),
+            "planning_start": period.planning_start.isoformat(),
+            "planning_end": period.planning_end.isoformat(),
             "items": items,
+            "due_this_week": due_this_week,
         }
+
+    def _open_assigned_tasks(self, user_id: int) -> list[Task]:
+        return (
+            self.db.query(Task)
+            .join(TaskAssignee, TaskAssignee.task_id == Task.id)
+            .options(joinedload(Task.deadline_revisions).joinedload(TaskDeadlineRevision.changed_by))
+            .filter(
+                TaskAssignee.user_id == user_id,
+                Task.is_archived.is_(False),
+                Task.status.notin_(tuple(RESOLVED_STATUSES)),
+            )
+            .order_by(Task.due_date.asc(), Task.id.asc())
+            .all()
+        )
+
+    def _merge_live_commitments(
+        self,
+        reports: list[dict],
+        outstanding: list[dict],
+        due_this_week: list[dict],
+        week_start: date,
+    ) -> None:
+        target = next((row for row in reports if row["period_start"] == week_start.isoformat()), None)
+        if target is None:
+            return
+        seen = {item.get("task_id") for item in target["commitments"] if item.get("task_id")}
+        extras: list[dict] = []
+        for item in list(outstanding) + list(due_this_week):
+            task_id = item.get("task_id")
+            if not task_id or task_id in seen:
+                continue
+            seen.add(task_id)
+            extras.append(item)
+        if extras:
+            target["commitments"] = extras + target["commitments"]
 
     def overview(self, department_id: int | None = None, period_start: date | None = None) -> dict:
         period = self._period(period_start)
@@ -566,7 +624,10 @@ class WeeklyUpdateService:
             .order_by(WeeklyReport.period_start.desc())
             .all()
         )
-        outstanding = self.carry_forward(user, period.period_start)["items"]
+        writable = writable_period_start()
+        live = self.carry_forward(user, writable)
+        outstanding = live["items"]
+        due_this_week = live.get("due_this_week") or []
         daily_notes = (
             self.db.query(DailyUpdate)
             .options(joinedload(DailyUpdate.user), joinedload(DailyUpdate.tasks))
@@ -575,6 +636,8 @@ class WeeklyUpdateService:
             .limit(40)
             .all()
         )
+        report_views = [self._report_view(r) for r in reports]
+        self._merge_live_commitments(report_views, outstanding, due_this_week, writable)
         return {
             "user": {
                 **(_author(user) or {}),
@@ -582,10 +645,15 @@ class WeeklyUpdateService:
                 "weekly_updates_adopted_at": user.weekly_updates_adopted_at,
             },
             "current_period_start": period.period_start.isoformat(),
-            "writable_period_start": writable_period_start().isoformat(),
+            "current_period_end": period.period_end.isoformat(),
+            "planning_start": period.planning_start.isoformat(),
+            "planning_end": period.planning_end.isoformat(),
+            "writable_period_start": writable.isoformat(),
+            "writable_period_end": working_week_end(writable).isoformat(),
             "focus_week": period.period_start.isoformat() if week_start else None,
-            "reports": [self._report_view(r) for r in reports],
+            "reports": report_views,
             "outstanding": outstanding,
+            "due_this_week": due_this_week,
             "legacy_daily_notes": [
                 {
                     "id": note.id,
@@ -1086,13 +1154,15 @@ class WeeklyUpdateService:
 
     def _report_view(self, report: WeeklyReport) -> dict:
         current = current_week_start()
+        period_end = working_week_end(report.period_start)
+        planning_end = working_week_end(monday_of(report.planning_start))
         return {
             "id": report.id,
             "user_id": report.user_id,
             "period_start": report.period_start.isoformat(),
-            "period_end": report.period_end.isoformat(),
+            "period_end": period_end.isoformat(),
             "planning_start": report.planning_start.isoformat(),
-            "planning_end": report.planning_end.isoformat(),
+            "planning_end": planning_end.isoformat(),
             "status": report.status,
             "submitted_at": report.submitted_at,
             "leave_notes": report.leave_notes,
@@ -1105,9 +1175,9 @@ class WeeklyUpdateService:
             "leave": self.leave_context(
                 report.user_id,
                 report.period_start,
-                max(report.period_end, saturday_of(report.period_start)),
+                max(period_end, saturday_of(report.period_start)),
             ),
-            "planning_leave": self.leave_context(report.user_id, report.planning_start, report.planning_end),
+            "planning_leave": self.leave_context(report.user_id, report.planning_start, planning_end),
             "created_at": report.created_at,
             "updated_at": report.updated_at,
         }
@@ -1124,6 +1194,42 @@ class WeeklyUpdateService:
             "task_status": task.status if task else None,
             "completed_at": task.completed_at if task else None,
             "estimated_hours": _task_hours(task),
+        }
+
+    def _task_commitment_view(self, task: Task, carried: bool = False) -> dict:
+        revisions = [
+            {
+                "id": rev.id,
+                "previous_due_date": rev.previous_due_date,
+                "new_due_date": rev.new_due_date,
+                "reason": rev.reason,
+                "changed_by": _author(rev.changed_by) if getattr(rev, "changed_by", None) else None,
+                "created_at": rev.created_at,
+            }
+            for rev in (task.deadline_revisions or [])
+        ]
+        overdue = _is_overdue(task)
+        return {
+            "id": None,
+            "task_id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "estimated_hours": task.estimated_hours,
+            "due_date": task.due_date,
+            "original_due_date": task.original_due_date or task.due_date,
+            "commitment_type": WeeklyCommitmentType.CARRIED_FORWARD.value
+            if carried
+            else WeeklyCommitmentType.EXISTING.value,
+            "create_error": None,
+            "task_status": task.status,
+            "is_overdue": overdue,
+            "is_carried_forward": carried or overdue,
+            "is_resolved": task.status in RESOLVED_STATUSES,
+            "period_start": None,
+            "deadline_revisions": revisions,
+            "due_date_locked": is_due_date_locked(task),
+            "due_date_locks_at": due_date_locks_at(task.created_at),
+            "created_at": task.created_at,
         }
 
     def _commitment_view(self, row: WeeklyReportCommitment, carried: bool = False) -> dict:
@@ -1157,7 +1263,9 @@ class WeeklyUpdateService:
             "create_error": row.create_error,
             "task_status": task.status if task else None,
             "is_overdue": overdue,
-            "is_carried_forward": carried or row.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value,
+            "is_carried_forward": carried
+            or overdue
+            or row.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value,
             "is_resolved": bool(task and task.status in RESOLVED_STATUSES),
             "period_start": row.report.period_start.isoformat() if row.report else None,
             "deadline_revisions": revisions,

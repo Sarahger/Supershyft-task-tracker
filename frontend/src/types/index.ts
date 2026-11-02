@@ -775,10 +775,15 @@ export interface WeeklyUserHistory {
     weekly_updates_adopted_at?: string | null;
   };
   current_period_start: string;
+  current_period_end?: string;
+  planning_start?: string;
+  planning_end?: string;
   writable_period_start: string;
+  writable_period_end?: string;
   focus_week?: string | null;
   reports: WeeklyReport[];
   outstanding: WeeklyCommitment[];
+  due_this_week?: WeeklyCommitment[];
   legacy_daily_notes: {
     id: number;
     update_date: string;

@@ -182,9 +182,11 @@ export function WeeklyReportCard({
           <h3 className="text-base font-semibold text-text-primary mt-0.5">
             {formatRange(report.period_start, report.period_end)}
           </h3>
-          <p className="text-xs text-text-muted mt-0.5">
-            Next week {formatRange(report.planning_start, report.planning_end)}
-          </p>
+          {!report.is_current && (report.planning_start !== report.period_start || report.planning_end !== report.period_end) && (
+            <p className="text-xs text-text-muted mt-0.5">
+              Next week {formatRange(report.planning_start, report.planning_end)}
+            </p>
+          )}
         </div>
         {onEdit && (
           <button type="button" onClick={onEdit} className="text-sm text-accent-primary hover:underline">
@@ -221,7 +223,9 @@ export function WeeklyReportCard({
 
       <section className="space-y-1">
         <div className="flex items-baseline justify-between gap-3">
-          <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Next week</p>
+          <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
+            {report.is_current ? 'This week' : 'Next week'}
+          </p>
           {hasCarriedForward && (
             <p className="text-2xs text-text-muted">
               <span className="text-amber-400">Yellow</span> = carried forward

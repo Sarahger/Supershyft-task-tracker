@@ -192,7 +192,13 @@ export const weeklyUpdatesApi = {
       params: week_start ? { week_start } : undefined,
     }),
   carryForward: (week_start?: string) =>
-    api.get<APIResponse<{ period_start: string; items: import('../types').WeeklyCommitment[] }>>(
+    api.get<APIResponse<{
+      period_start: string;
+      planning_start?: string;
+      planning_end?: string;
+      items: import('../types').WeeklyCommitment[];
+      due_this_week?: import('../types').WeeklyCommitment[];
+    }>>(
       '/weekly-updates/carry-forward',
       { params: week_start ? { week_start } : undefined },
     ),

@@ -80,9 +80,19 @@ export function WeeklyUpdatesPanel() {
   const writePeriod = canWriteSelected ? weekStart : writablePeriod;
   const currentReport = history?.reports.find((r) => r.period_start === writePeriod);
   const canWrite = isOwn && Boolean(currentReport?.editable || (!currentReport && writePeriod === writablePeriod));
-  const writeWeekEnd = format(addDays(parseISO(writePeriod), 6), 'MMMM d, yyyy');
+  const writeWeekEndIso =
+    writePeriod === history?.writable_period_start && history.writable_period_end
+      ? history.writable_period_end
+      : writePeriod === history?.current_period_start && history.current_period_end
+        ? history.current_period_end
+        : format(addDays(parseISO(writePeriod), 6), 'yyyy-MM-dd');
+  const writeWeekEnd = format(parseISO(writeWeekEndIso), 'MMMM d, yyyy');
   const weekLabel = `${format(parseISO(writePeriod), 'MMMM d')} – ${writeWeekEnd}`;
   const waitingOnPreviousLock = isOwn && weekStart > writablePeriod;
+  const liveThisWeek = [
+    ...(history?.outstanding ?? []),
+    ...(history?.due_this_week ?? []),
+  ];
 
   const jumpToWeek = (value: string) => {
     if (!value) return;
@@ -172,18 +182,36 @@ export function WeeklyUpdatesPanel() {
           )}
 
           {isOwn && canWrite && !writing && !currentReport && !waitingOnPreviousLock && (
-            <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Week of</p>
-                <h3 className="text-sm font-semibold text-text-primary mt-0.5">{weekLabel}</h3>
+            <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Week of</p>
+                  <h3 className="text-sm font-semibold text-text-primary mt-0.5">{weekLabel}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setWriting(true)}
+                  className="text-sm text-accent-primary hover:underline"
+                >
+                  Write
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setWriting(true)}
-                className="text-sm text-accent-primary hover:underline"
-              >
-                Write
-              </button>
+              {liveThisWeek.length > 0 && (
+                <ol className="space-y-1">
+                  {liveThisWeek.map((item, i) => {
+                    const carried = Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward' || item.is_overdue);
+                    return (
+                      <li key={item.task_id ?? `${item.title}-${i}`} className="flex items-start gap-2">
+                        <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
+                        <p className={carried ? 'text-sm text-amber-400' : 'text-sm text-text-primary'}>
+                          {item.title}
+                          {item.is_overdue ? <span className="ml-2 text-2xs text-accent-danger">Overdue</span> : null}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
             </div>
           )}
 
@@ -201,7 +229,7 @@ export function WeeklyUpdatesPanel() {
           {historyError && (
             <EmptyState title="Could not load weekly updates" description="Try again in a moment." />
           )}
-          {!historyLoading && history && history.reports.length === 0 && !writing && (
+          {!historyLoading && history && history.reports.length === 0 && !writing && !(isOwn && canWrite && !waitingOnPreviousLock) && (
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5">
               <p className="text-sm text-text-muted">
                 {isOwn
@@ -215,18 +243,28 @@ export function WeeklyUpdatesPanel() {
 
           {history?.reports
             .filter((report) => !(writing && report.period_start === writePeriod))
-            .map((report) => (
-            <WeeklyReportCard
-              key={report.id}
-              report={report}
-              author={author}
-              onEdit={isOwn && canWrite && !writing && report.period_start === writePeriod
-                ? () => setWriting(true)
-                : undefined}
-              actionLabel={report.status === 'draft' && report.commitments.length === 0 ? 'Write next week' : 'Edit'}
-              onRevise={isOwn ? setReviseItem : undefined}
-            />
-          ))}
+            .map((report) => {
+              const live = report.period_start === writablePeriod || report.is_current;
+              const seen = new Set(report.commitments.map((c) => c.task_id).filter(Boolean));
+              const extras = live
+                ? liveThisWeek.filter((c) => c.task_id && !seen.has(c.task_id))
+                : [];
+              const merged = extras.length
+                ? { ...report, commitments: [...extras, ...report.commitments] }
+                : report;
+              return (
+                <WeeklyReportCard
+                  key={report.id}
+                  report={merged}
+                  author={author}
+                  onEdit={isOwn && canWrite && !writing && report.period_start === writePeriod
+                    ? () => setWriting(true)
+                    : undefined}
+                  actionLabel={report.status === 'draft' && report.commitments.length === 0 ? 'Write next week' : 'Edit'}
+                  onRevise={isOwn ? setReviseItem : undefined}
+                />
+              );
+            })}
 
           {history && <LegacyDailyNotes notes={history.legacy_daily_notes} />}
         </section>

@@ -112,7 +112,10 @@ export function planningMondayOf(periodStart?: string | Date, now: Date = new Da
       ? (/^\d{4}-\d{2}-\d{2}$/.test(periodStart) ? new Date(`${periodStart}T12:00:00`) : parseISO(periodStart))
       : periodStart
     : now;
-  return addDays(mondayOf(base), 7);
+  const reportMonday = mondayOf(base);
+  const currentMonday = mondayOf(now);
+  if (reportMonday >= currentMonday) return reportMonday;
+  return addDays(reportMonday, 7);
 }
 
 function weekdayInWeek(token: string, weekMonday: Date): Date | null {

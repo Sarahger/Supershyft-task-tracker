@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
+from app.core.company_holidays import is_working_day
 from app.utils.month_weeks import get_app_timezone
 
 EDIT_CUTOFF = time(14, 0)
@@ -44,18 +45,24 @@ def next_monday(monday: date) -> date:
     return monday + timedelta(days=7)
 
 
-def planning_window(period_start: date) -> tuple[date, date]:
-    start = next_monday(period_start)
-    return start, start + timedelta(days=6)
+def working_week_end(monday: date) -> date:
+    """Last working day in the Mon–Sun week, skipping weekends and company holidays."""
+    last = monday
+    for offset in range(7):
+        day = monday + timedelta(days=offset)
+        if is_working_day(day):
+            last = day
+    return last
 
 
-def period_end_for_submit(period_start: date, submit_date: date) -> date:
-    saturday = saturday_of(period_start)
-    if submit_date < period_start:
-        return period_start
-    if submit_date <= saturday:
-        return submit_date
-    return saturday
+def planning_window(period_start: date, now: datetime | None = None) -> tuple[date, date]:
+    current = current_week_start(now)
+    start = period_start if period_start >= current else next_monday(period_start)
+    return start, working_week_end(start)
+
+
+def period_end_for_submit(period_start: date, submit_date: date | None = None) -> date:
+    return working_week_end(period_start)
 
 
 def resolve_period(period_start: date | None = None, now: datetime | None = None) -> WeekPeriod:
@@ -64,7 +71,7 @@ def resolve_period(period_start: date | None = None, now: datetime | None = None
         raise ValueError("period_start must be a Monday")
     submit_day = today_local(now)
     period_end = period_end_for_submit(start, submit_day)
-    plan_start, plan_end = planning_window(start)
+    plan_start, plan_end = planning_window(start, now)
     return WeekPeriod(
         period_start=start,
         period_end=period_end,

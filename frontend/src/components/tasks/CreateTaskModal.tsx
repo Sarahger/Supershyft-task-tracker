@@ -188,6 +188,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       qc.invalidateQueries({ queryKey: ['project-tasks'] });
       qc.invalidateQueries({ queryKey: ['project-my-tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       toast.success('Task created');
       resetAndClose();
     },

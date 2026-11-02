@@ -14,6 +14,7 @@ from app.models import Attendance, Department, Task, TaskAssignee, User, WeeklyR
 from app.utils.month_weeks import get_app_timezone
 from app.utils.week_periods import (
     current_week_start,
+    due_at_noon,
     editable_until_for,
     is_report_editable,
     writable_period_start,
@@ -21,6 +22,8 @@ from app.utils.week_periods import (
     period_end_for_submit,
     planning_window,
     resolve_period,
+    today_local,
+    working_week_end,
 )
 
 
@@ -92,12 +95,18 @@ def auth_header(user: User) -> dict:
 
 def test_period_math_friday_and_late_submit():
     monday = date(2026, 10, 26)
+    current_monday = date(2026, 11, 2)
+    now = datetime(2026, 11, 2, 15, 0, tzinfo=get_app_timezone())
     assert monday_of(date(2026, 10, 28)) == monday
-    assert period_end_for_submit(monday, date(2026, 10, 30)) == date(2026, 10, 30)
-    assert period_end_for_submit(monday, date(2026, 11, 3)) == date(2026, 10, 31)
-    plan_start, plan_end = planning_window(monday)
-    assert plan_start == date(2026, 11, 2)
-    assert plan_end == date(2026, 11, 8)
+    assert working_week_end(monday) == date(2026, 10, 31)
+    assert period_end_for_submit(monday, date(2026, 10, 30)) == date(2026, 10, 31)
+    assert period_end_for_submit(current_monday, date(2026, 11, 2)) == date(2026, 11, 5)
+    plan_start, plan_end = planning_window(monday, now)
+    assert plan_start == current_monday
+    assert plan_end == date(2026, 11, 5)
+    this_start, this_end = planning_window(current_monday, now)
+    assert this_start == current_monday
+    assert this_end == date(2026, 11, 5)
 
 
 def test_weekly_edit_window_ends_monday_2pm():
@@ -544,6 +553,62 @@ def test_carry_forward_reuses_task(client, users, db_session):
     assert items[0]["task_id"] == task.id
     assert items[0]["is_carried_forward"] is True
     assert items[0]["is_overdue"] is True
+
+
+def test_carry_forward_includes_overdue_without_prior_report(client, users, db_session):
+    emp = users["employee"]
+    task = Task(
+        title="Overdue without weekly report",
+        status="in_progress",
+        priority="medium",
+        estimated_hours=3,
+        created_by_id=emp.id,
+        due_date=datetime.now(timezone.utc) - timedelta(days=4),
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    res = client.get("/api/weekly-updates/carry-forward", headers=auth_header(emp))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    items = data["items"]
+    assert any(row["task_id"] == task.id and row["is_carried_forward"] is True and row["is_overdue"] is True for row in items)
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200
+    outstanding = history.json()["data"]["outstanding"]
+    assert any(row["task_id"] == task.id for row in outstanding)
+
+
+def test_due_this_week_from_created_tracker_task(client, users, db_session):
+    emp = users["employee"]
+    monday = current_week_start()
+    sunday = monday + timedelta(days=6)
+    due_day = min(today_local() + timedelta(days=1), sunday)
+    task = Task(
+        title="Created in tracker this week",
+        status="to_do",
+        priority="medium",
+        estimated_hours=2,
+        created_by_id=emp.id,
+        due_date=due_at_noon(due_day),
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    res = client.get("/api/weekly-updates/carry-forward", headers=auth_header(emp))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    due_this_week = data.get("due_this_week") or []
+    assert any(row["task_id"] == task.id and row["is_carried_forward"] is False for row in due_this_week)
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200
+    body = history.json()["data"]
+    assert body["current_period_end"] == working_week_end(monday_of(date.fromisoformat(body["current_period_start"]))).isoformat()
+    assert any(row["task_id"] == task.id for row in (body.get("due_this_week") or []))
 
 
 def test_deadline_revision_keeps_history(client, users, db_session):

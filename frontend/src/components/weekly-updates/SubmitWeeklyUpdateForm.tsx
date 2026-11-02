@@ -96,6 +96,13 @@ export function SubmitWeeklyUpdateForm({
   const mentionUsers: MentionUser[] = (usersList ?? []).filter((u) => u.status !== 'inactive');
 
   const carried = carry?.items ?? [];
+  const dueThisWeek = carry?.due_this_week ?? [];
+  const structuredTaskIds = new Set(
+    [...carried, ...dueThisWeek].map((item) => item.task_id).filter((id): id is number => id != null),
+  );
+  const structuredTitles = new Set(
+    [...carried, ...dueThisWeek].map((item) => item.title.trim().toLowerCase()),
+  );
 
   useEffect(() => {
     if (initialized) return;
@@ -124,8 +131,21 @@ export function SubmitWeeklyUpdateForm({
 
     const planLines: string[] = [];
     const dates: Record<string, string> = {};
+    const skipIds = new Set(
+      [...(carry?.items ?? []), ...(carry?.due_this_week ?? [])]
+        .map((item) => item.task_id)
+        .filter((id): id is number => id != null),
+    );
+    const skipTitles = new Set(
+      [...(carry?.items ?? []), ...(carry?.due_this_week ?? [])].map((item) => item.title.trim().toLowerCase()),
+    );
     (existing?.commitments ?? [])
-      .filter((c) => c.commitment_type !== 'carried_forward')
+      .filter((c) => {
+        if (c.commitment_type === 'carried_forward') return false;
+        if (c.task_id && skipIds.has(c.task_id)) return false;
+        if (skipTitles.has(c.title.trim().toLowerCase())) return false;
+        return true;
+      })
       .forEach((item, i) => {
         const hours = item.estimated_hours != null ? ` (${formatHoursLabel(item.estimated_hours)})` : '';
         planLines.push(`${i + 1}. ${item.title}${hours}`);
@@ -223,40 +243,49 @@ export function SubmitWeeklyUpdateForm({
         if (match) seen.add(match.id);
       }
 
+      const trackerDraft = (item: WeeklyCommitment, kind: 'carried_forward' | 'existing'): CommitmentDraft => {
+        const key = kind === 'carried_forward' ? `cf-${item.task_id}` : `tw-${item.task_id}`;
+        const currentDue = toDateInput(item.due_date);
+        const nextDue = dueDates[key] || currentDue;
+        return {
+          key,
+          task_id: item.task_id,
+          title: item.title,
+          description: item.description ?? '',
+          estimated_hours: item.estimated_hours != null ? String(item.estimated_hours) : '',
+          due_date: nextDue,
+          commitment_type: kind,
+          revision_reason: nextDue && currentDue && nextDue !== currentDue ? (revisionReasons[key] || '') : '',
+          is_overdue: item.is_overdue,
+          original_due_date: item.original_due_date,
+        };
+      };
       const plan: CommitmentDraft[] = [
-        ...carried.map((item) => {
-          const key = `cf-${item.task_id}`;
-          const currentDue = toDateInput(item.due_date);
-          const nextDue = dueDates[key] || currentDue;
-          return {
-            key: `cf-${item.task_id ?? item.title}`,
-            task_id: item.task_id,
-            title: item.title,
-            description: item.description ?? '',
-            estimated_hours: item.estimated_hours != null ? String(item.estimated_hours) : '',
-            due_date: nextDue,
-            commitment_type: 'carried_forward' as const,
-            revision_reason: nextDue && currentDue && nextDue !== currentDue ? (revisionReasons[key] || '') : '',
-            is_overdue: item.is_overdue,
-            original_due_date: item.original_due_date,
-          };
-        }),
-        ...parsedPlan.items.map((item) => {
-          const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
-          const key = item.title.trim().toLowerCase();
-          const nextDue = dueDates[key] || item.dueDate || '';
-          const currentDue = match ? toDateInput(match.due_date) : '';
-          return {
-            key: `p-${item.title}`,
-            task_id: match?.id ?? null,
-            title: item.title,
-            description: '',
-            estimated_hours: item.estimatedHours != null ? String(item.estimatedHours) : '',
-            due_date: nextDue,
-            commitment_type: (match ? 'existing' : 'new') as 'existing' | 'new',
-            revision_reason: match && currentDue && nextDue && nextDue !== currentDue ? (revisionReasons[key] || '') : '',
-          };
-        }),
+        ...carried.map((item) => trackerDraft(item, 'carried_forward')),
+        ...dueThisWeek.map((item) => trackerDraft(item, 'existing')),
+        ...parsedPlan.items
+          .filter((item) => {
+            const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+            if (match && structuredTaskIds.has(match.id)) return false;
+            if (structuredTitles.has(item.title.trim().toLowerCase())) return false;
+            return true;
+          })
+          .map((item) => {
+            const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+            const key = item.title.trim().toLowerCase();
+            const nextDue = dueDates[key] || item.dueDate || '';
+            const currentDue = match ? toDateInput(match.due_date) : '';
+            return {
+              key: `p-${item.title}`,
+              task_id: match?.id ?? null,
+              title: item.title,
+              description: '',
+              estimated_hours: item.estimatedHours != null ? String(item.estimatedHours) : '',
+              due_date: nextDue,
+              commitment_type: (match ? 'existing' : 'new') as 'existing' | 'new',
+              revision_reason: match && currentDue && nextDue && nextDue !== currentDue ? (revisionReasons[key] || '') : '',
+            };
+          }),
       ];
 
       for (const item of plan) {
@@ -266,14 +295,16 @@ export function SubmitWeeklyUpdateForm({
         if (!hours || hours <= 0) throw new Error(`Add time required for “${item.title}”`);
         const source = item.commitment_type === 'carried_forward'
           ? carried.find((c) => c.task_id === item.task_id)
-          : item.commitment_type === 'existing'
-            ? (myTasks ?? []).find((t: Task) => t.id === item.task_id)
-            : existing?.commitments.find((c) => c.task_id === item.task_id || c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+          : dueThisWeek.find((c) => c.task_id === item.task_id)
+            ?? (myTasks ?? []).find((t: Task) => t.id === item.task_id)
+            ?? existing?.commitments.find((c) => c.task_id === item.task_id || c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         const previousDue = item.commitment_type === 'carried_forward'
           ? toDateInput(carried.find((c) => c.task_id === item.task_id)?.due_date)
-          : item.commitment_type === 'existing'
-            ? toDateInput((myTasks ?? []).find((t: Task) => t.id === item.task_id)?.due_date)
-            : toDateInput(existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase())?.due_date);
+          : toDateInput(
+            dueThisWeek.find((c) => c.task_id === item.task_id)?.due_date
+              ?? (myTasks ?? []).find((t: Task) => t.id === item.task_id)?.due_date
+              ?? existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase())?.due_date,
+          );
         if (previousDue && item.due_date !== previousDue && isDueDateLocked(source) && !item.revision_reason.trim()) {
           throw new Error(`Add a reason for changing the due date of “${item.title}”`);
         }
@@ -331,7 +362,9 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h2 className="text-sm font-medium text-text-primary">Write weekly update</h2>
           <p className="text-xs text-text-muted mt-0.5">
-            Week of {format(parseISO(periodStart), 'd MMM yyyy')} · Type @ to tag someone
+            Week of {carry?.planning_start && carry?.planning_end
+              ? `${format(parseISO(carry.planning_start), 'd MMM')} – ${format(parseISO(carry.planning_end), 'd MMM yyyy')}`
+              : format(parseISO(periodStart), 'd MMM yyyy')} · Type @ to tag someone
           </p>
         </div>
         <button type="button" onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary">
@@ -419,17 +452,19 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">This week’s tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Press Enter for the next item. Numbers are added for you. Use /friday or /tuesday for due date and #3h for time. Tag people with @name.
+            Overdue tracker tasks are carried forward in yellow. Tasks you created with a due date this week appear here automatically. Press Enter to add more — numbers are added for you.
           </p>
         </div>
-        {carried.length > 0 && (
+        {(carried.length > 0 || dueThisWeek.length > 0) && (
           <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-xs font-medium text-amber-400">Carried forward</p>
-              <p className="text-2xs text-text-muted">
-                <span className="text-amber-400">Yellow</span> = carried forward
-              </p>
-            </div>
+            {carried.length > 0 && (
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-xs font-medium text-amber-400">Carried forward</p>
+                <p className="text-2xs text-text-muted">
+                  <span className="text-amber-400">Yellow</span> = overdue / carried forward
+                </p>
+              </div>
+            )}
             {carried.map((item) => {
               const key = `cf-${item.task_id}`;
               const currentDue = toDateInput(item.due_date);
@@ -438,7 +473,7 @@ export function SubmitWeeklyUpdateForm({
               const locked = isDueDateLocked(item);
               const needsRevision = dateChanged && locked;
               return (
-                <div key={item.task_id ?? item.title} className="space-y-2">
+                <div key={`cf-${item.task_id ?? item.title}`} className="space-y-2">
                   <div className="grid sm:grid-cols-[1fr_140px] gap-2 items-center">
                     <p className="text-sm text-amber-400">
                       {item.title}
@@ -452,6 +487,46 @@ export function SubmitWeeklyUpdateForm({
                       error={!nextDue ? 'Required' : undefined}
                     />
                   </div>
+                  {needsRevision && (
+                    <Input
+                      label="Reason for changing"
+                      value={revisionReasons[key] || ''}
+                      onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
+                      placeholder="Why is the due date changing?"
+                      error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {dueThisWeek.length > 0 && (
+              <p className="text-xs font-medium text-text-secondary pt-1">Due this week</p>
+            )}
+            {dueThisWeek.map((item) => {
+              const key = `tw-${item.task_id}`;
+              const currentDue = toDateInput(item.due_date);
+              const nextDue = dueDates[key] || currentDue;
+              const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
+              const locked = isDueDateLocked(item);
+              const needsRevision = dateChanged && locked;
+              return (
+                <div key={`tw-${item.task_id ?? item.title}`} className="space-y-2">
+                  <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-center">
+                    <p className="text-sm text-text-primary">{item.title}</p>
+                    <p className="text-xs text-text-muted">
+                      {item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : 'Add time required'}
+                    </p>
+                    <Input
+                      label={needsRevision ? 'Revised due date' : undefined}
+                      type="date"
+                      value={nextDue}
+                      onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
+                      error={!nextDue ? 'Required' : undefined}
+                    />
+                  </div>
+                  {item.estimated_hours == null && (
+                    <p className="text-2xs text-accent-danger">Add time required on this task</p>
+                  )}
                   {needsRevision && (
                     <Input
                       label="Reason for changing"

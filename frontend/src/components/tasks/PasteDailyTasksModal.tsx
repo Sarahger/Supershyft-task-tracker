@@ -98,6 +98,7 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
       qc.invalidateQueries({ queryKey: ['project-tasks'] });
       qc.invalidateQueries({ queryKey: ['project-my-tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       toast.success(
         created.length === 1
           ? '1 task created for today'
