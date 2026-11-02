@@ -55,8 +55,8 @@ export function SubmitWeeklyUpdateForm({
 }) {
   const qc = useQueryClient();
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
-  const [doneText, setDoneText] = useState('');
-  const [planText, setPlanText] = useState('');
+  const [doneText, setDoneText] = useState('1. ');
+  const [planText, setPlanText] = useState('1. ');
   const [dueDates, setDueDates] = useState<Record<string, string>>({});
   const [revisionReasons, setRevisionReasons] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
@@ -110,7 +110,7 @@ export function SubmitWeeklyUpdateForm({
     });
     setSelectedTaskIds(selected);
     setCompletionDates(completedOn);
-    setDoneText(doneLines.join('\n'));
+    setDoneText(doneLines.join('\n') || '1. ');
 
     const planLines: string[] = [];
     const dates: Record<string, string> = {};
@@ -121,7 +121,7 @@ export function SubmitWeeklyUpdateForm({
         planLines.push(`${i + 1}. ${item.title}${hours}`);
         if (item.due_date) dates[item.title.trim().toLowerCase()] = toDateInput(item.due_date);
       });
-    setPlanText(planLines.join('\n'));
+    setPlanText(planLines.join('\n') || '1. ');
     setDueDates(dates);
     setInitialized(true);
   }, [initialized, suggestions, carry, existing]);
@@ -317,7 +317,7 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">Last week’s tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Tasks marked complete this week are already included. Uncheck anything to leave out, or add extra work below.
+            Tasks marked complete this week are already included. Uncheck anything to leave out, or add extra work below. Press Enter for the next item — numbers are added for you.
           </p>
         </div>
         {completedTasks.length > 0 ? (
@@ -359,7 +359,8 @@ export function SubmitWeeklyUpdateForm({
           onChange={setDoneText}
           users={mentionUsers}
           showExtras={false}
-          placeholder={'Add anything else that is not a tracker task\n1. Server updates with @Name'}
+          numberedList
+          placeholder="Server updates with @Name"
         />
         {parsedDone.length > 0 && (
           <p className="text-xs text-text-muted">{parsedDone.length} extra item{parsedDone.length === 1 ? '' : 's'} will be included.</p>
@@ -370,7 +371,7 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">This week’s tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Numbered list with /friday or /tuesday for due date and #3h for time. Tag people with @name.
+            Press Enter for the next item. Numbers are added for you. Use /friday or /tuesday for due date and #3h for time. Tag people with @name.
           </p>
         </div>
         {carried.length > 0 && (
@@ -420,7 +421,8 @@ export function SubmitWeeklyUpdateForm({
           onChange={setPlanText}
           users={mentionUsers}
           showExtras={false}
-          placeholder={'1. Custom Packages on Flutter /wednesday #2d\n2. Review with @Name /tuesday #1h\n3. AWS final integration /friday #3h'}
+          numberedList
+          placeholder={'Custom Packages on Flutter /wednesday #2d\nReview with @Name /tuesday #1h'}
         />
         {parsedPlan.items.length > 0 && (
           <div className="space-y-2">

@@ -8,6 +8,8 @@ import { parseRelativeDateToken, WEEKDAY_MAP } from './quickTaskParse';
 
 const NUMBERED_LINE_RE =
   /^\s*(?:\d+[.)\]:]\s*|\d+\s*[-–—]\s+|[-*•]\s+)(.+)$/;
+const LIST_MARKER_ONLY_RE =
+  /^\s*(?:\d+[.)\]:]\s*|\d+\s*[-–—]\s+|[-*•]\s+)?$/;
 
 const DURATION_RE =
   /\s*[-–—:(]?\s*\(?\s*(\d+(?:\.\d+)?)\s*(days?|d|hrs?|hours?|h|mins?|minutes?|m)\s*\)?\s*$/i;
@@ -179,12 +181,13 @@ export function parseWeeklyPlanList(
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+    .filter((l) => l.length > 0 && !LIST_MARKER_ONLY_RE.test(l));
 
   const rawItems: ParsedWeeklyPlanItem[] = [];
   for (const rawLine of lines) {
     const numbered = rawLine.match(NUMBERED_LINE_RE);
     const body = numbered ? numbered[1].trim() : rawLine;
+    if (!body) continue;
     if (!numbered && rawItems.length > 0 && body.length < 4) continue;
 
     const slashDue = stripSlashDue(body, planningMonday, now);
@@ -248,7 +251,7 @@ export function parseWeeklyDoneList(text: string): ParsedWeeklyDoneItem[] {
   const items: ParsedWeeklyDoneItem[] = [];
   for (const rawLine of lines) {
     const trimmed = rawLine.trim();
-    if (!trimmed) continue;
+    if (!trimmed || LIST_MARKER_ONLY_RE.test(trimmed)) continue;
     const numbered = trimmed.match(NUMBERED_LINE_RE);
     if (numbered) {
       items.push({ title: numbered[1].trim(), description: '', rawLine: trimmed });

@@ -20,6 +20,7 @@ interface DailyUpdateEditorProps {
   className?: string;
   showExtras?: boolean;
   compact?: boolean;
+  numberedList?: boolean;
 }
 
 function getActiveMention(text: string, cursor: number): { query: string; start: number } | null {
@@ -47,6 +48,41 @@ function getActiveEmoji(text: string, cursor: number): { query: string; start: n
     query: match[1],
     start: lineStart + match.index! + colonOffset,
   };
+}
+
+const LIST_MARKER_RE = /^\s*(?:\d+[.)\]:]\s*|\d+\s*[-–—]\s+|[-*•]\s+)/;
+
+function stripListMarker(line: string) {
+  return line.replace(LIST_MARKER_RE, '');
+}
+
+function normalizeNumberedList(value: string, cursor = 0): { next: string; cursor: number } {
+  const lines = value.replace(/\r\n/g, '\n').split('\n');
+  const stripped = lines.map(stripListMarker);
+  const keepTrailingEmpty = stripped.length > 0 && stripped[stripped.length - 1].trim() === '';
+  const bodies = stripped.filter((body, index) => {
+    if (body.trim()) return true;
+    return keepTrailingEmpty && index === stripped.length - 1;
+  });
+  const nextBodies = bodies.length ? bodies : [''];
+  const nextLines = nextBodies.map((body, index) => `${index + 1}. ${body}`);
+  const next = nextLines.join('\n');
+
+  const lineStart = value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
+  const oldLineEnd = value.indexOf('\n', lineStart);
+  const oldLine = value.slice(lineStart, oldLineEnd === -1 ? value.length : oldLineEnd);
+  const oldBody = stripListMarker(oldLine);
+  const prefixLen = oldLine.length - oldBody.length;
+  const offsetInBody = Math.max(0, cursor - lineStart - prefixLen);
+  const lineIndex = value.slice(0, lineStart).split('\n').length - 1;
+  const nonEmptyBefore = stripped.slice(0, lineIndex).filter((body) => body.trim()).length;
+  const mappedIndex = oldBody.trim() || (keepTrailingEmpty && lineIndex === stripped.length - 1)
+    ? Math.min(nonEmptyBefore, nextLines.length - 1)
+    : Math.max(0, Math.min(nonEmptyBefore, nextLines.length - 1));
+  const mappedStart = nextLines.slice(0, mappedIndex).reduce((sum, line) => sum + line.length + 1, 0);
+  const mappedPrefix = `${mappedIndex + 1}. `;
+  const nextCursor = mappedStart + mappedPrefix.length + Math.min(offsetInBody, nextBodies[mappedIndex].length);
+  return { next, cursor: Math.max(0, Math.min(nextCursor, next.length)) };
 }
 
 function applyListContinue(value: string, selectionStart: number): { next: string; cursor: number } | null {
@@ -101,6 +137,7 @@ export function DailyUpdateEditor({
   className,
   showExtras = true,
   compact = false,
+  numberedList = false,
 }: DailyUpdateEditorProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -185,8 +222,19 @@ export function DailyUpdateEditor({
         placeholder={placeholder}
         rows={8}
         onChange={(e) => {
-          onChange(e.target.value);
-          syncCursor(e.target);
+          if (numberedList) {
+            const normalized = normalizeNumberedList(e.target.value, e.target.selectionStart ?? 0);
+            onChange(normalized.next);
+            requestAnimationFrame(() => {
+              const el = textareaRef.current;
+              if (!el) return;
+              el.setSelectionRange(normalized.cursor, normalized.cursor);
+              setCursor(normalized.cursor);
+            });
+          } else {
+            onChange(e.target.value);
+            syncCursor(e.target);
+          }
           setMenuOpen(true);
           setHighlight(0);
         }}
@@ -236,10 +284,25 @@ export function DailyUpdateEditor({
             const continued = applyListContinue(value, el.selectionStart);
             if (continued) {
               e.preventDefault();
-              onChange(continued.next);
+              const next = numberedList
+                ? normalizeNumberedList(continued.next, continued.cursor)
+                : continued;
+              onChange(next.next);
               requestAnimationFrame(() => {
-                el.setSelectionRange(continued.cursor, continued.cursor);
-                setCursor(continued.cursor);
+                el.setSelectionRange(next.cursor, next.cursor);
+                setCursor(next.cursor);
+              });
+              return;
+            }
+            if (numberedList) {
+              e.preventDefault();
+              const insertAt = el.selectionStart;
+              const raw = `${value.slice(0, insertAt)}\n${value.slice(el.selectionEnd)}`;
+              const next = normalizeNumberedList(raw, insertAt + 1);
+              onChange(next.next);
+              requestAnimationFrame(() => {
+                el.setSelectionRange(next.cursor, next.cursor);
+                setCursor(next.cursor);
               });
               return;
             }
