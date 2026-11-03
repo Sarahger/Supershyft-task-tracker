@@ -203,7 +203,7 @@ export function WeeklyReportCard({
       )}
 
       <section className="space-y-1.5">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Last week</p>
+        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed</p>
         {report.completions.length === 0 ? (
           <p className="text-sm text-text-muted">No completed work recorded.</p>
         ) : (
