@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { reportsApi } from '../../services/endpoints';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../lib/chartTheme';
 import { STATUS_LABELS } from '../../types';
-import type { ReportAnalytics } from '../../types';
+import type { ReportAnalytics, ReportAssigneeStats } from '../../types';
 
 const STATUS_COLORS: Record<string, string> = {
   unassigned: '#94a3b8',
@@ -24,11 +24,6 @@ const STATUS_COLORS: Record<string, string> = {
   completed: '#10b981',
   cancelled: '#71717a',
 };
-
-function axisLabel(start: string, end: string) {
-  if (start === end) return format(parseISO(start), 'd MMM');
-  return format(parseISO(start), 'd MMM');
-}
 
 function periodLabel(start: string) {
   return format(parseISO(start), 'MMM yyyy');
@@ -60,11 +55,13 @@ export function OverviewCharts({
   departmentId,
   start,
   end,
+  people,
   onOpenEvaluation,
 }: {
   departmentId?: number;
   start: string;
   end: string;
+  people: ReportAssigneeStats[];
   onOpenEvaluation: (evaluationId: number) => void;
 }) {
   const { theme } = useTheme();
@@ -96,46 +93,12 @@ export function OverviewCharts({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <CompletionChart data={data} chartTheme={chartTheme} />
-      <StatusChart data={data} chartTheme={chartTheme} />
       <PerformersChart data={data} chartTheme={chartTheme} onOpen={onOpenEvaluation} />
+      <StatusChart data={data} chartTheme={chartTheme} />
+      <div className="lg:col-span-2">
+        <PendingWorkChart people={people} chartTheme={chartTheme} />
+      </div>
     </div>
-  );
-}
-
-function CompletionChart({
-  data,
-  chartTheme,
-}: {
-  data: ReportAnalytics;
-  chartTheme: ReturnType<typeof getChartTheme>;
-}) {
-  const points = data.completion_trend.map((row) => ({
-    ...row,
-    label: axisLabel(row.start, row.end),
-  }));
-  const hasTasks = points.some((row) => row.due > 0);
-  return (
-    <ChartCard title="Task Completion Trend" description="Tasks due in each interval that were completed by the end of it.">
-      {!hasTasks ? <EmptyChart text="No tasks were due in this period." /> : (
-        <ResponsiveContainer width="100%" height={240}>
-          <LineChart data={points} margin={{ left: 0, right: 8, top: 8 }}>
-            <CartesianGrid stroke={chartTheme.axisLine} vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
-            <YAxis tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={false} tickLine={false} width={36} domain={[0, 100]} unit="%" />
-            <Tooltip
-              contentStyle={chartTheme.tooltip}
-              formatter={(_value, _name, item) => {
-                const row = item.payload as typeof points[number];
-                const rate = row.rate == null ? '—' : `${row.rate}%`;
-                return [`${rate} · ${row.completed} of ${row.due} completed`, 'Completion'];
-              }}
-            />
-            <Line type="monotone" dataKey="rate" stroke="#34d399" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-          </LineChart>
-        </ResponsiveContainer>
-      )}
-    </ChartCard>
   );
 }
 
@@ -164,6 +127,71 @@ function StatusChart({
                 <Cell key={row.status} fill={row.fill} />
               ))}
             </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  );
+}
+
+function chartFirstName(name: string, taken: Map<string, number>) {
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0] || name;
+  if ((taken.get(first) ?? 0) < 2) return first;
+  const last = parts[1];
+  return last ? `${first} ${last[0]}` : first;
+}
+
+function PendingWorkChart({
+  people,
+  chartTheme,
+}: {
+  people: ReportAssigneeStats[];
+  chartTheme: ReturnType<typeof getChartTheme>;
+}) {
+  const ranked = people
+    .filter((person) => person.pending > 0)
+    .slice()
+    .sort((a, b) => b.pending - a.pending || a.name.localeCompare(b.name));
+  const firstCounts = new Map<string, number>();
+  ranked.forEach((person) => {
+    const first = person.name.trim().split(/\s+/)[0] || person.name;
+    firstCounts.set(first, (firstCounts.get(first) ?? 0) + 1);
+  });
+  const rows = ranked.map((person) => ({
+    name: chartFirstName(person.name, firstCounts),
+    fullName: person.name,
+    pending: Math.max(0, person.pending - person.overdue),
+    overdue: person.overdue,
+  }));
+  return (
+    <ChartCard title="Who has the most pending work?" description="Blue = pending · Red segment = overdue within pending">
+      {rows.length === 0 ? <EmptyChart text="Nobody has pending work." /> : (
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={rows} margin={{ left: 0, right: 8, top: 8 }}>
+            <XAxis dataKey="name" tick={{ fill: chartTheme.axisTick, fontSize: 12 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
+            <YAxis allowDecimals={false} tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
+            <Tooltip
+              contentStyle={chartTheme.tooltip}
+              cursor={{ fill: chartTheme.cursor }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const row = payload[0].payload as { fullName: string; pending: number; overdue: number };
+                return (
+                  <div style={chartTheme.tooltip} className="px-3 py-2">
+                    <p>{row.fullName}</p>
+                    <p>Pending {row.pending + row.overdue}</p>
+                    <p>Overdue {row.overdue}</p>
+                  </div>
+                );
+              }}
+            />
+            <Legend
+              iconType="square"
+              formatter={(value) => <span style={{ color: chartTheme.axisTick }}>{value}</span>}
+            />
+            <Bar dataKey="pending" name="Pending" stackId="work" fill="#3b82f6" maxBarSize={56} />
+            <Bar dataKey="overdue" name="Overdue" stackId="work" fill="#ef4444" maxBarSize={56} radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}

@@ -253,6 +253,7 @@ export default function ReportsPage() {
             departmentId={departmentId}
             start={range.start}
             end={range.end}
+            people={data?.by_assignee ?? []}
             onOpenEvaluation={(id) => {
               setOpenEvaluationId(id);
               setTab('evaluations');
