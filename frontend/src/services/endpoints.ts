@@ -253,6 +253,23 @@ export const reportsApi = {
     api.post<APIResponse<TaskReportData>>('/reports/tasks', filters),
   exportCsv: (filters: Record<string, unknown>) =>
     api.post('/reports/export/csv', filters, { responseType: 'blob' }),
+  analytics: (params: { start_date: string; end_date: string; department_id?: number }) =>
+    api.get<APIResponse<import('../types').ReportAnalytics>>('/reports/analytics', { params }),
+  evaluations: (params: { period_start: string; department_id?: number; user_id?: number }) =>
+    api.get<APIResponse<import('../types').EvaluationList>>('/reports/evaluations', { params }),
+  evaluation: (id: number) =>
+    api.get<APIResponse<import('../types').EvaluationRecord>>(`/reports/evaluations/${id}`),
+  evaluationHistory: (userId: number) =>
+    api.get<APIResponse<{ user: { id: number; name: string; departments: string[] }; evaluations: import('../types').EvaluationRecord[] }>>(
+      '/reports/evaluations/history',
+      { params: { user_id: userId } },
+    ),
+  createEvaluation: (data: Record<string, unknown>) =>
+    api.post<APIResponse<import('../types').EvaluationRecord>>('/reports/evaluations', data),
+  saveEvaluation: (id: number, data: Record<string, unknown>) =>
+    api.put<APIResponse<import('../types').EvaluationRecord>>(`/reports/evaluations/${id}`, data),
+  submitEvaluation: (id: number, data: Record<string, unknown>) =>
+    api.post<APIResponse<import('../types').EvaluationRecord>>(`/reports/evaluations/${id}/submit`, data),
 };
 
 export const attendanceApi = {

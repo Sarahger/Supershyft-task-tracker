@@ -244,6 +244,90 @@ export interface ReportAssigneeStats {
   total_assigned: number;
 }
 
+export interface ReportAnalytics {
+  start_date: string;
+  end_date: string;
+  completion_trend: Array<{ start: string; end: string; due: number; completed: number; rate: number | null }>;
+  by_status: Array<{ status: string; count: number }>;
+  top_performers: Array<{
+    user_id: number;
+    evaluation_id: number;
+    name: string;
+    score: number | null;
+    period_start: string;
+  }>;
+}
+
+export interface KraParameter {
+  key: string;
+  name: string;
+  weight: number;
+}
+
+export interface KraRatingMeaning {
+  rating: number;
+  meaning: string;
+  interpretation: string;
+}
+
+export interface EvaluationScore {
+  parameter_key: string;
+  name: string;
+  weight: number;
+  rating: number | null;
+  weighted_score: number | null;
+  remarks?: string | null;
+}
+
+export interface EvaluationRecord {
+  id: number;
+  user_id: number;
+  employee?: { id: number; name: string; first_name: string; last_name: string } | null;
+  departments: string[];
+  department_snapshot?: string | null;
+  period_start: string;
+  status: 'draft' | 'submitted';
+  overall_comment?: string | null;
+  overall_score: number | null;
+  evaluator?: { id: number; name: string } | null;
+  submitted_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  scores: EvaluationScore[];
+  revisions?: Array<{
+    id: number;
+    editor?: { id: number; name: string } | null;
+    created_at?: string | null;
+    snapshot: {
+      status: string;
+      overall_comment?: string | null;
+      overall_score?: number | null;
+      department_snapshot?: string | null;
+      submitted_at?: string | null;
+      scores: EvaluationScore[];
+    };
+  }>;
+}
+
+export interface EvaluationListItem {
+  user_id: number;
+  name: string;
+  departments: string[];
+  evaluation_id: number | null;
+  period_start: string;
+  overall_score: number | null;
+  status: 'not_started' | 'draft' | 'submitted';
+  last_evaluated_at?: string | null;
+  evaluator?: { id: number; name: string } | null;
+}
+
+export interface EvaluationList {
+  period_start: string;
+  parameters: KraParameter[];
+  rating_scale: KraRatingMeaning[];
+  items: EvaluationListItem[];
+}
+
 export interface TaskReportData {
   total: number;
   pending: number;

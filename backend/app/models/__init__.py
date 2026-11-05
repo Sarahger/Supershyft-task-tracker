@@ -853,3 +853,67 @@ class AnnouncementAttachment(Base):
 
     announcement = relationship("Announcement", back_populates="attachments")
     uploader = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class EmployeeEvaluation(Base):
+    __tablename__ = "employee_evaluations"
+    __table_args__ = (UniqueConstraint("user_id", "period_start", name="uq_employee_evaluation_period"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    period_start = Column(Date, nullable=False, index=True)
+    evaluator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(20), nullable=False, default="draft")
+    overall_comment = Column(Text, nullable=True)
+    overall_score = Column(Float, nullable=True)
+    department_snapshot = Column(String(500), nullable=True)
+    submitted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    employee = relationship("User", foreign_keys=[user_id])
+    evaluator = relationship("User", foreign_keys=[evaluator_id])
+    scores = relationship(
+        "EmployeeEvaluationScore",
+        back_populates="evaluation",
+        cascade="all, delete-orphan",
+        order_by="EmployeeEvaluationScore.id",
+    )
+    revisions = relationship(
+        "EmployeeEvaluationRevision",
+        back_populates="evaluation",
+        cascade="all, delete-orphan",
+        order_by="EmployeeEvaluationRevision.created_at",
+    )
+
+
+class EmployeeEvaluationScore(Base):
+    __tablename__ = "employee_evaluation_scores"
+    __table_args__ = (UniqueConstraint("evaluation_id", "parameter_key", name="uq_evaluation_parameter"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    evaluation_id = Column(
+        Integer, ForeignKey("employee_evaluations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    parameter_key = Column(String(64), nullable=False)
+    weight = Column(Float, nullable=False)
+    rating = Column(Integer, nullable=True)
+    weighted_score = Column(Float, nullable=True)
+    remarks = Column(Text, nullable=True)
+
+    evaluation = relationship("EmployeeEvaluation", back_populates="scores")
+
+
+class EmployeeEvaluationRevision(Base):
+    __tablename__ = "employee_evaluation_revisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    evaluation_id = Column(
+        Integer, ForeignKey("employee_evaluations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    editor_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    snapshot_json = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    evaluation = relationship("EmployeeEvaluation", back_populates="revisions")
+    editor = relationship("User", foreign_keys=[editor_id])
