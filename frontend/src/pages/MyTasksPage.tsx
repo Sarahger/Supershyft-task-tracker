@@ -22,12 +22,14 @@ function TaskList({
   tasks,
   onTaskClick,
   onDeleteTask,
+  onStatusChange,
   selectedIds,
   onSelectionChange,
 }: {
   tasks: Task[];
   onTaskClick: (id: number) => void;
   onDeleteTask?: (task: Task) => void;
+  onStatusChange?: (id: number, status: string) => void;
   selectedIds: Set<number>;
   onSelectionChange: (ids: Set<number>) => void;
 }) {
@@ -50,6 +52,8 @@ function TaskList({
       tasks={tasks}
       onTaskClick={onTaskClick}
       onDeleteTask={onDeleteTask}
+      onStatusChange={onStatusChange}
+      editable={!!onStatusChange}
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
       showProject
@@ -131,6 +135,17 @@ export default function MyTasksPage() {
     queryFn: () => tasksApi.my().then((r) => r.data.data),
   });
 
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) => tasksApi.updateStatus(id, status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
+      toast.success('Status updated');
+    },
+    onError: () => toast.error('Failed to update status'),
+  });
+
   const bulkMutation = useMutation({
     mutationFn: async ({ ids, status }: { ids: number[]; status: string }) => {
       await Promise.all(ids.map((id) => tasksApi.updateStatus(id, status)));
@@ -154,6 +169,7 @@ export default function MyTasksPage() {
   const listProps = {
     onTaskClick: openTask,
     onDeleteTask: allowDelete ? requestDeleteTask : undefined,
+    onStatusChange: (id: number, status: string) => statusMutation.mutate({ id, status }),
     selectedIds,
     onSelectionChange: setSelectedIds,
   };

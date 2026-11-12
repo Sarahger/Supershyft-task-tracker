@@ -210,15 +210,19 @@ export function WeeklyReportCard({
           )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-lg border border-dark-border bg-dark-elevated px-2.5 py-1 text-xs font-medium text-text-primary hover:bg-dark-hover transition-colors"
+            >
+              {actionLabel}
+            </button>
+          )}
           {hasCarriedForward && (
             <p className="text-2xs text-text-muted">
               <span className="text-amber-400">Yellow</span> = carried forward
             </p>
-          )}
-          {onEdit && (
-            <button type="button" onClick={onEdit} className="text-sm text-accent-primary hover:underline">
-              {actionLabel}
-            </button>
           )}
         </div>
       </div>
