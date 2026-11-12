@@ -1272,25 +1272,36 @@ class WeeklyUpdateService:
                 }
                 for rev in (task.deadline_revisions or [])
             ]
-        overdue = bool(task and _is_overdue(task))
+        stored_cf = carried or row.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value
+        report = row.report
+        # Locked weeks keep the yellow CF flag from submit time; live status must not rewrite history.
+        frozen = bool(
+            report is not None and not is_report_editable(report.period_start, report.status)
+        )
+        overdue = False if frozen else bool(task and _is_overdue(task))
+        is_carried_forward = stored_cf if frozen else (stored_cf or overdue)
         return {
             "id": row.id,
             "task_id": row.task_id,
-            "title": task.title if task else row.title,
+            "title": row.title if frozen else (task.title if task else row.title),
             "description": row.description,
             "estimated_hours": row.estimated_hours if row.estimated_hours is not None else (task.estimated_hours if task else None),
-            "due_date": task.due_date if task and task.due_date else row.due_date,
-            "original_due_date": (task.original_due_date if task and task.original_due_date else row.original_due_date)
-            or row.due_date,
+            "due_date": row.due_date if frozen else (task.due_date if task and task.due_date else row.due_date),
+            "original_due_date": (
+                (row.original_due_date or row.due_date)
+                if frozen
+                else (
+                    (task.original_due_date if task and task.original_due_date else row.original_due_date)
+                    or row.due_date
+                )
+            ),
             "commitment_type": WeeklyCommitmentType.CARRIED_FORWARD.value
             if carried
             else row.commitment_type,
             "create_error": row.create_error,
             "task_status": task.status if task else None,
             "is_overdue": overdue,
-            "is_carried_forward": carried
-            or overdue
-            or row.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value,
+            "is_carried_forward": is_carried_forward,
             "is_resolved": bool(task and task.status in RESOLVED_STATUSES),
             "period_start": row.report.period_start.isoformat() if row.report else None,
             "deadline_revisions": revisions,

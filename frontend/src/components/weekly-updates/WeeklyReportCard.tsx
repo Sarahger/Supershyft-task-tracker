@@ -117,16 +117,21 @@ function CommitmentRow({
   item,
   index,
   onRevise,
+  freezeCarriedForward,
 }: {
   item: WeeklyCommitment;
   index: number;
   onRevise?: (item: WeeklyCommitment) => void;
+  freezeCarriedForward?: boolean;
 }) {
   const revised = hasRevisedDue(item);
   const dueLabel = formatShortDate(item.due_date);
   const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
   const latestReason = item.deadline_revisions?.[item.deadline_revisions.length - 1]?.reason;
-  const carried = Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward');
+  // Locked weeks: yellow only from what was saved as carried_forward at submit time.
+  const carried = freezeCarriedForward
+    ? item.commitment_type === 'carried_forward'
+    : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward');
   const meta = metaLine(timeLabel, dueLabel, revised ? 'Revised due' : 'Due');
 
   return (
@@ -176,8 +181,11 @@ export function WeeklyReportCard({
   const nextWeekLeave =
     report.planning_start !== report.period_start ? leaveSummary(report.planning_leave) : [];
 
-  const hasCarriedForward = report.commitments.some(
-    (item) => item.is_carried_forward || item.commitment_type === 'carried_forward',
+  const freezeCarriedForward = !report.editable;
+  const hasCarriedForward = report.commitments.some((item) =>
+    freezeCarriedForward
+      ? item.commitment_type === 'carried_forward'
+      : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
   );
 
   return (
@@ -253,6 +261,7 @@ export function WeeklyReportCard({
                 item={item}
                 index={i + 1}
                 onRevise={onRevise}
+                freezeCarriedForward={freezeCarriedForward}
               />
             ))}
           </ol>
