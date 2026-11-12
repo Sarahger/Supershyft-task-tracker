@@ -222,7 +222,14 @@ export function WeeklyReportCard({
       )}
 
       <section className="space-y-1.5">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed</p>
+        <div className="flex items-baseline justify-between gap-3">
+          <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed</p>
+          {report.completions.some((item) => item.is_carried_forward) && (
+            <p className="text-2xs text-text-muted">
+              <span className="text-amber-400">Yellow</span> = carried forward
+            </p>
+          )}
+        </div>
         {report.completions.length === 0 ? (
           <p className="text-sm text-text-muted">No completed work recorded.</p>
         ) : (

@@ -1182,28 +1182,68 @@ class WeeklyUpdateService:
             "updated_at": report.updated_at,
         }
 
-    def _carried_forward_task_ids(self, user_id: int, period_start: date, task_ids: set[int]) -> set[int]:
-        """Task ids listed as carried_forward (yellow) on this or an earlier weekly plan."""
+    def _carried_forward_completion_ids(
+        self,
+        user_id: int,
+        period_start: date,
+        completions: list[WeeklyReportCompletion],
+    ) -> set[int]:
+        """Completions that were carried-forward into this week (yellow CF), then done.
+
+        Matches the same yellow CF set as weekly plans:
+        - saved commitment_type=carried_forward on this or an earlier week, or
+        - on a previous week's plan and due before this week (live CF before submit).
+        """
+        task_ids = {c.task_id for c in completions if c.task_id}
         if not task_ids:
             return set()
-        rows = (
-            self.db.query(WeeklyReportCommitment.task_id)
-            .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
-            .filter(
-                WeeklyReport.user_id == user_id,
-                WeeklyReport.period_start <= period_start,
-                WeeklyReportCommitment.task_id.in_(task_ids),
-                WeeklyReportCommitment.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value,
+        explicit = {
+            task_id
+            for (task_id,) in (
+                self.db.query(WeeklyReportCommitment.task_id)
+                .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
+                .filter(
+                    WeeklyReport.user_id == user_id,
+                    WeeklyReport.period_start <= period_start,
+                    WeeklyReportCommitment.task_id.in_(task_ids),
+                    WeeklyReportCommitment.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value,
+                )
+                .distinct()
+                .all()
             )
-            .distinct()
-            .all()
-        )
-        return {task_id for (task_id,) in rows if task_id is not None}
+            if task_id is not None
+        }
+        prior = {
+            task_id
+            for (task_id,) in (
+                self.db.query(WeeklyReportCommitment.task_id)
+                .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
+                .filter(
+                    WeeklyReport.user_id == user_id,
+                    WeeklyReport.period_start < period_start,
+                    WeeklyReportCommitment.task_id.in_(task_ids),
+                )
+                .distinct()
+                .all()
+            )
+            if task_id is not None
+        }
+        carried = set(explicit)
+        plan_end = period_start + timedelta(days=6)
+        for row in completions:
+            task_id = row.task_id
+            if not task_id or task_id in carried or task_id not in prior:
+                continue
+            task = row.task
+            due = as_local_date((task.original_due_date or task.due_date) if task else None)
+            # Same bucket as carry_forward(): slipped / not due-this-week → yellow CF
+            if due is None or due < period_start or not (period_start <= due <= plan_end):
+                carried.add(task_id)
+        return carried
 
     def _completion_views(self, report: WeeklyReport) -> list[dict]:
         included = [c for c in report.completions if c.included]
-        task_ids = {c.task_id for c in included if c.task_id}
-        carried_ids = self._carried_forward_task_ids(report.user_id, report.period_start, task_ids)
+        carried_ids = self._carried_forward_completion_ids(report.user_id, report.period_start, included)
         return [self._completion_view(c, c.task_id in carried_ids if c.task_id else False) for c in included]
 
     def _completion_view(self, row: WeeklyReportCompletion, carried: bool = False) -> dict:
