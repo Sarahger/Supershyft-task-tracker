@@ -172,7 +172,10 @@ export function WeeklyReportCard({
   const person = author ?? report.author;
   const personName = person ? `${person.first_name} ${person.last_name}`.trim() : 'Weekly update';
   const thisWeekLeave = leaveSummary(report.leave);
-  const nextWeekLeave = leaveSummary(report.planning_leave);
+  // Current-week plans use the same window for leave + planning_leave — don't repeat holidays.
+  const nextWeekLeave =
+    report.planning_start !== report.period_start ? leaveSummary(report.planning_leave) : [];
+
   const hasCarriedForward = report.commitments.some(
     (item) => item.is_carried_forward || item.commitment_type === 'carried_forward',
   );
