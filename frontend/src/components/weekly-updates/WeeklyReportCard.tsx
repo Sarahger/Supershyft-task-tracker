@@ -182,11 +182,13 @@ export function WeeklyReportCard({
     report.planning_start !== report.period_start ? leaveSummary(report.planning_leave) : [];
 
   const freezeCarriedForward = !report.editable;
-  const hasCarriedForward = report.commitments.some((item) =>
-    freezeCarriedForward
-      ? item.commitment_type === 'carried_forward'
-      : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
-  );
+  const hasCarriedForward =
+    report.completions.some((item) => item.is_carried_forward) ||
+    report.commitments.some((item) =>
+      freezeCarriedForward
+        ? item.commitment_type === 'carried_forward'
+        : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
+    );
 
   return (
     <article
@@ -207,11 +209,18 @@ export function WeeklyReportCard({
             </p>
           )}
         </div>
-        {onEdit && (
-          <button type="button" onClick={onEdit} className="text-sm text-accent-primary hover:underline">
-            {actionLabel}
-          </button>
-        )}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          {hasCarriedForward && (
+            <p className="text-2xs text-text-muted">
+              <span className="text-amber-400">Yellow</span> = carried forward
+            </p>
+          )}
+          {onEdit && (
+            <button type="button" onClick={onEdit} className="text-sm text-accent-primary hover:underline">
+              {actionLabel}
+            </button>
+          )}
+        </div>
       </div>
 
       {person && (
@@ -222,14 +231,7 @@ export function WeeklyReportCard({
       )}
 
       <section className="space-y-1.5">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed</p>
-          {report.completions.some((item) => item.is_carried_forward) && (
-            <p className="text-2xs text-text-muted">
-              <span className="text-amber-400">Yellow</span> = carried forward
-            </p>
-          )}
-        </div>
+        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed</p>
         {report.completions.length === 0 ? (
           <p className="text-sm text-text-muted">No completed work recorded.</p>
         ) : (
@@ -248,16 +250,9 @@ export function WeeklyReportCard({
       <div className="border-t border-dark-border" />
 
       <section className="space-y-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
-            {report.is_current ? 'This week' : 'Next week'}
-          </p>
-          {hasCarriedForward && (
-            <p className="text-2xs text-text-muted">
-              <span className="text-amber-400">Yellow</span> = carried forward
-            </p>
-          )}
-        </div>
+        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
+          {report.is_current ? 'This week' : 'Next week'}
+        </p>
         {report.commitments.length === 0 ? (
           <p className="text-sm text-text-muted">No commitments recorded.</p>
         ) : (
