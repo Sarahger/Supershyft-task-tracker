@@ -1170,9 +1170,7 @@ class WeeklyUpdateService:
             "editable_until": editable_until_for(report.period_start),
             "is_current": report.period_start == current,
             "author": _author(report.user),
-            "completions": [
-                self._completion_view(c, report.period_start) for c in report.completions if c.included
-            ],
+            "completions": self._completion_views(report),
             "commitments": [self._commitment_view(c) for c in report.commitments],
             "leave": self.leave_context(
                 report.user_id,
@@ -1184,13 +1182,32 @@ class WeeklyUpdateService:
             "updated_at": report.updated_at,
         }
 
-    def _completion_view(self, row: WeeklyReportCompletion, period_start: date | None = None) -> dict:
-        task = row.task
-        reference_due = as_local_date(
-            (task.original_due_date or task.due_date) if task is not None else None
+    def _carried_forward_task_ids(self, user_id: int, period_start: date, task_ids: set[int]) -> set[int]:
+        """Task ids listed as carried_forward (yellow) on this or an earlier weekly plan."""
+        if not task_ids:
+            return set()
+        rows = (
+            self.db.query(WeeklyReportCommitment.task_id)
+            .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
+            .filter(
+                WeeklyReport.user_id == user_id,
+                WeeklyReport.period_start <= period_start,
+                WeeklyReportCommitment.task_id.in_(task_ids),
+                WeeklyReportCommitment.commitment_type == WeeklyCommitmentType.CARRIED_FORWARD.value,
+            )
+            .distinct()
+            .all()
         )
-        week_start = period_start or (row.report.period_start if row.report else None)
-        carried = bool(week_start and reference_due and reference_due < week_start)
+        return {task_id for (task_id,) in rows if task_id is not None}
+
+    def _completion_views(self, report: WeeklyReport) -> list[dict]:
+        included = [c for c in report.completions if c.included]
+        task_ids = {c.task_id for c in included if c.task_id}
+        carried_ids = self._carried_forward_task_ids(report.user_id, report.period_start, task_ids)
+        return [self._completion_view(c, c.task_id in carried_ids if c.task_id else False) for c in included]
+
+    def _completion_view(self, row: WeeklyReportCompletion, carried: bool = False) -> dict:
+        task = row.task
         return {
             "id": row.id,
             "task_id": row.task_id,
