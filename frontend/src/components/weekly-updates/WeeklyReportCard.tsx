@@ -88,7 +88,7 @@ function metaLine(timeLabel: string | null, dateLabel: string | null, datePrefix
 function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number }) {
   const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
   const doneLabel = formatShortDate(item.completion_date || item.completed_at);
-  const meta = metaLine(timeLabel, doneLabel, 'Completed');
+  const carried = Boolean(item.is_carried_forward);
 
   return (
     <li className="flex items-start gap-2 py-1">
@@ -96,8 +96,16 @@ function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number 
       <div className="min-w-0 flex-1">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-1 md:gap-4">
           <TaskTitle title={item.title} taskId={item.task_id} />
-          {meta ? (
-            <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">{meta}</p>
+          {timeLabel || doneLabel ? (
+            <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">
+              {timeLabel}
+              {timeLabel && doneLabel ? ' · ' : null}
+              {doneLabel ? (
+                <>
+                  <span className={carried ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}
+                </>
+              ) : null}
+            </p>
           ) : null}
         </div>
       </div>

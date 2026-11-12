@@ -781,6 +781,7 @@ export interface WeeklyCompletion {
   task_status?: string | null;
   completed_at?: string | null;
   estimated_hours?: number | null;
+  is_carried_forward?: boolean;
 }
 
 export interface WeeklyCommitment {

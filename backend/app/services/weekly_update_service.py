@@ -1170,7 +1170,9 @@ class WeeklyUpdateService:
             "editable_until": editable_until_for(report.period_start),
             "is_current": report.period_start == current,
             "author": _author(report.user),
-            "completions": [self._completion_view(c) for c in report.completions if c.included],
+            "completions": [
+                self._completion_view(c, report.period_start) for c in report.completions if c.included
+            ],
             "commitments": [self._commitment_view(c) for c in report.commitments],
             "leave": self.leave_context(
                 report.user_id,
@@ -1182,8 +1184,13 @@ class WeeklyUpdateService:
             "updated_at": report.updated_at,
         }
 
-    def _completion_view(self, row: WeeklyReportCompletion) -> dict:
+    def _completion_view(self, row: WeeklyReportCompletion, period_start: date | None = None) -> dict:
         task = row.task
+        reference_due = as_local_date(
+            (task.original_due_date or task.due_date) if task is not None else None
+        )
+        week_start = period_start or (row.report.period_start if row.report else None)
+        carried = bool(week_start and reference_due and reference_due < week_start)
         return {
             "id": row.id,
             "task_id": row.task_id,
@@ -1194,6 +1201,7 @@ class WeeklyUpdateService:
             "task_status": task.status if task else None,
             "completed_at": task.completed_at if task else None,
             "estimated_hours": _task_hours(task),
+            "is_carried_forward": carried,
         }
 
     def _task_commitment_view(self, task: Task, carried: bool = False) -> dict:
