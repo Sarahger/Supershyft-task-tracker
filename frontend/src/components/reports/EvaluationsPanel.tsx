@@ -176,30 +176,43 @@ export function EvaluationsPanel({
         />
       </div>
 
-      {editing && (
-        <EvaluationForm
-          mode={editing}
-          month={month}
-          employees={list?.items ?? []}
-          initialUserId={startUserId}
-          parameters={parameters}
-          scale={scale}
-          onClose={() => setEditing(null)}
-          onSaved={(record) => {
-            refresh();
-            setEditing(null);
-            setViewId(record.id);
-          }}
-        />
-      )}
+      <Modal
+        isOpen={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title={editing && editing !== 'new' ? 'Edit evaluation' : 'New evaluation'}
+        size="2xl"
+      >
+        {editing && (
+          <EvaluationForm
+            mode={editing}
+            month={month}
+            employees={list?.items ?? []}
+            initialUserId={startUserId}
+            parameters={parameters}
+            scale={scale}
+            onClose={() => setEditing(null)}
+            onSaved={(record) => {
+              refresh();
+              setEditing(null);
+              setViewId(record.id);
+            }}
+          />
+        )}
+      </Modal>
 
-      {viewId != null && !editing && (
-        <EvaluationDetail
-          evaluationId={viewId}
-          onClose={() => setViewId(null)}
-          onEdit={(record) => setEditing(record)}
-        />
-      )}
+      <Modal
+        isOpen={viewId != null && !editing}
+        onClose={() => setViewId(null)}
+        title="Evaluation"
+        size="2xl"
+      >
+        {viewId != null && !editing && (
+          <EvaluationDetail
+            evaluationId={viewId}
+            onEdit={(record) => setEditing(record)}
+          />
+        )}
+      </Modal>
 
       <section className="card overflow-hidden">
         {isLoading ? (
@@ -333,19 +346,15 @@ function EvaluationForm({
   });
 
   return (
-    <section className="card p-5 sm:p-6 space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-sm font-medium text-text-primary">{existing ? 'Edit evaluation' : 'New evaluation'}</h3>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setShowRatingChart((open) => !open)}
-            className="text-sm text-accent-primary hover:underline"
-          >
-            Rating Chart
-          </button>
-          <button type="button" onClick={onClose} className="text-sm text-text-muted hover:text-text-secondary">Cancel</button>
-        </div>
+    <div className="space-y-5">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowRatingChart((open) => !open)}
+          className="text-sm text-accent-primary hover:underline"
+        >
+          Rating Chart
+        </button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -428,6 +437,7 @@ function EvaluationForm({
       </div>
 
       <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
         <Button type="button" variant="secondary" loading={save.isPending && !confirming} onClick={() => save.mutate(false)}>
           Save as Draft
         </Button>
@@ -447,17 +457,15 @@ function EvaluationForm({
           </div>
         </div>
       </Modal>
-    </section>
+    </div>
   );
 }
 
 function EvaluationDetail({
   evaluationId,
-  onClose,
   onEdit,
 }: {
   evaluationId: number;
-  onClose: () => void;
   onEdit: (record: EvaluationRecord) => void;
 }) {
   const { data } = useQuery({
@@ -475,7 +483,7 @@ function EvaluationDetail({
   const submitted = (history?.evaluations ?? []).filter((row) => row.status === 'submitted');
 
   return (
-    <section className="card p-5 sm:p-6 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-medium text-text-primary">{data.employee?.name ?? 'Evaluation'}</h3>
@@ -486,10 +494,7 @@ function EvaluationDetail({
             Evaluator {data.evaluator?.name ?? '—'} · Submitted {dateLabel(data.submitted_at)}
           </p>
         </div>
-        <div className="flex gap-3">
-          <button type="button" className="text-sm text-accent-primary hover:underline" onClick={() => onEdit(data)}>Edit</button>
-          <button type="button" className="text-sm text-text-muted hover:text-text-secondary" onClick={onClose}>Close</button>
-        </div>
+        <button type="button" className="text-sm text-accent-primary hover:underline" onClick={() => onEdit(data)}>Edit</button>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -566,6 +571,6 @@ function EvaluationDetail({
           ))}
         </div>
       )}
-    </section>
+    </div>
   );
 }
