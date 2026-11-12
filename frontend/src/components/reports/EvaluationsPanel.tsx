@@ -28,6 +28,20 @@ function ratingTone(rating?: number | null) {
   return rating != null ? RATING_PILL[rating] : undefined;
 }
 
+/** Map overall /100 into the same 5 color bands as ratings 1–5. */
+function scoreBand(score?: number | null): number | null {
+  if (score == null || Number.isNaN(score)) return null;
+  if (score <= 20) return 1;
+  if (score <= 40) return 2;
+  if (score <= 60) return 3;
+  if (score <= 80) return 4;
+  return 5;
+}
+
+function scoreTone(score?: number | null) {
+  return ratingTone(scoreBand(score));
+}
+
 const FALLBACK_SCALE: KraRatingMeaning[] = [
   { rating: 5, meaning: 'Exceptional', interpretation: 'Consistently exceeds agreed expectations' },
   { rating: 4, meaning: 'Very Good', interpretation: 'Frequently exceeds expectations' },
@@ -242,7 +256,9 @@ export function EvaluationsPanel({
                     <td className="px-4 py-3 text-text-primary">{row.name}</td>
                     <td className="px-3 py-3 text-text-secondary">{row.departments.length ? row.departments.join(', ') : '—'}</td>
                     <td className="px-3 py-3 text-text-secondary">{monthLabel(row.period_start)}</td>
-                    <td className="px-3 py-3 tabular-nums">{row.overall_score == null ? '—' : `${row.overall_score}/100`}</td>
+                    <td className={`px-3 py-3 tabular-nums font-medium ${scoreTone(row.overall_score)?.text ?? 'text-text-muted'}`}>
+                      {row.overall_score == null ? '—' : `${row.overall_score}/100`}
+                    </td>
                     <td className="px-3 py-3 capitalize">{row.status.replace('_', ' ')}</td>
                     <td className="px-3 py-3 text-text-secondary">{dateLabel(row.last_evaluated_at)}</td>
                     <td className="px-4 py-3">
@@ -398,7 +414,10 @@ function EvaluationForm({
 
       <div className="flex items-center gap-3">
         <p className="shrink-0 text-sm text-text-primary">
-          Overall score <span className="tabular-nums">{complete ? `${total}/100` : '—/100'}</span>
+          Overall score{' '}
+          <span className={`tabular-nums font-medium ${complete ? (scoreTone(total)?.text ?? 'text-text-primary') : 'text-text-muted'}`}>
+            {complete ? `${total}/100` : '—/100'}
+          </span>
         </p>
         <input
           className="input w-full text-sm"
@@ -498,7 +517,7 @@ function EvaluationDetail({
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <p className="text-2xl font-semibold tabular-nums text-text-primary">
+        <p className={`text-2xl font-semibold tabular-nums ${scoreTone(data.overall_score)?.text ?? 'text-text-muted'}`}>
           {data.overall_score == null ? '—' : `${data.overall_score}/100`}
         </p>
         <p className="text-sm text-text-secondary sm:max-w-xl sm:text-right">
