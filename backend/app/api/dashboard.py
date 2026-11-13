@@ -12,6 +12,7 @@ from app.repositories.base import NotificationRepository, TaskRepository
 from app.schemas.common import APIResponse
 from app.schemas.misc import NotificationPreferencesUpdate, ReportFilter
 from app.services.notification_service import NotificationService, notification_preferences_dict
+from app.utils.week_periods import is_due_date_overdue, overdue_cutoff
 
 router = APIRouter(tags=["dashboard"])
 
@@ -109,7 +110,7 @@ def get_dashboard(db: Session = Depends(get_db), current_user: User = Depends(ge
         .join(TaskAssignee)
         .filter(
             TaskAssignee.user_id == current_user.id,
-            Task.due_date < now,
+            Task.due_date < overdue_cutoff(),
             Task.status.notin_(["completed", "cancelled"]),
         )
         .count()
@@ -230,9 +231,7 @@ def task_report(filters: ReportFilter, db: Session = Depends(get_db), current_us
 
     for task in tasks:
         is_pending = task.status not in pending_statuses
-        is_overdue = bool(
-            task.due_date and as_utc(task.due_date) < now and is_pending
-        )
+        is_overdue = bool(is_pending and is_due_date_overdue(task.due_date, status=task.status))
         is_blocked = task.status == "blocked"
         is_in_progress = task.status == "in_progress"
         is_completed = task.status == "completed"
@@ -283,7 +282,7 @@ def task_report(filters: ReportFilter, db: Session = Depends(get_db), current_us
     completed = len([t for t in tasks if t.status == "completed"])
     overdue = len([
         t for t in tasks
-        if t.due_date and as_utc(t.due_date) < now and t.status not in pending_statuses
+        if is_due_date_overdue(t.due_date, status=t.status)
     ])
     blocked = len([t for t in tasks if t.status == "blocked"])
     in_progress = len([t for t in tasks if t.status == "in_progress"])

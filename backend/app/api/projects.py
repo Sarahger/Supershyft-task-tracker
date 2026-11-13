@@ -1,6 +1,4 @@
 import math
-from app.core.datetime_utils import as_utc, utcnow
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -10,6 +8,7 @@ from app.models import Project, Task, User
 from app.repositories.base import ProjectRepository
 from app.schemas.common import APIResponse, PaginatedData
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.utils.week_periods import is_due_date_overdue
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -88,8 +87,7 @@ def _format_project(project: Project, db: Session) -> dict:
     tasks = db.query(Task).filter(Task.project_id == project.id, Task.is_archived == False).all()
     open_tasks = [t for t in tasks if t.status not in ("completed", "cancelled")]
     completed = [t for t in tasks if t.status == "completed"]
-    now = utcnow()
-    overdue = [t for t in open_tasks if t.due_date and as_utc(t.due_date) < now]
+    overdue = [t for t in open_tasks if is_due_date_overdue(t.due_date, status=t.status)]
     total = len(tasks)
     progress = (len(completed) / total * 100) if total else 0
     return {

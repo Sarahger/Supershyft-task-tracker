@@ -16,6 +16,7 @@ from app.utils.week_periods import (
     current_week_start,
     due_at_noon,
     editable_until_for,
+    is_due_date_overdue,
     is_report_editable,
     writable_period_start,
     monday_of,
@@ -96,17 +97,19 @@ def auth_header(user: User) -> dict:
 def test_period_math_friday_and_late_submit():
     monday = date(2026, 10, 26)
     current_monday = date(2026, 11, 2)
+    next_monday = date(2026, 11, 9)
     now = datetime(2026, 11, 2, 15, 0, tzinfo=get_app_timezone())
     assert monday_of(date(2026, 10, 28)) == monday
     assert working_week_end(monday) == date(2026, 10, 31)
     assert period_end_for_submit(monday, date(2026, 10, 30)) == date(2026, 10, 31)
     assert period_end_for_submit(current_monday, date(2026, 11, 2)) == date(2026, 11, 5)
+    # Planning is always the calendar week after the reporting week.
     plan_start, plan_end = planning_window(monday, now)
     assert plan_start == current_monday
     assert plan_end == date(2026, 11, 5)
     this_start, this_end = planning_window(current_monday, now)
-    assert this_start == current_monday
-    assert this_end == date(2026, 11, 5)
+    assert this_start == next_monday
+    assert this_end == working_week_end(next_monday)
 
 
 def test_weekly_edit_window_ends_monday_2pm():
@@ -118,6 +121,20 @@ def test_weekly_edit_window_ends_monday_2pm():
     assert until.minute == 0
     assert is_report_editable(monday, "submitted", datetime(2026, 11, 2, 13, 59, tzinfo=zone))
     assert not is_report_editable(monday, "draft", datetime(2026, 11, 2, 14, 0, tzinfo=zone))
+    # Edit lock does not change how the calendar week is calculated.
+    assert current_week_start(datetime(2026, 11, 2, 10, 0, tzinfo=zone)) == date(2026, 11, 2)
+    assert current_week_start(datetime(2026, 11, 2, 15, 0, tzinfo=zone)) == date(2026, 11, 2)
+
+
+def test_overdue_starts_after_due_calendar_day():
+    zone = get_app_timezone()
+    due_day = date(2026, 11, 12)
+    due = due_at_noon(due_day)
+    during_due_day = datetime(2026, 11, 12, 23, 59, tzinfo=zone)
+    next_midnight = datetime(2026, 11, 13, 0, 0, tzinfo=zone)
+    assert is_due_date_overdue(due, status="in_progress", now=during_due_day) is False
+    assert is_due_date_overdue(due, status="in_progress", now=next_midnight) is True
+    assert is_due_date_overdue(due, status="completed", now=next_midnight) is False
 
 
 def test_current_week_waits_until_previous_week_locks():
@@ -552,7 +569,7 @@ def test_carry_forward_reuses_task(client, users, db_session):
     assert len(items) == 1
     assert items[0]["task_id"] == task.id
     assert items[0]["is_carried_forward"] is True
-    assert items[0]["is_overdue"] is True
+    assert items[0]["commitment_type"] == "carried_forward"
 
 
 def test_carry_forward_includes_overdue_without_prior_report(client, users, db_session):
@@ -581,13 +598,37 @@ def test_carry_forward_includes_overdue_without_prior_report(client, users, db_s
     assert any(row["task_id"] == task.id for row in outstanding)
 
 
-def test_due_this_week_from_created_tracker_task(client, users, db_session):
+def test_due_today_is_not_overdue_or_carried(client, users, db_session):
+    emp = users["employee"]
+    task = Task(
+        title="Due today still on track",
+        status="in_progress",
+        priority="medium",
+        estimated_hours=2,
+        created_by_id=emp.id,
+        due_date=due_at_noon(today_local()),
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    res = client.get("/api/weekly-updates/carry-forward", headers=auth_header(emp))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    items = data.get("items") or []
+    due_next = data.get("due_this_week") or []
+    assert all(row["task_id"] != task.id for row in items)
+    assert all(row["task_id"] != task.id for row in due_next)
+
+
+def test_due_next_week_from_created_tracker_task(client, users, db_session):
     emp = users["employee"]
     monday = current_week_start()
-    sunday = monday + timedelta(days=6)
-    due_day = min(today_local() + timedelta(days=1), sunday)
+    next_monday = monday + timedelta(days=7)
+    due_day = next_monday + timedelta(days=2)
     task = Task(
-        title="Created in tracker this week",
+        title="Created in tracker for next week",
         status="to_do",
         priority="medium",
         estimated_hours=2,
@@ -603,11 +644,13 @@ def test_due_this_week_from_created_tracker_task(client, users, db_session):
     assert res.status_code == 200
     data = res.json()["data"]
     due_this_week = data.get("due_this_week") or []
+    assert data["planning_start"] == next_monday.isoformat()
     assert any(row["task_id"] == task.id and row["is_carried_forward"] is False for row in due_this_week)
     history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
     assert history.status_code == 200
     body = history.json()["data"]
     assert body["current_period_end"] == working_week_end(monday_of(date.fromisoformat(body["current_period_start"]))).isoformat()
+    assert body["planning_start"] == next_monday.isoformat()
     assert any(row["task_id"] == task.id for row in (body.get("due_this_week") or []))
 
 

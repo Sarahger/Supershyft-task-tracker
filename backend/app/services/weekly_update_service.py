@@ -40,6 +40,7 @@ from app.utils.week_periods import (
     due_at_noon,
     editable_until_for,
     is_auto_sync_open,
+    is_due_date_overdue,
     is_report_editable,
     monday_of,
     report_edit_block_reason,
@@ -51,7 +52,8 @@ from app.utils.week_periods import (
     today_local,
     working_week_end,
     writable_period_start,
-    week_datetime_bounds,)
+    week_datetime_bounds,
+)
 
 
 def _utc_now() -> datetime:
@@ -59,15 +61,8 @@ def _utc_now() -> datetime:
 
 
 def _is_overdue(task: Task, now: datetime | None = None) -> bool:
-    if not task.due_date or task.status in RESOLVED_STATUSES:
-        return False
-    due = task.due_date
-    if due.tzinfo is None:
-        due = due.replace(tzinfo=timezone.utc)
-    current = now or _utc_now()
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    return due < current
+    """Overdue only after the due calendar day has ended (local midnight next day)."""
+    return is_due_date_overdue(task.due_date, status=task.status, now=now)
 
 
 def _author(user: User | None) -> dict | None:
@@ -362,6 +357,9 @@ class WeeklyUpdateService:
         if report:
             if not is_report_editable(report.period_start, report.status):
                 return None
+            plan_start, plan_end = planning_window(period_start)
+            report.planning_start = plan_start
+            report.planning_end = plan_end
             return report
         if not is_auto_sync_open(period_start):
             return None
@@ -1155,18 +1153,24 @@ class WeeklyUpdateService:
     def _report_view(self, report: WeeklyReport) -> dict:
         current = current_week_start()
         period_end = working_week_end(report.period_start)
-        planning_end = working_week_end(monday_of(report.planning_start))
+        editable = is_report_editable(report.period_start, report.status)
+        # Editable reports always expose the live next-week planning window.
+        if editable:
+            plan_start, plan_end = planning_window(report.period_start)
+        else:
+            plan_start = monday_of(report.planning_start)
+            plan_end = working_week_end(plan_start)
         return {
             "id": report.id,
             "user_id": report.user_id,
             "period_start": report.period_start.isoformat(),
             "period_end": period_end.isoformat(),
-            "planning_start": report.planning_start.isoformat(),
-            "planning_end": planning_end.isoformat(),
+            "planning_start": plan_start.isoformat(),
+            "planning_end": plan_end.isoformat(),
             "status": report.status,
             "submitted_at": report.submitted_at,
             "leave_notes": report.leave_notes,
-            "editable": is_report_editable(report.period_start, report.status),
+            "editable": editable,
             "editable_until": editable_until_for(report.period_start),
             "is_current": report.period_start == current,
             "author": _author(report.user),
@@ -1177,7 +1181,7 @@ class WeeklyUpdateService:
                 report.period_start,
                 max(period_end, saturday_of(report.period_start)),
             ),
-            "planning_leave": self.leave_context(report.user_id, report.planning_start, planning_end),
+            "planning_leave": self.leave_context(report.user_id, plan_start, plan_end),
             "created_at": report.created_at,
             "updated_at": report.updated_at,
         }

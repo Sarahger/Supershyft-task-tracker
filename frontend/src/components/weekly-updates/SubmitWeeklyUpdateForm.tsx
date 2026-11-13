@@ -450,9 +450,9 @@ export function SubmitWeeklyUpdateForm({
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-medium text-text-primary">This week’s tasks</h3>
+          <h3 className="text-sm font-medium text-text-primary">Next week’s tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Overdue tracker tasks are carried forward in yellow. Tasks you created with a due date this week appear here automatically. Press Enter to add more — numbers are added for you.
+            Overdue tracker tasks are carried forward in yellow. Tasks you already created with a due date next week appear here automatically. Press Enter to add more — numbers are added for you.
           </p>
         </div>
         {(carried.length > 0 || dueThisWeek.length > 0) && (
@@ -500,7 +500,7 @@ export function SubmitWeeklyUpdateForm({
               );
             })}
             {dueThisWeek.length > 0 && (
-              <p className="text-xs font-medium text-text-secondary pt-1">Due this week</p>
+              <p className="text-xs font-medium text-text-secondary pt-1">Due next week</p>
             )}
             {dueThisWeek.map((item) => {
               const key = `tw-${item.task_id}`;

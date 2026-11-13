@@ -203,7 +203,7 @@ export function WeeklyReportCard({
           <h3 className="text-base font-semibold text-text-primary mt-0.5">
             {formatRange(report.period_start, report.period_end)}
           </h3>
-          {!report.is_current && (report.planning_start !== report.period_start || report.planning_end !== report.period_end) && (
+          {(report.planning_start !== report.period_start || report.planning_end !== report.period_end) && (
             <p className="text-xs text-text-muted mt-0.5">
               Next week {formatRange(report.planning_start, report.planning_end)}
             </p>
@@ -255,7 +255,7 @@ export function WeeklyReportCard({
 
       <section className="space-y-1">
         <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
-          {report.is_current ? 'This week' : 'Next week'}
+          Next week
         </p>
         {report.commitments.length === 0 ? (
           <p className="text-sm text-text-muted">No commitments recorded.</p>

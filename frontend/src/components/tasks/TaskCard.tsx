@@ -10,8 +10,15 @@ interface TaskCardProps {
   compact?: boolean;
 }
 
+/** Overdue only after the due calendar day has ended (not during the due day). */
+export function isOverdueTask(task: Pick<Task, 'due_date' | 'status'>): boolean {
+  if (!task.due_date || ['completed', 'cancelled'].includes(task.status)) return false;
+  const d = new Date(task.due_date);
+  return isPast(d) && !isToday(d);
+}
+
 export function TaskCard({ task, onClick, compact }: TaskCardProps) {
-  const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !['completed', 'cancelled'].includes(task.status);
+  const isOverdue = isOverdueTask(task);
 
   return (
     <div
@@ -80,9 +87,7 @@ export function isClosedOrBlockedStatus(status: string): boolean {
 
 /** Overdue + in progress — carry into Today's list until status changes. */
 export function isOverdueInProgressTask(task: Task): boolean {
-  if (!task.due_date || task.status !== 'in_progress') return false;
-  const d = new Date(task.due_date);
-  return isPast(d) && !isToday(d);
+  return task.status === 'in_progress' && isOverdueTask(task);
 }
 
 export function isDueTodayTask(task: Task): boolean {
@@ -122,7 +127,7 @@ export function groupTasksByDue(tasks: Task[]) {
 
     if (task.due_date) {
       const d = new Date(task.due_date);
-      if (isPast(d) && !isToday(d)) overdue.push(task);
+      if (isOverdueTask(task)) overdue.push(task);
       else if (isToday(d)) todayDue.push(task);
       else if (isThisWeek(d)) thisWeek.push(task);
       else later.push(task);

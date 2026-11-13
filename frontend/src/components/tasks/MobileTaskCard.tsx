@@ -1,4 +1,4 @@
-import { format, isPast, isToday, isTomorrow } from 'date-fns';
+import { format, isToday, isTomorrow } from 'date-fns';
 import { ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
@@ -6,6 +6,7 @@ import { STATUS_LABELS } from '../../types';
 import { formatTimeTakenHours } from '../../lib/taskTiming';
 import { StatusBadge, PriorityBadge } from '../ui/Badge';
 import { Avatar } from '../ui/Avatar';
+import { isOverdueTask } from './TaskCard';
 
 interface MobileTaskCardProps {
   task: Task;
@@ -37,7 +38,7 @@ function statusAccentClass(status: string) {
 }
 
 export function MobileTaskCard({ task, onClick }: MobileTaskCardProps) {
-  const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !['completed', 'cancelled'].includes(task.status);
+  const isOverdue = isOverdueTask(task);
   const primaryAssignee = task.assignees?.[0]?.user;
   const accent = statusAccentClass(task.status);
   const timeRequired = formatTimeTakenHours(task.estimated_hours);

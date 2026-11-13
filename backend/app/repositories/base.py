@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import case, func, or_
@@ -172,8 +172,12 @@ class TaskRepository(BaseRepository):
         if task_type_id := filters.get("task_type_id"):
             query = query.filter(Task.task_type_id == task_type_id)
         if filters.get("overdue"):
-            now = datetime.now(timezone.utc)
-            query = query.filter(Task.due_date < now, Task.status.notin_(["completed", "cancelled"]))
+            from app.utils.week_periods import overdue_cutoff
+
+            query = query.filter(
+                Task.due_date < overdue_cutoff(),
+                Task.status.notin_(["completed", "cancelled"]),
+            )
         if filters.get("blocked"):
             query = query.filter(Task.status == "blocked")
         if filters.get("awaiting_review"):

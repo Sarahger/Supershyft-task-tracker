@@ -8,6 +8,8 @@ from datetime import date, datetime, time, timedelta
 from app.core.company_holidays import is_working_day
 from app.utils.month_weeks import get_app_timezone
 
+# Weekly updates stay editable until 2:00 PM on the Monday after the reporting week.
+# This lock only gates writing; it does not change Monday-based week boundaries.
 EDIT_CUTOFF = time(14, 0)
 RESOLVED_STATUSES = frozenset({"completed", "cancelled"})
 
@@ -56,8 +58,14 @@ def working_week_end(monday: date) -> date:
 
 
 def planning_window(period_start: date, now: datetime | None = None) -> tuple[date, date]:
-    current = current_week_start(now)
-    start = period_start if period_start >= current else next_monday(period_start)
+    """Next Mon–working-week after the reporting week.
+
+    The Monday 2:00 PM edit lock does not change this window — planning is always
+    the calendar week after ``period_start``, whether the report is written mid-week
+    or still being edited on the following Monday morning.
+    """
+    del now  # kept for call-site compatibility; week math is calendar-based
+    start = next_monday(period_start)
     return start, working_week_end(start)
 
 
@@ -158,3 +166,30 @@ def as_local_date(value: datetime | date | None) -> date | None:
             value = value.replace(tzinfo=get_app_timezone())
         return value.astimezone(get_app_timezone()).date()
     return value
+
+
+def overdue_cutoff(now: datetime | None = None) -> datetime:
+    """Start of today in the company timezone.
+
+    A task due on day D is overdue only from the next local midnight onward
+    (e.g. due 12 Nov → overdue from 13 Nov 00:00).
+    """
+    start, _ = local_day_bounds(today_local(now))
+    return start
+
+
+def is_due_date_overdue(
+    due: datetime | date | None,
+    *,
+    status: str | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """True when the due calendar day has fully passed (local date comparison)."""
+    if due is None:
+        return False
+    if status is not None and status in RESOLVED_STATUSES:
+        return False
+    due_day = as_local_date(due)
+    if due_day is None:
+        return False
+    return today_local(now) > due_day
