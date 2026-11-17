@@ -197,8 +197,11 @@ class WorkVaultService:
             query = query.filter(WorkVaultResource.uploaded_by_id == uploaded_by_id)
         if project_id:
             query = query.filter(WorkVaultResource.project_id == project_id)
-        if folder_id:
-            query = query.filter(WorkVaultResource.folder_id == folder_id)
+        if folder_id is not None:
+            if folder_id == 0:
+                query = query.filter(WorkVaultResource.folder_id.is_(None))
+            else:
+                query = query.filter(WorkVaultResource.folder_id == folder_id)
         start = parse_day_bound(created_from)
         end = parse_day_bound(created_to, end=True)
         if start:
@@ -520,17 +523,39 @@ class WorkVaultService:
         self.db.flush()
         return folder
 
-    def create_folder(self, user: User, name: str, description: str | None = None) -> WorkVaultFolder:
-        title = " ".join((name or "").split())[:300]
-        if not title:
-            raise HTTPException(status_code=400, detail="Folder name is required")
-        existing = (
-            self.db.query(WorkVaultFolder)
-            .filter(WorkVaultFolder.owner_id == user.id, func.lower(WorkVaultFolder.name) == title.lower())
-            .first()
-        )
-        if existing:
-            raise HTTPException(status_code=400, detail="You already have a folder with that name")
+    def next_folder_name(self, user: User, preferred: str | None = None) -> str:
+        base = " ".join((preferred or "New folder").split())[:280] or "New folder"
+        existing = {
+            (name or "").lower()
+            for (name,) in self.db.query(WorkVaultFolder.name).filter(WorkVaultFolder.owner_id == user.id).all()
+        }
+        if base.lower() not in existing:
+            return base
+        index = 2
+        while f"{base} {index}".lower() in existing:
+            index += 1
+        return f"{base} {index}"
+
+    def create_folder(
+        self,
+        user: User,
+        name: str | None = None,
+        description: str | None = None,
+        *,
+        unique: bool = False,
+    ) -> WorkVaultFolder:
+        preferred = " ".join((name or "").split())[:300] or "New folder"
+        if unique:
+            title = self.next_folder_name(user, preferred)
+        else:
+            title = preferred
+            existing = (
+                self.db.query(WorkVaultFolder)
+                .filter(WorkVaultFolder.owner_id == user.id, func.lower(WorkVaultFolder.name) == title.lower())
+                .first()
+            )
+            if existing:
+                raise HTTPException(status_code=400, detail="You already have a folder with that name")
         folder = WorkVaultFolder(
             name=title,
             description=(description or "").strip(),
@@ -633,23 +658,27 @@ class WorkVaultService:
         self.db.delete(folder)
         self.db.commit()
 
-    def _require_folder(
+    def _resolve_folder(
         self,
         user: User,
         folder_id: int | None,
         folder_name: str | None,
-        fallback_name: str,
         folder_description: str | None = None,
-    ) -> WorkVaultFolder:
+        *,
+        group_in_folder: bool = False,
+    ) -> WorkVaultFolder | None:
+        """Attach to an existing folder, optionally create/group, or leave ungrouped."""
         if folder_id:
             folder = self.get_folder(folder_id)
             if folder.owner_id != user.id and user.role != UserRole.ADMIN.value:
                 raise HTTPException(status_code=403, detail="You can only upload into your own folders")
             return folder
-        name = " ".join((folder_name or fallback_name or "").split())
-        if not name:
-            raise HTTPException(status_code=400, detail="Folder name is required")
-        return self.get_or_create_folder(user, name, description=folder_description)
+        explicit_name = " ".join((folder_name or "").split())
+        if explicit_name:
+            return self.get_or_create_folder(user, explicit_name, description=folder_description)
+        if group_in_folder:
+            return self.create_folder(user, "New folder", folder_description, unique=True)
+        return None
 
     def _default_title(
         self,
@@ -692,6 +721,7 @@ class WorkVaultService:
         folder_id: int | None = None,
         folder_name: str | None = None,
         folder_description: str | None = None,
+        group_in_folder: bool = False,
         filename: str | None = None,
         file_path: str | None = None,
         file_size: int | None = None,
@@ -708,13 +738,14 @@ class WorkVaultService:
             url=url,
             http_method=http_method if category_value == WORK_VAULT_API_CATEGORY else None,
         )
-        folder = self._require_folder(
+        folder = self._resolve_folder(
             user,
             folder_id,
             folder_name,
-            title_value,
             folder_description=folder_description,
+            group_in_folder=group_in_folder,
         )
+        resolved_folder_id = folder.id if folder else None
 
         if category_value == WORK_VAULT_API_CATEGORY:
             if has_file or not has_url:
@@ -726,7 +757,7 @@ class WorkVaultService:
                 category=category_value,
                 tags=parse_tags(tags),
                 project_id=None,
-                folder_id=folder.id,
+                folder_id=resolved_folder_id,
                 resource_type="link",
                 file_kind="api",
                 http_method=method,
@@ -750,7 +781,7 @@ class WorkVaultService:
                 category=category_value,
                 tags=parse_tags(tags),
                 project_id=self._require_project(project_id),
-                folder_id=folder.id,
+                folder_id=resolved_folder_id,
                 resource_type=resource_type,
                 file_kind="link",
                 url=external_url,
@@ -764,7 +795,7 @@ class WorkVaultService:
                 category=category_value,
                 tags=parse_tags(tags),
                 project_id=self._require_project(project_id),
-                folder_id=folder.id,
+                folder_id=resolved_folder_id,
                 resource_type="file",
                 file_kind=infer_file_kind("file", safe_name, mime_type),
                 filename=safe_name,

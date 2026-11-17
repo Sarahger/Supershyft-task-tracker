@@ -28,6 +28,8 @@ type DraftItem =
   | { key: string; kind: 'url'; url: string; title: string; description: string }
   | { key: string; kind: 'api'; method: string; path: string; title: string; description: string };
 
+const DEFAULT_FOLDER_NAME = 'New folder';
+
 function newKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -40,14 +42,15 @@ function directoryNameFromFiles(files: File[]) {
   const first = files.find((file) => (file as File & { webkitRelativePath?: string }).webkitRelativePath);
   const relative = first ? (first as File & { webkitRelativePath?: string }).webkitRelativePath || '' : '';
   const root = relative.split(/[/\\]/).filter(Boolean)[0];
-  return root || 'Uploaded folder';
+  return root || DEFAULT_FOLDER_NAME;
 }
 
 export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: UploadResourceModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
-  const [folderTitle, setFolderTitle] = useState(folder?.name ?? '');
-  const [folderDescription, setFolderDescription] = useState(folder?.description ?? '');
+  const [groupInFolder, setGroupInFolder] = useState(false);
+  const [folderTitle, setFolderTitle] = useState(DEFAULT_FOLDER_NAME);
+  const [folderDescription, setFolderDescription] = useState('');
   const [category, setCategory] = useState<string>('Technical Documentation');
   const [tags, setTags] = useState<string[]>([]);
   const [items, setItems] = useState<DraftItem[]>([]);
@@ -56,11 +59,19 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
   const [error, setError] = useState<string | null>(null);
   const [fromDirectory, setFromDirectory] = useState(false);
 
+  const insideFolder = !!folder;
+
   useEffect(() => {
     if (!isOpen) return;
-    setFolderTitle(folder?.name ?? '');
-    setFolderDescription(folder?.description ?? '');
+    setGroupInFolder(false);
+    setFolderTitle(DEFAULT_FOLDER_NAME);
+    setFolderDescription('');
     setFromDirectory(false);
+    setItems([]);
+    setError(null);
+    setProgress('');
+    setCategory('Technical Documentation');
+    setTags([]);
   }, [isOpen, folder]);
 
   const { data: users } = useQuery({
@@ -78,7 +89,6 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
   });
 
   const isApi = category === WORK_VAULT_API_CATEGORY;
-  const creatingFolder = !folder;
 
   useEffect(() => {
     if (!isOpen || isApi) return;
@@ -89,8 +99,9 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
   }, [isOpen, isApi, items.length]);
 
   const reset = () => {
-    setFolderTitle(folder?.name ?? '');
-    setFolderDescription(folder?.description ?? '');
+    setGroupInFolder(false);
+    setFolderTitle(DEFAULT_FOLDER_NAME);
+    setFolderDescription('');
     setCategory('Technical Documentation');
     setTags([]);
     setItems([]);
@@ -121,9 +132,10 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
       };
     });
     setItems((prev) => (asDirectory ? next : [...prev, ...next]));
-    if (asDirectory) {
+    if (asDirectory && !insideFolder) {
       setFromDirectory(true);
-      if (!folder) setFolderTitle(directoryNameFromFiles(files));
+      setGroupInFolder(true);
+      setFolderTitle(directoryNameFromFiles(files));
     }
   };
 
@@ -138,6 +150,7 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
     if (enteringApi && !leavingApi) {
       setItems([emptyApiItem()]);
       setFromDirectory(false);
+      setGroupInFolder(false);
     } else if (leavingApi && !enteringApi) {
       setItems([]);
     }
@@ -157,18 +170,10 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
     return `${item.method} ${item.path.trim()}`.trim();
   };
 
-  const resolveItemDescription = (item: DraftItem) => item.description.trim();
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
-    const sharedFolderTitle = folderTitle.trim();
-    const sharedFolderDescription = folderDescription.trim();
 
-    if (creatingFolder && !sharedFolderTitle) {
-      setError(fromDirectory ? 'Add a folder title for this upload.' : 'Add a folder title to group these items.');
-      return;
-    }
     if (!items.length) {
       setError(isApi ? 'Add at least one API method and path.' : 'Add at least one file, folder, or valid URL.');
       return;
@@ -184,25 +189,29 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
       }
     }
 
+    const shouldGroup = !insideFolder && (groupInFolder || fromDirectory);
+    const sharedFolderTitle = folderTitle.trim() || DEFAULT_FOLDER_NAME;
+    const sharedFolderDescription = folderDescription.trim();
+
     setSubmitting(true);
     setError(null);
     const created: string[] = [];
     const failed: string[] = [];
 
     let targetFolderId = folder?.id;
-    if (!targetFolderId && creatingFolder) {
+    if (!targetFolderId && shouldGroup) {
       try {
-        const createdFolder = await workVaultApi.createFolder(sharedFolderTitle, sharedFolderDescription);
+        const createdFolder = await workVaultApi.createFolder(
+          sharedFolderTitle,
+          sharedFolderDescription,
+          true,
+        );
         targetFolderId = createdFolder.data.data.id;
       } catch (err) {
-        // If the folder already exists, continue and let resource create attach to it by name.
-        const message = apiErrorMessage(err, 'Could not create folder');
-        if (!/already have a folder/i.test(message)) {
-          setSubmitting(false);
-          setProgress('');
-          setError(message);
-          return;
-        }
+        setSubmitting(false);
+        setProgress('');
+        setError(apiErrorMessage(err, 'Could not create folder'));
+        return;
       }
     }
 
@@ -211,13 +220,9 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
       setProgress(`Uploading ${i + 1} of ${items.length}…`);
       const form = new FormData();
       form.append('title', resolveItemTitle(item));
-      form.append('description', resolveItemDescription(item));
+      form.append('description', item.description.trim());
       form.append('category', category);
       if (targetFolderId) form.append('folder_id', String(targetFolderId));
-      if (!targetFolderId && sharedFolderTitle) {
-        form.append('folder_name', sharedFolderTitle);
-        if (sharedFolderDescription) form.append('folder_description', sharedFolderDescription);
-      }
       if (tags.length) form.append('tags', tags.join(', '));
       if (item.kind === 'file') form.append('file', item.file, item.file.name);
       if (item.kind === 'url') form.append('url', item.url.trim());
@@ -248,39 +253,23 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
     onClose();
   };
 
+  const showGroupOption = !insideFolder && !isApi;
+
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={folder ? `Add to ${folder.name}` : 'Upload resource'} size="lg">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={insideFolder ? `Add to ${folder.name}` : 'Upload resource'}
+      size="lg"
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
-        {creatingFolder ? (
-          <>
-            <div className="space-y-1.5">
-              <Input
-                label="Folder title"
-                value={folderTitle}
-                onChange={(e) => setFolderTitle(e.target.value)}
-                placeholder={fromDirectory ? 'Folder name' : 'App screens'}
-                required
-              />
-              <p className="text-2xs text-text-muted">
-                {fromDirectory
-                  ? 'Creates a folder with this title. Files keep their original names unless you edit them below.'
-                  : 'Groups these items in a folder. Each file keeps its original name as its title unless you change it.'}
-              </p>
-            </div>
-            <Textarea
-              label="Folder description (optional)"
-              value={folderDescription}
-              onChange={(e) => setFolderDescription(e.target.value)}
-              placeholder="What this folder contains"
-              rows={3}
-            />
-          </>
-        ) : (
+        {insideFolder ? (
           <p className="text-xs text-text-secondary">
             Adding to <span className="text-text-primary font-medium">{folder.name}</span>. Original file names are kept;
-            title and description are optional and can be edited later.
+            title and description are optional.
           </p>
-        )}
+        ) : null}
+
         <Select
           label="Category"
           value={category}
@@ -496,6 +485,48 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
             )}
           </div>
         )}
+
+        {showGroupOption && items.length > 0 ? (
+          <div className="rounded-lg border border-dark-border p-3 space-y-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={groupInFolder || fromDirectory}
+                disabled={fromDirectory}
+                onChange={(e) => {
+                  setGroupInFolder(e.target.checked);
+                  if (e.target.checked && !folderTitle.trim()) setFolderTitle(DEFAULT_FOLDER_NAME);
+                }}
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-text-primary">Group in a folder</span>
+                <span className="block text-2xs text-text-muted">
+                  {fromDirectory
+                    ? 'Folder uploads are kept together. You can rename the folder now or later.'
+                    : 'Optional. Leave unchecked to upload items without a folder.'}
+                </span>
+              </span>
+            </label>
+            {(groupInFolder || fromDirectory) ? (
+              <div className="space-y-2 pl-6">
+                <Input
+                  label="Folder name"
+                  value={folderTitle}
+                  onChange={(e) => setFolderTitle(e.target.value)}
+                  placeholder={DEFAULT_FOLDER_NAME}
+                />
+                <Textarea
+                  label="Folder description (optional)"
+                  value={folderDescription}
+                  onChange={(e) => setFolderDescription(e.target.value)}
+                  placeholder="What this folder contains"
+                  rows={2}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {error && <p className="text-xs text-red-400 whitespace-pre-line">{error}</p>}
         {progress && <p className="text-xs text-text-secondary">{progress}</p>}

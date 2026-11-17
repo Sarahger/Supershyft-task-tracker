@@ -301,13 +301,26 @@ def test_title_folders_and_date_filter():
     client, session, engine = setup_client()
     try:
         emp, other, _admin = make_users(session)
-        first = create_link(client, emp, title="App screens", url="https://www.figma.com/file/one")
-        second = create_link(client, emp, title="App screens", url="https://www.figma.com/file/two")
+        first = create_link(
+            client,
+            emp,
+            title="Screen one",
+            url="https://www.figma.com/file/one",
+            folder_name="App screens",
+        )
+        second = create_link(
+            client,
+            emp,
+            title="Screen two",
+            url="https://www.figma.com/file/two",
+            folder_name="App screens",
+        )
         assert first.status_code == 200, first.text
         assert second.status_code == 200, second.text
         assert first.json()["data"]["folder_id"]
         assert first.json()["data"]["folder_id"] == second.json()["data"]["folder_id"]
         assert first.json()["data"]["folder_name"] == "App screens"
+        assert first.json()["data"]["title"] == "Screen one"
 
         empty = client.post(
             "/api/work-vault/folders",
@@ -463,6 +476,18 @@ def test_original_filename_preserved_and_optional_title_description():
     client, session, engine = setup_client()
     try:
         emp, _other, _admin = make_users(session)
+        ungrouped = client.post(
+            "/api/work-vault/resources",
+            data={"category": "Technical Documentation"},
+            files={"file": ("notes.txt", b"hello", "text/plain")},
+            headers=auth_header(emp),
+        )
+        assert ungrouped.status_code == 200, ungrouped.text
+        loose = ungrouped.json()["data"]
+        assert loose["filename"] == "notes.txt"
+        assert loose["title"] == "notes.txt"
+        assert loose["folder_id"] is None
+
         upload = client.post(
             "/api/work-vault/resources",
             data={
@@ -520,6 +545,30 @@ def test_original_filename_preserved_and_optional_title_description():
         assert nested["filename"] == "readme.md"
         assert nested["title"] == "readme.md"
         assert nested["folder_id"] == folder["id"]
+
+        default_folder = client.post(
+            "/api/work-vault/folders",
+            json={},
+            headers=auth_header(emp),
+        )
+        assert default_folder.status_code == 200, default_folder.text
+        assert default_folder.json()["data"]["name"] == "New folder"
+
+        second_default = client.post(
+            "/api/work-vault/folders",
+            json={"unique": True},
+            headers=auth_header(emp),
+        )
+        assert second_default.status_code == 200, second_default.text
+        assert second_default.json()["data"]["name"] == "New folder 2"
+
+        listed_ungrouped = client.get(
+            "/api/work-vault/resources",
+            params={"uploaded_by_id": emp.id, "folder_id": 0},
+            headers=auth_header(emp),
+        )
+        assert listed_ungrouped.status_code == 200
+        assert {row["id"] for row in listed_ungrouped.json()["data"]["items"]} == {loose["id"]}
     finally:
         app.dependency_overrides.clear()
         session.close()

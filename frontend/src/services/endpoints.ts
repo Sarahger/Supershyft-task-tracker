@@ -340,10 +340,11 @@ export const workVaultApi = {
     api.get<APIResponse<{ items: WorkVaultPersonFolder[] }>>('/work-vault/people', { params }),
   folders: (params?: Record<string, unknown>) =>
     api.get<APIResponse<{ items: WorkVaultTitleFolder[] }>>('/work-vault/folders', { params }),
-  createFolder: (name: string, description?: string) =>
+  createFolder: (name?: string, description?: string, unique = false) =>
     api.post<APIResponse<WorkVaultTitleFolder>>('/work-vault/folders', {
-      name,
+      ...(name != null && name !== '' ? { name } : {}),
       ...(description != null ? { description } : {}),
+      ...(unique ? { unique: true } : {}),
     }),
   updateFolder: (id: number, data: { name?: string; description?: string }) =>
     api.patch<APIResponse<WorkVaultTitleFolder>>(`/work-vault/folders/${id}`, data),

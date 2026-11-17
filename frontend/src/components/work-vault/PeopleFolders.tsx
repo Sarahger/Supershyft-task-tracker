@@ -70,6 +70,19 @@ export function PeopleFolders({
     enabled: openTitleId != null,
   });
 
+  const { data: ungrouped, isLoading: loadingUngrouped } = useQuery({
+    queryKey: ['work-vault', 'ungrouped', openFolderId, listParams],
+    queryFn: () => workVaultApi.list({
+      ...listParams,
+      uploaded_by_id: openFolderId,
+      folder_id: 0,
+      sort: listParams.sort || 'recent',
+      page: 1,
+      page_size: 100,
+    }).then((r) => r.data.data),
+    enabled: openFolderId != null && openTitleId == null,
+  });
+
   const resetFolderForm = () => {
     setFolderName('');
     setFolderDescription('');
@@ -78,7 +91,10 @@ export function PeopleFolders({
   };
 
   const createFolder = useMutation({
-    mutationFn: () => workVaultApi.createFolder(folderName.trim(), folderDescription.trim()),
+    mutationFn: () => {
+      const name = folderName.trim() || 'New folder';
+      return workVaultApi.createFolder(name, folderDescription.trim(), name.toLowerCase() === 'new folder');
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['work-vault'] });
       toast.success('Folder created');
@@ -219,6 +235,15 @@ export function PeopleFolders({
 
   if (openFolder) {
     const name = uploaderName(openFolder);
+    const hasFolders = !!(titleFolders ?? []).length;
+    const hasUngrouped = !!(ungrouped?.items.length);
+    const loadingPerson = loadingFolders || loadingUngrouped;
+    const openNewFolder = () => {
+      setShowNewFolder(true);
+      setEditingFolder(null);
+      setFolderName('New folder');
+      setFolderDescription('');
+    };
     return (
       <div>
         <button
@@ -239,71 +264,95 @@ export function PeopleFolders({
             </p>
           </div>
           {isOwn && (
-            <Button size="sm" variant="secondary" onClick={() => { setShowNewFolder(true); setEditingFolder(null); setFolderName(''); setFolderDescription(''); }} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> New folder
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button size="sm" variant="secondary" onClick={openNewFolder} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" /> New folder
+              </Button>
+              <Button size="sm" onClick={() => onUpload()} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" /> Upload
+              </Button>
+            </div>
           )}
         </div>
-        {loadingFolders ? (
+        {loadingPerson ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-16 rounded-lg bg-dark-muted animate-pulse" />
             ))}
           </div>
-        ) : !(titleFolders ?? []).length ? (
+        ) : !hasFolders && !hasUngrouped ? (
           <EmptyState
-            title="No folders yet"
-            description={isOwn ? 'Create a folder now, or upload a folder/files to group them.' : 'This person has no folders in the selected period.'}
+            title="Nothing here yet"
+            description={isOwn ? 'Upload files, or create a folder first and add items into it.' : 'This person has no resources in the selected period.'}
             action={isOwn ? (
-              <Button size="sm" onClick={() => setShowNewFolder(true)} className="gap-1.5">
-                <Plus className="h-3.5 w-3.5" /> New folder
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={openNewFolder} className="gap-1.5">
+                  <Plus className="h-3.5 w-3.5" /> New folder
+                </Button>
+                <Button size="sm" onClick={() => onUpload()} className="gap-1.5">
+                  <Plus className="h-3.5 w-3.5" /> Upload
+                </Button>
+              </div>
             ) : undefined}
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {(titleFolders ?? []).map((folder) => (
-              <div key={folder.id} className="flex items-stretch rounded-lg border border-dark-border hover:bg-dark-hover">
-                <button
-                  type="button"
-                  onClick={() => setOpenTitleId(folder.id)}
-                  className="flex items-center gap-3 px-3 py-3 text-left min-w-0 flex-1"
-                >
-                  <Folder className="h-8 w-8 text-text-muted shrink-0" />
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-text-primary truncate">{folder.name}</span>
-                    {folder.description ? (
-                      <span className="block text-2xs text-text-secondary truncate">{folder.description}</span>
-                    ) : null}
-                    <span className="block text-2xs text-text-muted">
-                      {folder.count} {folder.count === 1 ? 'item' : 'items'}
-                    </span>
-                  </span>
-                </button>
-                <div className="flex flex-col border-l border-dark-border">
-                  {folder.can_edit && (
+          <div className="space-y-5">
+            {hasFolders ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {(titleFolders ?? []).map((folder) => (
+                  <div key={folder.id} className="flex items-stretch rounded-lg border border-dark-border hover:bg-dark-hover">
                     <button
                       type="button"
-                      className="px-3 flex-1 text-text-muted hover:text-text-primary"
-                      onClick={() => openEditFolder(folder)}
-                      aria-label={`Edit ${folder.name}`}
+                      onClick={() => setOpenTitleId(folder.id)}
+                      className="flex items-center gap-3 px-3 py-3 text-left min-w-0 flex-1"
                     >
-                      <Pencil className="h-4 w-4" />
+                      <Folder className="h-8 w-8 text-text-muted shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-text-primary truncate">{folder.name}</span>
+                        {folder.description ? (
+                          <span className="block text-2xs text-text-secondary truncate">{folder.description}</span>
+                        ) : null}
+                        <span className="block text-2xs text-text-muted">
+                          {folder.count} {folder.count === 1 ? 'item' : 'items'}
+                        </span>
+                      </span>
                     </button>
-                  )}
-                  {folder.can_delete && (
-                    <button
-                      type="button"
-                      className="px-3 flex-1 text-text-muted hover:text-red-400"
-                      onClick={() => deleteFolder.mutate(folder.id)}
-                      aria-label={`Delete ${folder.name}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
+                    <div className="flex flex-col border-l border-dark-border">
+                      {folder.can_edit && (
+                        <button
+                          type="button"
+                          className="px-3 flex-1 text-text-muted hover:text-text-primary"
+                          onClick={() => openEditFolder(folder)}
+                          aria-label={`Edit ${folder.name}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {folder.can_delete && (
+                        <button
+                          type="button"
+                          className="px-3 flex-1 text-text-muted hover:text-red-400"
+                          onClick={() => deleteFolder.mutate(folder.id)}
+                          aria-label={`Delete ${folder.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : null}
+            {hasUngrouped ? (
+              <div>
+                <p className="text-2xs font-medium text-text-muted uppercase tracking-wide mb-2 px-1">Files</p>
+                <ResourceGrid>
+                  {ungrouped!.items.map((resource) => (
+                    <ResourceRow key={resource.id} resource={resource} onOpen={onOpenResource} />
+                  ))}
+                </ResourceGrid>
+              </div>
+            ) : null}
           </div>
         )}
         <Modal
@@ -316,17 +365,19 @@ export function PeopleFolders({
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!folderName.trim()) return;
-              if (editingFolder) updateFolder.mutate();
-              else createFolder.mutate();
+              if (editingFolder) {
+                if (!folderName.trim()) return;
+                updateFolder.mutate();
+              } else {
+                createFolder.mutate();
+              }
             }}
           >
             <Input
               label="Folder title"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
-              placeholder="App screens"
-              required
+              placeholder="New folder"
             />
             <Textarea
               label="Description (optional)"

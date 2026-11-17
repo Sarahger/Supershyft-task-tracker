@@ -2,8 +2,9 @@ from pydantic import BaseModel, Field
 
 
 class WorkVaultFolderCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=300)
+    name: str | None = Field(None, max_length=300)
     description: str | None = Field(None, max_length=20000)
+    unique: bool = False
 
 
 class WorkVaultFolderUpdate(BaseModel):

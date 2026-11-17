@@ -115,7 +115,12 @@ def create_folder(
     current_user: User = Depends(get_current_user),
 ):
     service = WorkVaultService(db)
-    folder = service.create_folder(current_user, body.name, body.description)
+    folder = service.create_folder(
+        current_user,
+        body.name,
+        body.description,
+        unique=body.unique or not (body.name or "").strip(),
+    )
     return APIResponse(
         data=service.folder_to_dict(folder, current_user, count=0),
         message="Folder created",
@@ -220,6 +225,7 @@ async def create_resource(
     folder_id: int | None = Form(None),
     folder_name: str | None = Form(None),
     folder_description: str | None = Form(None),
+    group_in_folder: bool = Form(False),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -268,6 +274,7 @@ async def create_resource(
             folder_id=folder_id,
             folder_name=folder_name,
             folder_description=folder_description,
+            group_in_folder=group_in_folder,
             filename=filename,
             file_path=stored_path,
             file_size=file_size,
