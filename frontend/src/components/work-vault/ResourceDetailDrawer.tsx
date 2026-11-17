@@ -15,7 +15,9 @@ import {
   formatFileSize,
   isPreviewable,
   previewMedia,
+  uploadErrorMessage,
   uploaderName,
+  validateWorkVaultFile,
   WORK_VAULT_ACCEPT,
   WORK_VAULT_API_CATEGORY,
   WORK_VAULT_CATEGORIES,
@@ -156,13 +158,17 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
   });
 
   const replaceMutation = useMutation({
-    mutationFn: (file: File) => workVaultApi.replaceFile(resource!.id, file),
+    mutationFn: (file: File) => {
+      const reason = validateWorkVaultFile(file);
+      if (reason) return Promise.reject(new Error(reason));
+      return workVaultApi.replaceFile(resource!.id, file);
+    },
     onSuccess: (res) => {
       invalidate();
       toast.success('File replaced');
       if (res.data.data) onChanged?.(res.data.data);
     },
-    onError: (err) => toast.error(apiErrorMessage(err, 'Could not replace file')),
+    onError: (err) => toast.error(uploadErrorMessage(err)),
   });
 
   if (!resource) return null;

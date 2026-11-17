@@ -18,6 +18,13 @@ export const WORK_VAULT_HTTP_METHODS = ['GET', 'PUT', 'POST', 'PATCH', 'DELETE']
 export const WORK_VAULT_ACCEPT =
   '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.gif,.svg,.bmp,.mp4,.webm,.mov,.m4v,.ogv,.avi,.mkv,.txt,.md,.csv,.json,.xml,.yml,.yaml,.html,.css,.js,.ts,.tsx,.jsx,.py,.sql';
 
+/** Keep in sync with backend MAX_UPLOAD_SIZE (50 MB). */
+export const WORK_VAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+const WORK_VAULT_ALLOWED_EXTENSIONS = new Set(
+  WORK_VAULT_ACCEPT.split(',').map((ext) => ext.trim().toLowerCase()).filter(Boolean),
+);
+
 export const FILE_KIND_LABELS: Record<WorkVaultFileKind, string> = {
   image: 'Images',
   pdf: 'PDFs',
@@ -37,10 +44,36 @@ export function uploaderName(user?: { first_name?: string; last_name?: string } 
 }
 
 export function formatFileSize(bytes?: number | null) {
-  if (!bytes || bytes <= 0) return '';
+  if (bytes == null || bytes < 0) return '';
+  if (bytes === 0) return '0 B';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function fileExtension(filename: string) {
+  const match = /\.[^.]+$/.exec(filename.trim());
+  return match ? match[0].toLowerCase() : '';
+}
+
+export function isAllowedWorkVaultFile(file: File) {
+  const ext = fileExtension(file.name);
+  return !!ext && WORK_VAULT_ALLOWED_EXTENSIONS.has(ext);
+}
+
+/** Client-side checks before calling the upload API. Returns null when the file looks OK. */
+export function validateWorkVaultFile(file: File): string | null {
+  if (!file.size) {
+    return 'This file is empty, so it cannot be uploaded.';
+  }
+  if (!isAllowedWorkVaultFile(file)) {
+    const ext = fileExtension(file.name) || 'unknown type';
+    return `${ext} files are not supported. Upload a document, image, video, or common text/code file.`;
+  }
+  if (file.size > WORK_VAULT_MAX_UPLOAD_BYTES) {
+    return `This file is ${formatFileSize(file.size)}, but the maximum upload size is ${formatFileSize(WORK_VAULT_MAX_UPLOAD_BYTES)}. Try a smaller file or compress the video.`;
+  }
+  return null;
 }
 
 export function titleFromFilename(filename: string) {
@@ -122,14 +155,107 @@ export function periodRange(mode: WorkVaultPeriod, value: string): { created_fro
   return {};
 }
 
-export function apiErrorMessage(error: unknown, fallback: string) {
-  const detail = (error as { response?: { data?: { detail?: unknown; message?: string } } })?.response?.data;
-  const value = detail?.detail ?? detail?.message;
-  if (typeof value === 'string' && value.trim()) return value;
-  if (Array.isArray(value) && value.length) {
-    const first = value[0] as { msg?: string } | string;
-    if (typeof first === 'string') return first;
-    if (first?.msg) return first.msg;
+function readErrorBody(data: unknown): string | null {
+  if (data == null) return null;
+  if (typeof data === 'string') {
+    const trimmed = data.trim();
+    if (!trimmed) return null;
+    // Platform proxies often return HTML/plain pages instead of JSON.
+    if (/^</.test(trimmed) || /request entity too large/i.test(trimmed) || /payload too large/i.test(trimmed)) {
+      return null;
+    }
+    try {
+      return readErrorBody(JSON.parse(trimmed));
+    } catch {
+      return trimmed.slice(0, 240);
+    }
   }
+  if (typeof data !== 'object') return null;
+  const body = data as { detail?: unknown; message?: string; error?: string };
+  const value = body.detail ?? body.message ?? body.error;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (Array.isArray(value) && value.length) {
+    const first = value[0] as { msg?: string; message?: string } | string;
+    if (typeof first === 'string' && first.trim()) return first.trim();
+    if (first && typeof first === 'object') {
+      const msg = first.msg || first.message;
+      if (typeof msg === 'string' && msg.trim()) return msg.trim();
+    }
+  }
+  return null;
+}
+
+function statusErrorMessage(status: number, fallback: string) {
+  if (status === 400) return fallback;
+  if (status === 401) return 'Your session expired. Sign in again and retry the upload.';
+  if (status === 403) return 'You do not have permission to upload here.';
+  if (status === 404) return 'Upload endpoint was not found. Refresh the page and try again.';
+  if (status === 408) return 'The upload timed out. Check your connection and try again.';
+  if (status === 413) {
+    return `This file is too large for the server to accept (max ${formatFileSize(WORK_VAULT_MAX_UPLOAD_BYTES)}). Try a smaller file or compress the video.`;
+  }
+  if (status === 415) return 'That file type is not supported.';
+  if (status === 422) return 'Some upload details were invalid. Check the form and try again.';
+  if (status === 429) return 'Too many uploads right now. Wait a moment and try again.';
+  if (status === 502 || status === 503 || status === 504) {
+    return 'The server is temporarily unavailable. Please try again in a moment.';
+  }
+  if (status >= 500) return 'The server could not store this file. Please try again.';
   return fallback;
+}
+
+export function apiErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && !(error as { response?: unknown }).response && !(error as { request?: unknown }).request) {
+    const plain = error.message.trim();
+    if (plain && plain.toLowerCase() !== 'network error' && !plain.toLowerCase().includes('timeout')) {
+      return plain;
+    }
+  }
+
+  const err = error as {
+    code?: string;
+    message?: string;
+    response?: { status?: number; data?: unknown };
+    request?: unknown;
+  } | null;
+
+  const bodyMessage = readErrorBody(err?.response?.data);
+  if (bodyMessage) {
+    if (/file too large|max 50|entity too large|payload too large/i.test(bodyMessage)) {
+      return `This file is too large (max ${formatFileSize(WORK_VAULT_MAX_UPLOAD_BYTES)}). Try a smaller file or compress the video.`;
+    }
+    if (/empty/i.test(bodyMessage)) return 'This file is empty, so it cannot be uploaded.';
+    if (/not supported|file type|valid category|http method|valid http/i.test(bodyMessage)) return bodyMessage;
+    return bodyMessage;
+  }
+
+  const status = err?.response?.status;
+  if (typeof status === 'number') {
+    return statusErrorMessage(status, fallback);
+  }
+
+  const code = (err?.code || '').toUpperCase();
+  const message = (err?.message || '').toLowerCase();
+  if (
+    code === 'ECONNABORTED'
+    || code === 'ETIMEDOUT'
+    || message.includes('timeout')
+  ) {
+    return 'The upload timed out. Large videos can take longer — check your connection and try again.';
+  }
+  if (
+    code === 'ERR_NETWORK'
+    || message.includes('network error')
+    || (err?.request && !err?.response)
+  ) {
+    return 'Could not reach the server. Check your internet connection and try again. If this is a large video, it may also be over the upload size limit.';
+  }
+
+  return fallback;
+}
+
+export function uploadErrorMessage(error: unknown, filename?: string) {
+  const message = apiErrorMessage(error, 'Upload failed. Please try again.');
+  if (filename) return `${filename}: ${message}`;
+  return message;
 }

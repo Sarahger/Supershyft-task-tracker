@@ -113,9 +113,10 @@ def validate_upload_filename(filename: str | None) -> str:
     name = (filename or "file").strip() or "file"
     ext = os.path.splitext(name)[1].lower()
     if ext not in WORK_VAULT_ALLOWED_EXTENSIONS:
+        label = ext or "This"
         raise HTTPException(
             status_code=400,
-            detail="That file type is not supported. Upload a document, image, video, or common text/code file.",
+            detail=f"{label} files are not supported. Upload a document, image, video, or common text/code file.",
         )
     return name
 

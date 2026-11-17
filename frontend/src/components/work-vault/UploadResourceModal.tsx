@@ -8,10 +8,14 @@ import { toast } from '../ui/Toast';
 import { departmentsApi, usersApi, workVaultApi } from '../../services/endpoints';
 import {
   apiErrorMessage,
+  formatFileSize,
+  uploadErrorMessage,
+  validateWorkVaultFile,
   WORK_VAULT_ACCEPT,
   WORK_VAULT_API_CATEGORY,
   WORK_VAULT_CATEGORIES,
   WORK_VAULT_HTTP_METHODS,
+  WORK_VAULT_MAX_UPLOAD_BYTES,
 } from '../../lib/workVault';
 import { TagMentionInput } from './TagMentionInput';
 import type { WorkVaultTitleFolder } from '../../types';
@@ -120,23 +124,39 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
   const addFiles = (fileList: FileList | null, asDirectory = false) => {
     if (!fileList?.length) return;
     const files = Array.from(fileList);
-    const next: DraftItem[] = files.map((file) => {
+    const accepted: DraftItem[] = [];
+    const rejected: string[] = [];
+    for (const file of files) {
+      const reason = validateWorkVaultFile(file);
+      if (reason) {
+        rejected.push(`${file.name}: ${reason}`);
+        continue;
+      }
       const relative = (file as File & { webkitRelativePath?: string }).webkitRelativePath || '';
-      return {
+      accepted.push({
         key: newKey(),
-        kind: 'file' as const,
+        kind: 'file',
         file,
         relativePath: relative || undefined,
         title: '',
         description: '',
-      };
-    });
-    setItems((prev) => (asDirectory ? next : [...prev, ...next]));
-    if (asDirectory && !insideFolder) {
-      setFromDirectory(true);
-      setGroupInFolder(true);
-      setFolderTitle(directoryNameFromFiles(files));
+      });
     }
+    if (accepted.length) {
+      setItems((prev) => (asDirectory ? accepted : [...prev, ...accepted]));
+      if (asDirectory && !insideFolder) {
+        setFromDirectory(true);
+        setGroupInFolder(true);
+        setFolderTitle(directoryNameFromFiles(
+          accepted
+            .filter((item): item is Extract<DraftItem, { kind: 'file' }> => item.kind === 'file')
+            .map((item) => item.file),
+        ));
+      }
+    } else if (asDirectory) {
+      setFromDirectory(false);
+    }
+    setError(rejected.length ? rejected.join('\n') : null);
   };
 
   const addUrl = () => {
@@ -179,8 +199,15 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
       return;
     }
     for (const item of items) {
+      if (item.kind === 'file') {
+        const reason = validateWorkVaultFile(item.file);
+        if (reason) {
+          setError(`${item.file.name}: ${reason}`);
+          return;
+        }
+      }
       if (item.kind === 'url' && !/^https?:\/\//i.test(item.url.trim())) {
-        setError('Each link needs a valid http(s) URL.');
+        setError('Each link needs a valid http(s) URL, starting with http:// or https://.');
         return;
       }
       if (item.kind === 'api' && !item.path.trim()) {
@@ -210,7 +237,7 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
       } catch (err) {
         setSubmitting(false);
         setProgress('');
-        setError(apiErrorMessage(err, 'Could not create folder'));
+        setError(apiErrorMessage(err, 'Could not create the folder. Check the name and try again.'));
         return;
       }
     }
@@ -234,7 +261,7 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
         await workVaultApi.create(form);
         created.push(itemLabel(item));
       } catch (err) {
-        failed.push(`${itemLabel(item)}: ${apiErrorMessage(err, 'Upload failed')}`);
+        failed.push(uploadErrorMessage(err, itemLabel(item)));
       }
     }
 
@@ -386,7 +413,7 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
                 onClick={() => fileRef.current?.click()}
                 className="w-full rounded-lg border border-dashed border-dark-border px-4 py-6 text-sm text-text-muted hover:bg-dark-hover hover:text-text-secondary transition-colors"
               >
-                Click to browse files, or use Upload folder to bring in a whole directory. Original file names are kept.
+                {`Click to browse files, or use Upload folder to bring in a whole directory. Original file names are kept. Max size ${formatFileSize(WORK_VAULT_MAX_UPLOAD_BYTES)} per file.`}
               </button>
             ) : (
               <div className="space-y-2">
@@ -398,7 +425,7 @@ export function UploadResourceModal({ isOpen, folder, onClose, onUploaded }: Upl
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium text-text-primary truncate">{item.file.name}</p>
                             <p className="text-2xs text-text-muted truncate">
-                              Original name kept
+                              Original name kept · {formatFileSize(item.file.size)}
                               {item.relativePath ? ` · ${item.relativePath}` : ''}
                             </p>
                           </div>

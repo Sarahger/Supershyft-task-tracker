@@ -241,9 +241,12 @@ async def create_resource(
     if file is not None and file.filename:
         content = await file.read()
         if not content:
-            raise HTTPException(status_code=400, detail="The uploaded file is empty")
+            raise HTTPException(status_code=400, detail="This file is empty, so it cannot be uploaded.")
         if len(content) > settings.MAX_UPLOAD_SIZE:
-            raise HTTPException(status_code=400, detail="File too large (max 50 MB)")
+            raise HTTPException(
+                status_code=413,
+                detail="This file is too large (max 50 MB). Try a smaller file or compress the video.",
+            )
         try:
             stored_path, stored_url = await store_file(
                 content,
@@ -255,7 +258,10 @@ async def create_resource(
             raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
         except Exception as exc:
             logger.exception("Work Vault upload failed")
-            raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500,
+                detail="The server could not store this file. Please try again.",
+            ) from exc
         file_size = len(content)
         mime_type = file.content_type
         # Keep the original client filename unchanged.
@@ -321,9 +327,12 @@ async def replace_file(
 ):
     content = await file.read()
     if not content:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+        raise HTTPException(status_code=400, detail="This file is empty, so it cannot be uploaded.")
     if len(content) > settings.MAX_UPLOAD_SIZE:
-        raise HTTPException(status_code=400, detail="File too large (max 50 MB)")
+        raise HTTPException(
+            status_code=413,
+            detail="This file is too large (max 50 MB). Try a smaller file or compress the video.",
+        )
     oidc_token = request.headers.get("x-vercel-oidc-token")
     try:
         stored_path, stored_url = await store_file(
@@ -336,7 +345,10 @@ async def replace_file(
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
     except Exception as exc:
         logger.exception("Work Vault file replace failed")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+        raise HTTPException(
+            status_code=500,
+            detail="The server could not store this file. Please try again.",
+        ) from exc
 
     service = WorkVaultService(db)
     try:
