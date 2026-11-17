@@ -255,7 +255,17 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
             }}
           >
             <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-            <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} required />
+            <Textarea
+              label="Description (optional)"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+            />
+            {resource.resource_type === 'file' && resource.filename ? (
+              <p className="text-2xs text-text-muted">
+                Original file name stays <span className="text-text-secondary">{resource.filename}</span> and is not renamed.
+              </p>
+            ) : null}
             <Select
               label="Category"
               value={category}
@@ -293,7 +303,11 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
           </form>
         ) : (
           <>
-            <p className="text-sm text-text-secondary whitespace-pre-wrap">{resource.description}</p>
+            {resource.description ? (
+              <p className="text-sm text-text-secondary whitespace-pre-wrap">{resource.description}</p>
+            ) : (
+              <p className="text-sm text-text-muted">No description yet.</p>
+            )}
             {resource.tags.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {resource.tags.map((tag) => (
@@ -313,6 +327,12 @@ export function ResourceDetailDrawer({ resource, onClose, onChanged }: ResourceD
                   {resource.file_size ? ` · ${formatFileSize(resource.file_size)}` : ''}
                 </dd>
               </div>
+              {resource.resource_type === 'file' && resource.filename && resource.filename !== resource.title ? (
+                <div>
+                  <dt className="text-text-muted">File name</dt>
+                  <dd className="text-text-primary mt-0.5 truncate">{resource.filename}</dd>
+                </div>
+              ) : null}
             </dl>
           </>
         )}

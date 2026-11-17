@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { ArrowLeft, Folder, FolderOpen, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Folder, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { workVaultApi } from '../../services/endpoints';
 import { EmptyState } from '../ui/Skeleton';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
+import { Input, Textarea } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/Toast';
 import { ResourceGrid, ResourceGridSkeleton, ResourceRow } from './ResourceRow';
@@ -35,7 +35,9 @@ export function PeopleFolders({
   const qc = useQueryClient();
   const [openTitleId, setOpenTitleId] = useState<number | null>(null);
   const [showNewFolder, setShowNewFolder] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<WorkVaultTitleFolder | null>(null);
   const [folderName, setFolderName] = useState('');
+  const [folderDescription, setFolderDescription] = useState('');
 
   const openFolder = folders.find((folder) => folder.id === openFolderId) ?? null;
   const isOwn = !!user && openFolderId === user.id;
@@ -68,15 +70,34 @@ export function PeopleFolders({
     enabled: openTitleId != null,
   });
 
+  const resetFolderForm = () => {
+    setFolderName('');
+    setFolderDescription('');
+    setShowNewFolder(false);
+    setEditingFolder(null);
+  };
+
   const createFolder = useMutation({
-    mutationFn: () => workVaultApi.createFolder(folderName.trim()),
+    mutationFn: () => workVaultApi.createFolder(folderName.trim(), folderDescription.trim()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['work-vault'] });
       toast.success('Folder created');
-      setFolderName('');
-      setShowNewFolder(false);
+      resetFolderForm();
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not create folder')),
+  });
+
+  const updateFolder = useMutation({
+    mutationFn: () => workVaultApi.updateFolder(editingFolder!.id, {
+      name: folderName.trim(),
+      description: folderDescription.trim(),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['work-vault'] });
+      toast.success('Folder updated');
+      resetFolderForm();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Could not update folder')),
   });
 
   const deleteFolder = useMutation({
@@ -87,6 +108,13 @@ export function PeopleFolders({
     },
     onError: (err) => toast.error(apiErrorMessage(err, 'Could not delete folder')),
   });
+
+  const openEditFolder = (folder: WorkVaultTitleFolder) => {
+    setEditingFolder(folder);
+    setFolderName(folder.name);
+    setFolderDescription(folder.description || '');
+    setShowNewFolder(false);
+  };
 
   if (isLoading) {
     return (
@@ -113,15 +141,25 @@ export function PeopleFolders({
           <FolderOpen className="h-6 w-6 text-text-muted" />
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-text-primary truncate">{openTitle.name}</h2>
+            {openTitle.description ? (
+              <p className="text-2xs text-text-secondary mt-0.5 line-clamp-2">{openTitle.description}</p>
+            ) : null}
             <p className="text-2xs text-text-muted">
               {openTitle.count} {openTitle.count === 1 ? 'item' : 'items'}
             </p>
           </div>
-          {isOwn && (
-            <Button size="sm" onClick={() => onUpload(openTitle)} className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> Add items
-            </Button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {openTitle.can_edit && (
+              <Button size="sm" variant="secondary" onClick={() => openEditFolder(openTitle)} className="gap-1.5">
+                <Pencil className="h-3.5 w-3.5" /> Edit
+              </Button>
+            )}
+            {isOwn && (
+              <Button size="sm" onClick={() => onUpload(openTitle)} className="gap-1.5">
+                <Plus className="h-3.5 w-3.5" /> Add items
+              </Button>
+            )}
+          </div>
         </div>
         {loadingFiles ? (
           <ResourceGridSkeleton count={7} />
@@ -142,6 +180,39 @@ export function PeopleFolders({
             ))}
           </ResourceGrid>
         )}
+        <Modal
+          isOpen={!!editingFolder}
+          onClose={resetFolderForm}
+          title="Edit folder"
+          size="sm"
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (folderName.trim()) updateFolder.mutate();
+            }}
+          >
+            <Input
+              label="Folder title"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              placeholder="App screens"
+              required
+            />
+            <Textarea
+              label="Description (optional)"
+              value={folderDescription}
+              onChange={(e) => setFolderDescription(e.target.value)}
+              placeholder="What this folder contains"
+              rows={3}
+            />
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={resetFolderForm}>Cancel</Button>
+              <Button type="submit" loading={updateFolder.isPending}>Save</Button>
+            </div>
+          </form>
+        </Modal>
       </div>
     );
   }
@@ -168,7 +239,7 @@ export function PeopleFolders({
             </p>
           </div>
           {isOwn && (
-            <Button size="sm" variant="secondary" onClick={() => setShowNewFolder(true)} className="gap-1.5">
+            <Button size="sm" variant="secondary" onClick={() => { setShowNewFolder(true); setEditingFolder(null); setFolderName(''); setFolderDescription(''); }} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" /> New folder
             </Button>
           )}
@@ -182,7 +253,7 @@ export function PeopleFolders({
         ) : !(titleFolders ?? []).length ? (
           <EmptyState
             title="No folders yet"
-            description={isOwn ? 'Create a folder now, or upload items with one title to group them.' : 'This person has no folders in the selected period.'}
+            description={isOwn ? 'Create a folder now, or upload a folder/files to group them.' : 'This person has no folders in the selected period.'}
             action={isOwn ? (
               <Button size="sm" onClick={() => setShowNewFolder(true)} className="gap-1.5">
                 <Plus className="h-3.5 w-3.5" /> New folder
@@ -201,43 +272,74 @@ export function PeopleFolders({
                   <Folder className="h-8 w-8 text-text-muted shrink-0" />
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-text-primary truncate">{folder.name}</span>
+                    {folder.description ? (
+                      <span className="block text-2xs text-text-secondary truncate">{folder.description}</span>
+                    ) : null}
                     <span className="block text-2xs text-text-muted">
                       {folder.count} {folder.count === 1 ? 'item' : 'items'}
                     </span>
                   </span>
                 </button>
-                {folder.can_delete && (
-                  <button
-                    type="button"
-                    className="px-3 text-text-muted hover:text-red-400"
-                    onClick={() => deleteFolder.mutate(folder.id)}
-                    aria-label={`Delete ${folder.name}`}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
+                <div className="flex flex-col border-l border-dark-border">
+                  {folder.can_edit && (
+                    <button
+                      type="button"
+                      className="px-3 flex-1 text-text-muted hover:text-text-primary"
+                      onClick={() => openEditFolder(folder)}
+                      aria-label={`Edit ${folder.name}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
+                  {folder.can_delete && (
+                    <button
+                      type="button"
+                      className="px-3 flex-1 text-text-muted hover:text-red-400"
+                      onClick={() => deleteFolder.mutate(folder.id)}
+                      aria-label={`Delete ${folder.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         )}
-        <Modal isOpen={showNewFolder} onClose={() => setShowNewFolder(false)} title="New folder" size="sm">
+        <Modal
+          isOpen={showNewFolder || !!editingFolder}
+          onClose={resetFolderForm}
+          title={editingFolder ? 'Edit folder' : 'New folder'}
+          size="sm"
+        >
           <form
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (folderName.trim()) createFolder.mutate();
+              if (!folderName.trim()) return;
+              if (editingFolder) updateFolder.mutate();
+              else createFolder.mutate();
             }}
           >
             <Input
-              label="Folder name"
+              label="Folder title"
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
               placeholder="App screens"
               required
             />
+            <Textarea
+              label="Description (optional)"
+              value={folderDescription}
+              onChange={(e) => setFolderDescription(e.target.value)}
+              placeholder="What this folder contains"
+              rows={3}
+            />
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setShowNewFolder(false)}>Cancel</Button>
-              <Button type="submit" loading={createFolder.isPending}>Create</Button>
+              <Button type="button" variant="secondary" onClick={resetFolderForm}>Cancel</Button>
+              <Button type="submit" loading={createFolder.isPending || updateFolder.isPending}>
+                {editingFolder ? 'Save' : 'Create'}
+              </Button>
             </div>
           </form>
         </Modal>

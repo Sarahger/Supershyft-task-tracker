@@ -984,10 +984,12 @@ export interface WorkVaultFacets {
 export interface WorkVaultTitleFolder {
   id: number;
   name: string;
+  description?: string;
   owner_id: number;
   count: number;
   created_at: string;
   updated_at?: string | null;
+  can_edit?: boolean;
   can_delete: boolean;
 }
 

@@ -138,7 +138,7 @@ def test_validation_filters_sort_and_permissions():
             data={"title": "No body", "category": "Other"},
             headers=auth_header(emp),
         )
-        assert missing.status_code == 422
+        assert missing.status_code == 400
 
         invalid = create_link(client, emp, url="notaurl", description="Useful notes")
         assert invalid.status_code == 400
@@ -452,6 +452,74 @@ def test_video_upload_is_accepted():
         assert listed.status_code == 200
         titles = [row["title"] for row in listed.json()["data"]["items"]]
         assert titles == ["Demo walkthrough"]
+    finally:
+        app.dependency_overrides.clear()
+        session.close()
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+
+
+def test_original_filename_preserved_and_optional_title_description():
+    client, session, engine = setup_client()
+    try:
+        emp, _other, _admin = make_users(session)
+        upload = client.post(
+            "/api/work-vault/resources",
+            data={
+                "category": "Technical Documentation",
+                "folder_name": "Specs",
+                "folder_description": "API contracts",
+            },
+            files={"file": ("openapi.json", b'{"openapi":"3.0.0"}', "application/json")},
+            headers=auth_header(emp),
+        )
+        assert upload.status_code == 200, upload.text
+        item = upload.json()["data"]
+        assert item["filename"] == "openapi.json"
+        assert item["title"] == "openapi.json"
+        assert item["description"] == ""
+        assert item["folder_name"] == "Specs"
+
+        renamed = client.patch(
+            f"/api/work-vault/resources/{item['id']}",
+            json={"title": "OpenAPI contract", "description": "Current REST schema"},
+            headers=auth_header(emp),
+        )
+        assert renamed.status_code == 200, renamed.text
+        updated = renamed.json()["data"]
+        assert updated["title"] == "OpenAPI contract"
+        assert updated["description"] == "Current REST schema"
+        assert updated["filename"] == "openapi.json"
+
+        folders = client.get("/api/work-vault/folders", params={"owner_id": emp.id}, headers=auth_header(emp))
+        assert folders.status_code == 200
+        folder = next(row for row in folders.json()["data"]["items"] if row["name"] == "Specs")
+        assert folder["description"] == "API contracts"
+        assert folder["can_edit"] is True
+
+        folder_edit = client.patch(
+            f"/api/work-vault/folders/{folder['id']}",
+            json={"name": "API Specs", "description": "Living API docs"},
+            headers=auth_header(emp),
+        )
+        assert folder_edit.status_code == 200, folder_edit.text
+        assert folder_edit.json()["data"]["name"] == "API Specs"
+        assert folder_edit.json()["data"]["description"] == "Living API docs"
+
+        into_folder = client.post(
+            "/api/work-vault/resources",
+            data={
+                "category": "Technical Documentation",
+                "folder_id": folder["id"],
+            },
+            files={"file": ("readme.md", b"# hello", "text/markdown")},
+            headers=auth_header(emp),
+        )
+        assert into_folder.status_code == 200, into_folder.text
+        nested = into_folder.json()["data"]
+        assert nested["filename"] == "readme.md"
+        assert nested["title"] == "readme.md"
+        assert nested["folder_id"] == folder["id"]
     finally:
         app.dependency_overrides.clear()
         session.close()

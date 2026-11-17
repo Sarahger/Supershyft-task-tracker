@@ -477,7 +477,26 @@ class WorkVaultService:
             raise HTTPException(status_code=404, detail="Folder not found")
         return folder
 
-    def get_or_create_folder(self, user: User, name: str, owner_id: int | None = None) -> WorkVaultFolder:
+    def folder_to_dict(self, folder: WorkVaultFolder, viewer: User, *, count: int = 0, updated_at=None) -> dict:
+        return {
+            "id": folder.id,
+            "name": folder.name,
+            "description": folder.description or "",
+            "owner_id": folder.owner_id,
+            "count": count,
+            "created_at": folder.created_at,
+            "updated_at": updated_at or folder.updated_at or folder.created_at,
+            "can_edit": can_manage_folder(viewer, folder),
+            "can_delete": can_manage_folder(viewer, folder) and count == 0,
+        }
+
+    def get_or_create_folder(
+        self,
+        user: User,
+        name: str,
+        owner_id: int | None = None,
+        description: str | None = None,
+    ) -> WorkVaultFolder:
         title = " ".join((name or "").split())[:300]
         if not title:
             raise HTTPException(status_code=400, detail="Folder name is required")
@@ -488,13 +507,20 @@ class WorkVaultService:
             .first()
         )
         if folder:
+            if description is not None and description.strip() and not (folder.description or "").strip():
+                folder.description = description.strip()
             return folder
-        folder = WorkVaultFolder(name=title, owner_id=owner, created_by_id=user.id)
+        folder = WorkVaultFolder(
+            name=title,
+            description=(description or "").strip(),
+            owner_id=owner,
+            created_by_id=user.id,
+        )
         self.db.add(folder)
         self.db.flush()
         return folder
 
-    def create_folder(self, user: User, name: str) -> WorkVaultFolder:
+    def create_folder(self, user: User, name: str, description: str | None = None) -> WorkVaultFolder:
         title = " ".join((name or "").split())[:300]
         if not title:
             raise HTTPException(status_code=400, detail="Folder name is required")
@@ -505,8 +531,39 @@ class WorkVaultService:
         )
         if existing:
             raise HTTPException(status_code=400, detail="You already have a folder with that name")
-        folder = WorkVaultFolder(name=title, owner_id=user.id, created_by_id=user.id)
+        folder = WorkVaultFolder(
+            name=title,
+            description=(description or "").strip(),
+            owner_id=user.id,
+            created_by_id=user.id,
+        )
         self.db.add(folder)
+        self.db.commit()
+        self.db.refresh(folder)
+        return folder
+
+    def update_folder(self, user: User, folder_id: int, data: dict) -> WorkVaultFolder:
+        folder = self.get_folder(folder_id)
+        if not can_manage_folder(user, folder):
+            raise HTTPException(status_code=403, detail="You can only edit your own folders")
+        if "name" in data and data["name"] is not None:
+            title = " ".join(str(data["name"]).split())[:300]
+            if not title:
+                raise HTTPException(status_code=400, detail="Folder name is required")
+            clash = (
+                self.db.query(WorkVaultFolder)
+                .filter(
+                    WorkVaultFolder.owner_id == folder.owner_id,
+                    func.lower(WorkVaultFolder.name) == title.lower(),
+                    WorkVaultFolder.id != folder.id,
+                )
+                .first()
+            )
+            if clash:
+                raise HTTPException(status_code=400, detail="You already have a folder with that name")
+            folder.name = title
+        if "description" in data and data["description"] is not None:
+            folder.description = str(data["description"]).strip()
         self.db.commit()
         self.db.refresh(folder)
         return folder
@@ -556,15 +613,14 @@ class WorkVaultService:
             count = counts.get(folder.id, 0)
             if (created_from or created_to) and count == 0:
                 continue
-            items.append({
-                "id": folder.id,
-                "name": folder.name,
-                "owner_id": folder.owner_id,
-                "count": count,
-                "created_at": folder.created_at,
-                "updated_at": latest.get(folder.id) or folder.created_at,
-                "can_delete": can_manage_folder(viewer, folder) and count == 0,
-            })
+            items.append(
+                self.folder_to_dict(
+                    folder,
+                    viewer,
+                    count=count,
+                    updated_at=latest.get(folder.id) or folder.updated_at or folder.created_at,
+                )
+            )
         return {"items": items}
 
     def delete_folder(self, user: User, folder_id: int) -> None:
@@ -577,13 +633,42 @@ class WorkVaultService:
         self.db.delete(folder)
         self.db.commit()
 
-    def _require_folder(self, user: User, folder_id: int | None, title: str) -> WorkVaultFolder:
+    def _require_folder(
+        self,
+        user: User,
+        folder_id: int | None,
+        folder_name: str | None,
+        fallback_name: str,
+        folder_description: str | None = None,
+    ) -> WorkVaultFolder:
         if folder_id:
             folder = self.get_folder(folder_id)
             if folder.owner_id != user.id and user.role != UserRole.ADMIN.value:
                 raise HTTPException(status_code=403, detail="You can only upload into your own folders")
             return folder
-        return self.get_or_create_folder(user, title)
+        name = " ".join((folder_name or fallback_name or "").split())
+        if not name:
+            raise HTTPException(status_code=400, detail="Folder name is required")
+        return self.get_or_create_folder(user, name, description=folder_description)
+
+    def _default_title(
+        self,
+        title: str | None,
+        *,
+        filename: str | None = None,
+        url: str | None = None,
+        http_method: str | None = None,
+    ) -> str:
+        value = " ".join((title or "").split())
+        if value:
+            return value[:300]
+        if filename:
+            return filename[:300]
+        if http_method and url:
+            return f"{http_method.strip().upper()} {(url or '').strip()}"[:300]
+        if url:
+            return (url or "").strip()[:300]
+        raise HTTPException(status_code=400, detail="Title is required")
 
     def _require_project(self, project_id: int | None) -> int | None:
         if project_id is None:
@@ -597,31 +682,39 @@ class WorkVaultService:
         self,
         user: User,
         *,
-        title: str,
-        description: str,
+        title: str | None,
+        description: str | None,
         category: str,
         tags: list[str] | str | None = None,
         project_id: int | None = None,
         url: str | None = None,
         http_method: str | None = None,
         folder_id: int | None = None,
+        folder_name: str | None = None,
+        folder_description: str | None = None,
         filename: str | None = None,
         file_path: str | None = None,
         file_size: int | None = None,
         mime_type: str | None = None,
         stored_url: str | None = None,
     ) -> WorkVaultResource:
-        title_value = " ".join((title or "").split())
         description_value = (description or "").strip()
-        if not title_value:
-            raise HTTPException(status_code=400, detail="Title is required")
-        if not description_value:
-            raise HTTPException(status_code=400, detail="Description is required")
         category_value = validate_category(category)
-        folder = self._require_folder(user, folder_id, title_value)
-        title_value = folder.name
         has_file = bool(file_path)
         has_url = bool((url or "").strip())
+        title_value = self._default_title(
+            title,
+            filename=filename,
+            url=url,
+            http_method=http_method if category_value == WORK_VAULT_API_CATEGORY else None,
+        )
+        folder = self._require_folder(
+            user,
+            folder_id,
+            folder_name,
+            title_value,
+            folder_description=folder_description,
+        )
 
         if category_value == WORK_VAULT_API_CATEGORY:
             if has_file or not has_url:
@@ -696,10 +789,7 @@ class WorkVaultService:
                 raise HTTPException(status_code=400, detail="Title is required")
             resource.title = title_value[:300]
         if "description" in data and data["description"] is not None:
-            description_value = str(data["description"]).strip()
-            if not description_value:
-                raise HTTPException(status_code=400, detail="Description is required")
-            resource.description = description_value
+            resource.description = str(data["description"]).strip()
         if "category" in data and data["category"] is not None:
             resource.category = validate_category(str(data["category"]))
         if "tags" in data:

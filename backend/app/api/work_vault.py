@@ -9,9 +9,9 @@ from app.core.config import settings
 from app.core.constants import WORK_VAULT_CATEGORIES
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
-from app.models import User
+from app.models import User, WorkVaultResource
 from app.schemas.common import APIResponse
-from app.schemas.work_vault import WorkVaultFolderCreate, WorkVaultResourceUpdate
+from app.schemas.work_vault import WorkVaultFolderCreate, WorkVaultFolderUpdate, WorkVaultResourceUpdate
 from app.services.storage import (
     StorageError,
     delete_stored_file,
@@ -114,18 +114,27 @@ def create_folder(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    folder = WorkVaultService(db).create_folder(current_user, body.name)
+    service = WorkVaultService(db)
+    folder = service.create_folder(current_user, body.name, body.description)
     return APIResponse(
-        data={
-            "id": folder.id,
-            "name": folder.name,
-            "owner_id": folder.owner_id,
-            "count": 0,
-            "created_at": folder.created_at,
-            "updated_at": folder.created_at,
-            "can_delete": True,
-        },
+        data=service.folder_to_dict(folder, current_user, count=0),
         message="Folder created",
+    )
+
+
+@router.patch("/folders/{folder_id}")
+def update_folder(
+    folder_id: int,
+    body: WorkVaultFolderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    service = WorkVaultService(db)
+    folder = service.update_folder(current_user, folder_id, body.model_dump(exclude_unset=True))
+    count = db.query(WorkVaultResource).filter(WorkVaultResource.folder_id == folder.id).count()
+    return APIResponse(
+        data=service.folder_to_dict(folder, current_user, count=count),
+        message="Folder updated",
     )
 
 
@@ -201,14 +210,16 @@ def list_resources(
 @router.post("/resources")
 async def create_resource(
     request: Request,
-    title: str = Form(...),
-    description: str = Form(...),
+    title: str | None = Form(None),
+    description: str | None = Form(None),
     category: str = Form(...),
     tags: str | None = Form(None),
     project_id: int | None = Form(None),
     url: str | None = Form(None),
     http_method: str | None = Form(None),
     folder_id: int | None = Form(None),
+    folder_name: str | None = Form(None),
+    folder_description: str | None = Form(None),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -241,6 +252,7 @@ async def create_resource(
             raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
         file_size = len(content)
         mime_type = file.content_type
+        # Keep the original client filename unchanged.
         filename = file.filename
 
     try:
@@ -254,6 +266,8 @@ async def create_resource(
             url=url,
             http_method=http_method,
             folder_id=folder_id,
+            folder_name=folder_name,
+            folder_description=folder_description,
             filename=filename,
             file_path=stored_path,
             file_size=file_size,

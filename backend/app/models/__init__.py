@@ -794,9 +794,11 @@ class WorkVaultFolder(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(300), nullable=False)
+    description = Column(Text, nullable=False, default="")
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_by_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     owner = relationship("User", foreign_keys=[owner_id])
     creator = relationship("User", foreign_keys=[created_by_id])

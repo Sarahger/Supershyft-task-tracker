@@ -154,9 +154,11 @@ def run_lightweight_migrations(engine) -> None:
                     "CREATE TABLE IF NOT EXISTS work_vault_folders ("
                     "id SERIAL PRIMARY KEY, "
                     "name VARCHAR(300) NOT NULL, "
+                    "description TEXT NOT NULL DEFAULT '', "
                     "owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
                     "created_by_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
                     "created_at TIMESTAMPTZ, "
+                    "updated_at TIMESTAMPTZ, "
                     "CONSTRAINT uq_work_vault_folder_owner_name UNIQUE (owner_id, name)"
                     ")"
                 )
@@ -165,9 +167,11 @@ def run_lightweight_migrations(engine) -> None:
                     "CREATE TABLE IF NOT EXISTS work_vault_folders ("
                     "id INTEGER PRIMARY KEY AUTOINCREMENT, "
                     "name VARCHAR(300) NOT NULL, "
+                    "description TEXT NOT NULL DEFAULT '', "
                     "owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
                     "created_by_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
                     "created_at DATETIME, "
+                    "updated_at DATETIME, "
                     "CONSTRAINT uq_work_vault_folder_owner_name UNIQUE (owner_id, name)"
                     ")"
                 )
@@ -175,6 +179,37 @@ def run_lightweight_migrations(engine) -> None:
                 conn.execute(text(create_sql))
             logger.info("Created work_vault_folders table")
             inspector = inspect(engine)
+        folder_cols = {c["name"] for c in inspector.get_columns("work_vault_folders")}
+        if "description" not in folder_cols:
+            if dialect == "postgresql":
+                folder_desc_sql = (
+                    "ALTER TABLE work_vault_folders "
+                    "ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT ''"
+                )
+            else:
+                folder_desc_sql = (
+                    "ALTER TABLE work_vault_folders "
+                    "ADD COLUMN description TEXT NOT NULL DEFAULT ''"
+                )
+            with engine.begin() as conn:
+                conn.execute(text(folder_desc_sql))
+            logger.info("Added work_vault_folders.description column")
+            inspector = inspect(engine)
+            folder_cols = {c["name"] for c in inspector.get_columns("work_vault_folders")}
+        if "updated_at" not in folder_cols:
+            if dialect == "postgresql":
+                folder_updated_sql = (
+                    "ALTER TABLE work_vault_folders "
+                    "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"
+                )
+            else:
+                folder_updated_sql = (
+                    "ALTER TABLE work_vault_folders "
+                    "ADD COLUMN updated_at DATETIME"
+                )
+            with engine.begin() as conn:
+                conn.execute(text(folder_updated_sql))
+            logger.info("Added work_vault_folders.updated_at column")
         vault_cols = {c["name"] for c in inspector.get_columns("work_vault_resources")}
         if "folder_id" not in vault_cols:
             if dialect == "postgresql":
