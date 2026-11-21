@@ -700,6 +700,37 @@ def test_deadline_revision_keeps_history(client, users, db_session):
     assert task.original_due_date is not None
 
 
+def test_completed_task_can_revise_deadline(client, users, db_session):
+    emp = users["employee"]
+    original = datetime.now(timezone.utc) - timedelta(days=3)
+    task = Task(
+        title="Done but revised",
+        status="completed",
+        priority="medium",
+        estimated_hours=1,
+        created_by_id=emp.id,
+        due_date=original,
+        original_due_date=original,
+        completed_at=datetime.now(timezone.utc),
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    new_due = (date.today() + timedelta(days=2)).isoformat() + "T12:00:00+05:30"
+    res = client.post(
+        f"/api/tasks/{task.id}/deadline-revision",
+        json={"reason": "Cross check was required", "new_due_date": new_due},
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["data"]["reason"] == "Cross check was required"
+    db_session.refresh(task)
+    assert task.status == "completed"
+    assert task.due_date is not None
+
+
 def test_due_date_locks_and_revision_works_before_overdue(client, users, db_session):
     emp = users["employee"]
     first_due = (date.today() + timedelta(days=5)).isoformat() + "T12:00:00+05:30"

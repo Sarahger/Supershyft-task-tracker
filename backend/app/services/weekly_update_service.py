@@ -927,8 +927,6 @@ class WeeklyUpdateService:
         new_due_date: datetime,
         weekly_report_id: int | None = None,
     ) -> dict:
-        if task.status in RESOLVED_STATUSES:
-            raise HTTPException(status_code=400, detail="Resolved tasks cannot have their deadline revised")
         cleaned = (reason or "").strip()
         if not cleaned:
             raise HTTPException(status_code=400, detail="A reason for the delay is required")
