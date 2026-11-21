@@ -63,3 +63,24 @@ def cron_telegram_daily_digest(
         data=result,
         message=f"Telegram digests sent={result.get('sent', 0)} errors={result.get('errors', 0)}",
     )
+
+
+@router.post("/weekly-updates-rollover")
+@router.get("/weekly-updates-rollover")
+def cron_weekly_updates_rollover(
+    db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+):
+    """Monday 2:00 PM IST: lock previous week snapshots and open empty drafts for all employees."""
+    _verify_cron(authorization)
+    from app.services.weekly_update_service import WeeklyUpdateService
+
+    result = WeeklyUpdateService(db).ensure_all_writable_reports()
+    return APIResponse(
+        data=result,
+        message=(
+            f"Weekly updates rollover: created={result.get('created', 0)} "
+            f"finalized={result.get('finalized', 0)} "
+            f"employees={result.get('employee_count', 0)}"
+        ),
+    )

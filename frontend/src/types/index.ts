@@ -781,7 +781,10 @@ export interface WeeklyCompletion {
   task_status?: string | null;
   completed_at?: string | null;
   estimated_hours?: number | null;
+  due_date?: string | null;
+  original_due_date?: string | null;
   is_carried_forward?: boolean;
+  is_delayed?: boolean;
 }
 
 export interface WeeklyCommitment {
@@ -817,9 +820,13 @@ export interface WeeklyReport {
   leave_notes?: string | null;
   editable: boolean;
   editable_until: string;
+  is_locked?: boolean;
   is_current: boolean;
+  working_week_ended?: boolean;
   author?: WeeklyAuthor | null;
   completions: WeeklyCompletion[];
+  current_week_tasks?: WeeklyCommitment[];
+  next_week_tasks?: WeeklyCommitment[];
   commitments: WeeklyCommitment[];
   leave: WeeklyLeaveContext;
   planning_leave: WeeklyLeaveContext;
@@ -865,16 +872,31 @@ export interface WeeklyUserHistory {
   planning_end?: string;
   writable_period_start: string;
   writable_period_end?: string;
+  working_week_ended?: boolean;
   focus_week?: string | null;
   reports: WeeklyReport[];
   outstanding: WeeklyCommitment[];
   due_this_week?: WeeklyCommitment[];
+  current_week_tasks?: WeeklyCommitment[];
+  next_week_tasks?: WeeklyCommitment[];
   legacy_daily_notes: {
     id: number;
     update_date: string;
     content: string;
     tasks: { id: number; title: string }[];
   }[];
+}
+
+export interface WeeklyCarryForward {
+  period_start: string;
+  period_end?: string;
+  planning_start: string;
+  planning_end: string;
+  working_week_ended?: boolean;
+  current_week_tasks?: WeeklyCommitment[];
+  next_week_tasks?: WeeklyCommitment[];
+  items: WeeklyCommitment[];
+  due_this_week?: WeeklyCommitment[];
 }
 
 export interface WeeklySuggestions {

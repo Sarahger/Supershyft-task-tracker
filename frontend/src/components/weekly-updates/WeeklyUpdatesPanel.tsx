@@ -89,10 +89,8 @@ export function WeeklyUpdatesPanel() {
   const writeWeekEnd = format(parseISO(writeWeekEndIso), 'MMMM d, yyyy');
   const weekLabel = `${format(parseISO(writePeriod), 'MMMM d')} – ${writeWeekEnd}`;
   const waitingOnPreviousLock = isOwn && weekStart > writablePeriod;
-  const liveThisWeek = [
-    ...(history?.outstanding ?? []),
-    ...(history?.due_this_week ?? []),
-  ];
+  const liveCurrentWeek = history?.current_week_tasks ?? history?.outstanding ?? [];
+  const liveNextWeek = history?.next_week_tasks ?? history?.due_this_week ?? [];
 
   const jumpToWeek = (value: string) => {
     if (!value) return;
@@ -196,22 +194,48 @@ export function WeeklyUpdatesPanel() {
                   Write
                 </button>
               </div>
-              {liveThisWeek.length > 0 && (
-                <ol className="space-y-1">
-                  {liveThisWeek.map((item, i) => {
-                    const carried = Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward' || item.is_overdue);
-                    return (
-                      <li key={item.task_id ?? `${item.title}-${i}`} className="flex items-start gap-2">
-                        <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
-                        <p className={carried ? 'text-sm text-amber-400' : 'text-sm text-text-primary'}>
-                          {item.title}
-                          {item.is_overdue ? <span className="ml-2 text-2xs text-accent-danger">Overdue</span> : null}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
+              <div className="space-y-3">
+                <div>
+                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed Tasks</p>
+                  <p className="text-sm text-text-muted mt-1">No tasks yet</p>
+                </div>
+                <div>
+                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Current Week&apos;s Tasks</p>
+                  {liveCurrentWeek.length === 0 ? (
+                    <p className="text-sm text-text-muted mt-1">No tasks yet</p>
+                  ) : (
+                    <ol className="space-y-1 mt-1">
+                      {liveCurrentWeek.map((item, i) => {
+                        const carried = Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward' || item.is_overdue);
+                        return (
+                          <li key={item.task_id ?? `${item.title}-${i}`} className="flex items-start gap-2">
+                            <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
+                            <p className={carried ? 'text-sm text-amber-400' : 'text-sm text-text-primary'}>
+                              {item.title}
+                              {item.is_overdue ? <span className="ml-2 text-2xs text-accent-danger">Overdue</span> : null}
+                            </p>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  )}
+                </div>
+                <div>
+                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Next Week&apos;s Tasks</p>
+                  {liveNextWeek.length === 0 ? (
+                    <p className="text-sm text-text-muted mt-1">No tasks yet</p>
+                  ) : (
+                    <ol className="space-y-1 mt-1">
+                      {liveNextWeek.map((item, i) => (
+                        <li key={item.task_id ?? `${item.title}-n-${i}`} className="flex items-start gap-2">
+                          <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
+                          <p className="text-sm text-text-primary">{item.title}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -245,13 +269,27 @@ export function WeeklyUpdatesPanel() {
             .filter((report) => !(writing && report.period_start === writePeriod))
             .map((report) => {
               const live = report.period_start === writablePeriod || report.is_current;
-              const seen = new Set(report.commitments.map((c) => c.task_id).filter(Boolean));
-              const extras = live
-                ? liveThisWeek.filter((c) => c.task_id && !seen.has(c.task_id))
-                : [];
-              const merged = extras.length
-                ? { ...report, commitments: [...extras, ...report.commitments] }
-                : report;
+              const currentIds = new Set((report.current_week_tasks ?? []).map((c) => c.task_id).filter(Boolean));
+              const nextIds = new Set((report.next_week_tasks ?? report.commitments).map((c) => c.task_id).filter(Boolean));
+              const merged = live
+                ? {
+                    ...report,
+                    current_week_tasks: [
+                      ...liveCurrentWeek.filter((c) => c.task_id && !currentIds.has(c.task_id)),
+                      ...(report.current_week_tasks ?? []),
+                    ],
+                    next_week_tasks: [
+                      ...liveNextWeek.filter((c) => c.task_id && !nextIds.has(c.task_id)),
+                      ...(report.next_week_tasks ?? report.commitments),
+                    ],
+                  }
+                : {
+                    ...report,
+                    current_week_tasks: report.current_week_tasks ?? [],
+                    next_week_tasks: report.next_week_tasks ?? report.commitments,
+                  };
+              const openCount =
+                (merged.current_week_tasks?.length ?? 0) + (merged.next_week_tasks?.length ?? 0);
               return (
                 <WeeklyReportCard
                   key={report.id}
@@ -260,8 +298,8 @@ export function WeeklyUpdatesPanel() {
                   onEdit={isOwn && canWrite && !writing && report.period_start === writePeriod
                     ? () => setWriting(true)
                     : undefined}
-                  actionLabel={report.status === 'draft' && report.commitments.length === 0 ? 'Write next week' : 'Edit'}
-                  onRevise={isOwn ? setReviseItem : undefined}
+                  actionLabel={report.status === 'draft' && openCount === 0 ? 'Write update' : 'Edit'}
+                  onRevise={isOwn && report.editable ? setReviseItem : undefined}
                 />
               );
             })}

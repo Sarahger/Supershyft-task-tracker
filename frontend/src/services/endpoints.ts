@@ -194,8 +194,12 @@ export const weeklyUpdatesApi = {
   carryForward: (week_start?: string) =>
     api.get<APIResponse<{
       period_start: string;
+      period_end?: string;
       planning_start?: string;
       planning_end?: string;
+      working_week_ended?: boolean;
+      current_week_tasks?: import('../types').WeeklyCommitment[];
+      next_week_tasks?: import('../types').WeeklyCommitment[];
       items: import('../types').WeeklyCommitment[];
       due_this_week?: import('../types').WeeklyCommitment[];
     }>>(

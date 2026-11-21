@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 
 from app.core.company_holidays import is_working_day
 from app.utils.month_weeks import get_app_timezone
@@ -47,6 +47,11 @@ def next_monday(monday: date) -> date:
     return monday + timedelta(days=7)
 
 
+def week_date_bounds(monday: date) -> tuple[date, date]:
+    """Calendar Mon–Sun inclusive bounds for due-date bucketing."""
+    return monday, monday + timedelta(days=6)
+
+
 def working_week_end(monday: date) -> date:
     """Last working day in the Mon–Sun week, skipping weekends and company holidays."""
     last = monday
@@ -55,6 +60,11 @@ def working_week_end(monday: date) -> date:
         if is_working_day(day):
             last = day
     return last
+
+
+def working_week_has_ended(period_start: date, now: datetime | None = None) -> bool:
+    """True once the last working day of the reporting week has fully ended."""
+    return today_local(now) > working_week_end(period_start)
 
 
 def planning_window(period_start: date, now: datetime | None = None) -> tuple[date, date]:
@@ -162,8 +172,9 @@ def as_local_date(value: datetime | date | None) -> date | None:
     if value is None:
         return None
     if isinstance(value, datetime):
+        # SQLite/SQLAlchemy often returns naive UTC; treat naive as UTC then convert to IST.
         if value.tzinfo is None:
-            value = value.replace(tzinfo=get_app_timezone())
+            value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(get_app_timezone()).date()
     return value
 

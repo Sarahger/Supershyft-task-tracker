@@ -88,21 +88,27 @@ function metaLine(timeLabel: string | null, dateLabel: string | null, datePrefix
 function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number }) {
   const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
   const doneLabel = formatShortDate(item.completion_date || item.completed_at);
-  const carried = Boolean(item.is_carried_forward);
+  const delayed = Boolean(item.is_delayed || item.is_carried_forward);
+  const dueLabel = formatShortDate(item.original_due_date || item.due_date);
 
   return (
     <li className="flex items-start gap-2 py-1">
       <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{index}.</span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-1 md:gap-4">
-          <TaskTitle title={item.title} taskId={item.task_id} />
-          {timeLabel || doneLabel ? (
+          <TaskTitle
+            title={item.title}
+            taskId={item.task_id}
+            className={delayed ? 'text-amber-400' : 'text-text-muted'}
+          />
+          {timeLabel || doneLabel || dueLabel ? (
             <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">
               {timeLabel}
-              {timeLabel && doneLabel ? ' · ' : null}
+              {timeLabel && (doneLabel || dueLabel) ? ' · ' : null}
+              {dueLabel ? <>Due {dueLabel}{doneLabel ? ' · ' : null}</> : null}
               {doneLabel ? (
                 <>
-                  <span className={carried ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}
+                  <span className={delayed ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}
                 </>
               ) : null}
             </p>
@@ -125,10 +131,9 @@ function CommitmentRow({
   freezeCarriedForward?: boolean;
 }) {
   const revised = hasRevisedDue(item);
-  const dueLabel = formatShortDate(item.due_date);
+  const dueLabel = formatShortDate(item.original_due_date && freezeCarriedForward ? item.original_due_date : item.due_date);
   const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
   const latestReason = item.deadline_revisions?.[item.deadline_revisions.length - 1]?.reason;
-  // Locked weeks: yellow only from what was saved as carried_forward at submit time.
   const carried = freezeCarriedForward
     ? item.commitment_type === 'carried_forward'
     : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward');
@@ -161,6 +166,41 @@ function CommitmentRow({
   );
 }
 
+function TaskSection({
+  title,
+  emptyLabel,
+  items,
+  onRevise,
+  freezeCarriedForward,
+}: {
+  title: string;
+  emptyLabel: string;
+  items: WeeklyCommitment[];
+  onRevise?: (item: WeeklyCommitment) => void;
+  freezeCarriedForward?: boolean;
+}) {
+  return (
+    <section className="space-y-1">
+      <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">{title}</p>
+      {items.length === 0 ? (
+        <p className="text-sm text-text-muted">{emptyLabel}</p>
+      ) : (
+        <ol>
+          {items.map((item, i) => (
+            <CommitmentRow
+              key={`${item.task_id ?? item.title}-${i}`}
+              item={item}
+              index={i + 1}
+              onRevise={onRevise}
+              freezeCarriedForward={freezeCarriedForward}
+            />
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 export function WeeklyReportCard({
   report,
   author,
@@ -177,14 +217,20 @@ export function WeeklyReportCard({
   const person = author ?? report.author;
   const personName = person ? `${person.first_name} ${person.last_name}`.trim() : 'Weekly update';
   const thisWeekLeave = leaveSummary(report.leave);
-  // Current-week plans use the same window for leave + planning_leave — don't repeat holidays.
   const nextWeekLeave =
     report.planning_start !== report.period_start ? leaveSummary(report.planning_leave) : [];
 
   const freezeCarriedForward = !report.editable;
-  const hasCarriedForward =
-    report.completions.some((item) => item.is_carried_forward) ||
-    report.commitments.some((item) =>
+  const currentWeekTasks = report.current_week_tasks ?? [];
+  const nextWeekTasks = report.next_week_tasks ?? report.commitments ?? [];
+  const hasDelayed =
+    report.completions.some((item) => item.is_delayed || item.is_carried_forward) ||
+    currentWeekTasks.some((item) =>
+      freezeCarriedForward
+        ? item.commitment_type === 'carried_forward'
+        : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
+    ) ||
+    nextWeekTasks.some((item) =>
       freezeCarriedForward
         ? item.commitment_type === 'carried_forward'
         : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
@@ -199,6 +245,7 @@ export function WeeklyReportCard({
         <div>
           <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
             {report.is_current ? 'Current week' : 'Earlier week'}
+            {!report.editable ? ' · Locked' : null}
           </p>
           <h3 className="text-base font-semibold text-text-primary mt-0.5">
             {formatRange(report.period_start, report.period_end)}
@@ -219,9 +266,9 @@ export function WeeklyReportCard({
               {actionLabel}
             </button>
           )}
-          {hasCarriedForward && (
+          {hasDelayed && (
             <p className="text-2xs text-text-muted">
-              <span className="text-amber-400">Yellow</span> = carried forward
+              <span className="text-amber-400">Yellow</span> = delayed / carried forward
             </p>
           )}
         </div>
@@ -235,9 +282,9 @@ export function WeeklyReportCard({
       )}
 
       <section className="space-y-1.5">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed</p>
+        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed Tasks</p>
         {report.completions.length === 0 ? (
-          <p className="text-sm text-text-muted">No completed work recorded.</p>
+          <p className="text-sm text-text-muted">No tasks yet</p>
         ) : (
           <ol className="space-y-1">
             {report.completions.map((item, i) => (
@@ -253,26 +300,23 @@ export function WeeklyReportCard({
 
       <div className="border-t border-dark-border" />
 
-      <section className="space-y-1">
-        <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
-          Next week
-        </p>
-        {report.commitments.length === 0 ? (
-          <p className="text-sm text-text-muted">No commitments recorded.</p>
-        ) : (
-          <ol>
-            {report.commitments.map((item, i) => (
-              <CommitmentRow
-                key={`${item.task_id ?? item.title}-${i}`}
-                item={item}
-                index={i + 1}
-                onRevise={onRevise}
-                freezeCarriedForward={freezeCarriedForward}
-              />
-            ))}
-          </ol>
-        )}
-      </section>
+      <TaskSection
+        title="Current Week's Tasks"
+        emptyLabel="No tasks yet"
+        items={currentWeekTasks}
+        onRevise={onRevise}
+        freezeCarriedForward={freezeCarriedForward}
+      />
+
+      <div className="border-t border-dark-border" />
+
+      <TaskSection
+        title="Next Week's Tasks"
+        emptyLabel="No tasks yet"
+        items={nextWeekTasks}
+        onRevise={onRevise}
+        freezeCarriedForward={freezeCarriedForward}
+      />
 
       {(thisWeekLeave.length > 0 || nextWeekLeave.length > 0) && (
         <footer className="text-xs text-text-muted space-y-0.5">

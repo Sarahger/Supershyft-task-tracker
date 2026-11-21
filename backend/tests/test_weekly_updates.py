@@ -18,6 +18,8 @@ from app.utils.week_periods import (
     editable_until_for,
     is_due_date_overdue,
     is_report_editable,
+    week_date_bounds,
+    working_week_has_ended,
     writable_period_start,
     monday_of,
     period_end_for_submit,
@@ -527,14 +529,15 @@ def test_reopening_task_removes_suggested_completion(client, users, db_session):
 def test_carry_forward_reuses_task(client, users, db_session):
     emp = users["employee"]
     previous_monday = monday_of(date.today()) - timedelta(days=7)
+    prior_due = due_at_noon(previous_monday + timedelta(days=2))
     task = Task(
         title="Unfinished API",
         status="in_progress",
         priority="medium",
         estimated_hours=4,
         created_by_id=emp.id,
-        due_date=datetime.now(timezone.utc) - timedelta(days=2),
-        original_due_date=datetime.now(timezone.utc) - timedelta(days=2),
+        due_date=prior_due,
+        original_due_date=prior_due,
     )
     task.assignees.append(TaskAssignee(user_id=emp.id))
     db_session.add(task)
@@ -574,13 +577,15 @@ def test_carry_forward_reuses_task(client, users, db_session):
 
 def test_carry_forward_includes_overdue_without_prior_report(client, users, db_session):
     emp = users["employee"]
+    prior_due = due_at_noon(monday_of(date.today()) - timedelta(days=5))
     task = Task(
         title="Overdue without weekly report",
         status="in_progress",
         priority="medium",
         estimated_hours=3,
         created_by_id=emp.id,
-        due_date=datetime.now(timezone.utc) - timedelta(days=4),
+        due_date=prior_due,
+        original_due_date=prior_due,
     )
     task.assignees.append(TaskAssignee(user_id=emp.id))
     db_session.add(task)
@@ -618,8 +623,14 @@ def test_due_today_is_not_overdue_or_carried(client, users, db_session):
     data = res.json()["data"]
     items = data.get("items") or []
     due_next = data.get("due_this_week") or []
+    current_week = data.get("current_week_tasks") or []
     assert all(row["task_id"] != task.id for row in items)
     assert all(row["task_id"] != task.id for row in due_next)
+    if data.get("working_week_ended"):
+        next_week = data.get("next_week_tasks") or []
+        assert any(row["task_id"] == task.id for row in next_week)
+    else:
+        assert any(row["task_id"] == task.id and row["is_carried_forward"] is False for row in current_week)
 
 
 def test_due_next_week_from_created_tracker_task(client, users, db_session):
@@ -812,8 +823,11 @@ def test_history_is_newest_first_and_readable(client, users, db_session):
     assert res.status_code == 200
     body = res.json()["data"]
     reports = body["reports"]
-    assert [r["period_start"] for r in reports] == [newer.isoformat(), older.isoformat()]
+    submitted = [r for r in reports if r["status"] == "submitted"]
+    assert [r["period_start"] for r in submitted] == [newer.isoformat(), older.isoformat()]
     assert body["writable_period_start"] == writable_period_start().isoformat()
+    # Auto-provisioned writable week is always present even with zero tasks.
+    assert any(r["period_start"] == body["writable_period_start"] for r in reports)
 
 
 def test_overview_uses_real_counts(client, users):
@@ -824,3 +838,135 @@ def test_overview_uses_real_counts(client, users):
     assert data["employee_count"] >= 2
     assert data["pending"] >= 1
     assert data["submitted"] == 0
+
+
+def test_working_week_bounds_and_sunday_transition():
+    working_sat_week = date(2026, 11, 16)  # Sat 21 Nov is working (3rd Saturday)
+    off_sat_week = date(2026, 11, 23)  # Sat 28 Nov is 4th Saturday (off)
+    assert working_week_end(working_sat_week) == date(2026, 11, 21)
+    assert working_week_end(off_sat_week) == date(2026, 11, 27)
+    assert week_date_bounds(working_sat_week) == (date(2026, 11, 16), date(2026, 11, 22))
+    zone = get_app_timezone()
+    assert working_week_has_ended(working_sat_week, datetime(2026, 11, 21, 23, 0, tzinfo=zone)) is False
+    assert working_week_has_ended(working_sat_week, datetime(2026, 11, 22, 0, 0, tzinfo=zone)) is True
+
+
+def test_empty_employee_gets_auto_weekly_update(client, users, db_session):
+    emp = users["employee"]
+    assert db_session.query(WeeklyReport).filter(WeeklyReport.user_id == emp.id).count() == 0
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200, history.text
+    body = history.json()["data"]
+    writable = body["writable_period_start"]
+    reports = body["reports"]
+    assert any(r["period_start"] == writable for r in reports)
+    match = next(r for r in reports if r["period_start"] == writable)
+    assert match["completions"] == []
+    assert "current_week_tasks" in match
+    assert "next_week_tasks" in match
+    assert match["current_week_tasks"] == [] or isinstance(match["current_week_tasks"], list)
+    # Idempotent: second fetch does not duplicate.
+    history2 = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history2.status_code == 200
+    same = [r for r in history2.json()["data"]["reports"] if r["period_start"] == writable]
+    assert len(same) == 1
+    assert db_session.query(WeeklyReport).filter(
+        WeeklyReport.user_id == emp.id, WeeklyReport.period_start == date.fromisoformat(writable)
+    ).count() == 1
+
+
+def test_current_week_and_next_week_buckets_by_due_date(client, users, db_session):
+    emp = users["employee"]
+    monday = writable_period_start()
+    current_due = monday + timedelta(days=2)
+    next_due = monday + timedelta(days=9)
+    older_due = monday - timedelta(days=3)
+    tasks = []
+    for title, due in (
+        ("Due current week", current_due),
+        ("Due next week", next_due),
+        ("Carried from prior week", older_due),
+    ):
+        task = Task(
+            title=title,
+            status="in_progress",
+            priority="medium",
+            estimated_hours=2,
+            created_by_id=emp.id,
+            due_date=due_at_noon(due),
+            original_due_date=due_at_noon(due),
+        )
+        task.assignees.append(TaskAssignee(user_id=emp.id))
+        tasks.append(task)
+    db_session.add_all(tasks)
+    db_session.commit()
+
+    res = client.get(
+        "/api/weekly-updates/carry-forward",
+        params={"week_start": monday.isoformat()},
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200
+    data = res.json()["data"]
+    current_ids = {row["task_id"] for row in (data.get("current_week_tasks") or [])}
+    next_ids = {row["task_id"] for row in (data.get("next_week_tasks") or [])}
+    by_title = {t.title: t.id for t in tasks}
+    if data.get("working_week_ended"):
+        assert by_title["Due next week"] in next_ids
+        assert by_title["Due current week"] in next_ids
+        assert by_title["Carried from prior week"] in next_ids
+        assert current_ids == set()
+    else:
+        assert by_title["Due current week"] in current_ids
+        assert by_title["Carried from prior week"] in current_ids
+        assert by_title["Due next week"] in next_ids
+        assert by_title["Due next week"] not in current_ids
+
+
+def test_delayed_completion_marked_yellow(client, users, db_session):
+    emp = users["employee"]
+    monday = writable_period_start()
+    if not is_report_editable(monday, "draft"):
+        pytest.skip("writable week not editable in this window")
+    original_due = monday - timedelta(days=4)
+    task = Task(
+        title="Finished late after carry",
+        status="completed",
+        priority="medium",
+        estimated_hours=2,
+        created_by_id=emp.id,
+        due_date=due_at_noon(original_due),
+        original_due_date=due_at_noon(original_due),
+        completed_at=datetime.now(timezone.utc),
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200
+    reports = history.json()["data"]["reports"]
+    match = next((r for r in reports if r["period_start"] == monday.isoformat()), None)
+    assert match is not None
+    completions = match["completions"]
+    assert any(
+        c["task_id"] == task.id and c.get("is_delayed") is True and c.get("is_carried_forward") is True
+        for c in completions
+    )
+
+
+def test_ensure_all_writable_reports_idempotent(client, users, db_session):
+    from app.services.weekly_update_service import WeeklyUpdateService
+
+    service = WeeklyUpdateService(db_session)
+    first = service.ensure_all_writable_reports()
+    second = service.ensure_all_writable_reports()
+    writable = date.fromisoformat(first["writable_period_start"])
+    assert first["employee_count"] >= 2
+    assert second["created"] == 0
+    assert (
+        db_session.query(WeeklyReport)
+        .filter(WeeklyReport.period_start == writable)
+        .count()
+        == first["employee_count"]
+    )

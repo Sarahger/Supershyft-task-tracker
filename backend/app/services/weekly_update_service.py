@@ -43,14 +43,17 @@ from app.utils.week_periods import (
     is_due_date_overdue,
     is_report_editable,
     monday_of,
+    next_monday,
+    previous_period_start,
     report_edit_block_reason,
-    period_datetime_bounds,
     period_end_for_submit,
     planning_window,
     resolve_period,
     saturday_of,
     today_local,
+    week_date_bounds,
     working_week_end,
+    working_week_has_ended,
     writable_period_start,
     week_datetime_bounds,
 )
@@ -184,35 +187,34 @@ class WeeklyUpdateService:
 
     def suggestions(self, user: User, period_start: date | None = None) -> dict:
         period = self._period(period_start)
+        self.ensure_writable_report(user)
         self.sync_week_completions(user, period.period_start)
         report = self._report_for(user.id, period.period_start)
         items = []
         if report:
-            for row in report.completions:
-                if not row.included or not row.task_id:
-                    continue
-                items.append(
-                    {
-                        "task_id": row.task_id,
-                        "title": row.title,
-                        "completion_date": row.completion_date,
-                        "completed_at": row.task.completed_at if row.task else None,
-                        "estimated_hours": _task_hours(row.task),
-                        "source": row.source or WeeklyCompletionSource.SUGGESTED.value,
-                        "included": True,
-                    }
-                )
+            items = [
+                item
+                for item in self._completion_views(report)
+                if item.get("included") and item.get("task_id")
+            ]
         else:
             for task in self._completed_tasks_for_user(user.id, period.period_start):
+                baseline = as_local_date(task.original_due_date or task.due_date)
+                completion_day = as_local_date(task.completed_at) or today_local()
+                delayed = bool(baseline and completion_day > baseline)
                 items.append(
                     {
                         "task_id": task.id,
                         "title": task.title,
-                        "completion_date": as_local_date(task.completed_at) or today_local(),
+                        "completion_date": completion_day,
                         "completed_at": task.completed_at,
                         "estimated_hours": _task_hours(task),
                         "source": WeeklyCompletionSource.SUGGESTED.value,
                         "included": True,
+                        "due_date": task.due_date,
+                        "original_due_date": task.original_due_date or task.due_date,
+                        "is_carried_forward": delayed,
+                        "is_delayed": delayed,
                     }
                 )
         return {
@@ -261,26 +263,13 @@ class WeeklyUpdateService:
             .all()
         )
         changed = False
-        report_ids: set[int] = set()
         for row in rows:
             report = row.report
             if report is None or not is_report_editable(report.period_start, report.status):
                 continue
-            report_ids.add(report.id)
             self.db.delete(row)
             changed = True
-        self.db.flush()
-        for report_id in report_ids:
-            report = self.db.query(WeeklyReport).filter(WeeklyReport.id == report_id).first()
-            if report is None:
-                continue
-            if (
-                report.status == WeeklyReportStatus.DRAFT.value
-                and not report.completions
-                and not report.commitments
-                and not report.leave_notes
-            ):
-                self.db.delete(report)
+        # Keep empty DRAFT reports — weekly updates must remain available even with zero completions.
         if changed:
             self.db.commit()
 
@@ -290,8 +279,6 @@ class WeeklyUpdateService:
             return
         tasks = self._completed_tasks_for_user(user.id, period.period_start)
         report = self._report_for(user.id, period.period_start)
-        if not tasks and report is None:
-            return
         if report is None:
             report = self._ensure_editable_report(user.id, period.period_start)
         elif not is_report_editable(report.period_start, report.status):
@@ -318,14 +305,117 @@ class WeeklyUpdateService:
                 continue
             if row.task_id and row.task_id not in completed_ids:
                 report.completions.remove(row)
-        if (
-            report.status == WeeklyReportStatus.DRAFT.value
-            and not report.completions
-            and not report.commitments
-            and not report.leave_notes
-        ):
-            self.db.delete(report)
         self.db.commit()
+
+    def ensure_writable_report(self, user: User, now: datetime | None = None) -> WeeklyReport | None:
+        """Idempotently create the current writable week's report for one user."""
+        start = writable_period_start(now)
+        report = self._ensure_editable_report(user.id, start)
+        if report is not None:
+            self.db.commit()
+        return report
+
+    def ensure_all_writable_reports(self, now: datetime | None = None) -> dict:
+        """Provision writable-week drafts for every active user (Monday 2PM rollover / catch-up)."""
+        start = writable_period_start(now)
+        previous = previous_period_start(start)
+        users = self._active_users()
+        created = 0
+        finalized = 0
+        for user in users:
+            prev_report = self._report_for(user.id, previous)
+            if prev_report is not None and not is_report_editable(previous, prev_report.status, now):
+                if self._finalize_locked_report(user, prev_report, now=now):
+                    finalized += 1
+            before = self._report_for(user.id, start)
+            report = self._ensure_editable_report(user.id, start)
+            if report is not None and before is None:
+                created += 1
+            if report is not None and is_auto_sync_open(start, now):
+                # Sync completions without nested commit; outer commit below.
+                tasks = self._completed_tasks_for_user(user.id, start)
+                completed_ids = {task.id for task in tasks}
+                existing_ids = {c.task_id for c in report.completions if c.task_id}
+                for task in tasks:
+                    if task.id in existing_ids:
+                        continue
+                    report.completions.append(
+                        WeeklyReportCompletion(
+                            task_id=task.id,
+                            title=task.title,
+                            completion_date=as_local_date(task.completed_at) or today_local(now),
+                            source=WeeklyCompletionSource.SUGGESTED.value,
+                            included=True,
+                        )
+                    )
+                    existing_ids.add(task.id)
+                for row in list(report.completions):
+                    if row.source != WeeklyCompletionSource.SUGGESTED.value:
+                        continue
+                    if row.task_id and row.task_id not in completed_ids:
+                        report.completions.remove(row)
+        self.db.commit()
+        return {
+            "writable_period_start": start.isoformat(),
+            "created": created,
+            "finalized": finalized,
+            "employee_count": len(users),
+        }
+
+    def _finalize_locked_report(
+        self,
+        user: User,
+        report: WeeklyReport,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        """Materialize live open tasks onto a locked report so history does not vanish."""
+        if is_report_editable(report.period_start, report.status, now):
+            return False
+        # Only snapshot once: skip if commitments already cover live open tasks for that week.
+        buckets = self.categorize_open_tasks(user, report.period_start, now=now)
+        existing_ids = {c.task_id for c in report.commitments if c.task_id}
+        added = False
+        for item in buckets["current_week_tasks"] + buckets["next_week_tasks"]:
+            task_id = item.get("task_id")
+            if not task_id or task_id in existing_ids:
+                continue
+            task = self.db.query(Task).filter(Task.id == task_id).first()
+            if not task or task.is_archived or task.status in RESOLVED_STATUSES:
+                continue
+            due = task.due_date or due_at_noon(today_local(now))
+            report.commitments.append(
+                WeeklyReportCommitment(
+                    task_id=task.id,
+                    title=task.title,
+                    description=task.description,
+                    estimated_hours=task.estimated_hours,
+                    due_date=due,
+                    commitment_type=(
+                        WeeklyCommitmentType.CARRIED_FORWARD.value
+                        if item.get("is_carried_forward")
+                        else WeeklyCommitmentType.EXISTING.value
+                    ),
+                    original_due_date=task.original_due_date or due,
+                )
+            )
+            existing_ids.add(task.id)
+            added = True
+        # Also backfill completions that completed during the locked week.
+        for task in self._completed_tasks_for_user(user.id, report.period_start):
+            if any(c.task_id == task.id for c in report.completions):
+                continue
+            report.completions.append(
+                WeeklyReportCompletion(
+                    task_id=task.id,
+                    title=task.title,
+                    completion_date=as_local_date(task.completed_at) or today_local(now),
+                    source=WeeklyCompletionSource.SUGGESTED.value,
+                    included=True,
+                )
+            )
+            added = True
+        return added
 
     def _completed_tasks_for_user(self, user_id: int, period_start: date) -> list[Task]:
         start_dt, end_dt = week_datetime_bounds(period_start)
@@ -383,10 +473,56 @@ class WeeklyUpdateService:
                 return None
         return report
 
-    def carry_forward(self, user: User, period_start: date | None = None) -> dict:
+    def categorize_open_tasks(
+        self,
+        user: User,
+        period_start: date | None = None,
+        now: datetime | None = None,
+    ) -> dict:
+        """Split open tasks into Current Week vs Next Week by due date.
+
+        After the last working day ends, Current Week empties and its pending
+        tasks move into Next Week (still the same weekly update until Monday 2PM).
+        """
         period = self._period(period_start)
-        plan_monday = monday_of(period.planning_start)
-        plan_sunday = plan_monday + timedelta(days=6)
+        cur_start, cur_end = week_date_bounds(period.period_start)
+        next_start, next_end = week_date_bounds(next_monday(period.period_start))
+        week_ended = working_week_has_ended(period.period_start, now)
+
+        current_week: list[dict] = []
+        next_week: list[dict] = []
+        seen: set[int] = set()
+
+        def _annotate(view: dict, *, carried: bool) -> dict:
+            out = dict(view)
+            out["is_carried_forward"] = carried
+            if carried:
+                out["commitment_type"] = WeeklyCommitmentType.CARRIED_FORWARD.value
+            elif out.get("commitment_type") == WeeklyCommitmentType.CARRIED_FORWARD.value:
+                out["commitment_type"] = WeeklyCommitmentType.EXISTING.value
+            return out
+
+        def _place(task: Task, view: dict) -> None:
+            due = as_local_date(task.due_date)
+            if due is None:
+                return
+            before_current = due < cur_start
+            in_current = cur_start <= due <= cur_end
+            in_next = next_start <= due <= next_end
+            carried = before_current
+
+            if week_ended:
+                if before_current or in_current:
+                    next_week.append(_annotate(view, carried=True))
+                elif in_next:
+                    next_week.append(_annotate(view, carried=False))
+                return
+
+            if before_current or in_current:
+                current_week.append(_annotate(view, carried=carried))
+            elif in_next:
+                next_week.append(_annotate(view, carried=False))
+
         rows = (
             self.db.query(WeeklyReportCommitment)
             .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
@@ -396,45 +532,48 @@ class WeeklyUpdateService:
             )
             .filter(
                 WeeklyReport.user_id == user.id,
-                WeeklyReport.period_start < period.period_start,
+                WeeklyReport.period_start <= period.period_start,
                 WeeklyReportCommitment.task_id.isnot(None),
             )
             .order_by(WeeklyReport.period_start.asc())
             .all()
         )
-        items: list[dict] = []
-        due_this_week: list[dict] = []
-        seen: set[int] = set()
         for row in rows:
             task = row.task
             if not task or task.id in seen or task.is_archived or task.status in RESOLVED_STATUSES:
                 continue
             seen.add(task.id)
-            overdue = _is_overdue(task)
             due = as_local_date(task.due_date)
-            in_week = bool(due and plan_monday <= due <= plan_sunday)
-            if overdue or not in_week:
-                items.append(self._commitment_view(row, carried=True))
-            else:
-                due_this_week.append(self._commitment_view(row, carried=False))
+            carried = bool(due and due < cur_start)
+            _place(task, self._commitment_view(row, carried=carried))
+
         for task in self._open_assigned_tasks(user.id):
             if task.id in seen:
                 continue
             seen.add(task.id)
-            overdue = _is_overdue(task)
             due = as_local_date(task.due_date)
-            in_week = bool(due and plan_monday <= due <= plan_sunday)
-            if overdue:
-                items.append(self._task_commitment_view(task, carried=True))
-            elif in_week:
-                due_this_week.append(self._task_commitment_view(task, carried=False))
+            carried = bool(due and due < cur_start)
+            _place(task, self._task_commitment_view(task, carried=carried))
+
+        carried_in_current = [t for t in current_week if t.get("is_carried_forward")]
+        carried_in_next = [t for t in next_week if t.get("is_carried_forward")]
         return {
             "period_start": period.period_start.isoformat(),
+            "period_end": period.period_end.isoformat(),
             "planning_start": period.planning_start.isoformat(),
             "planning_end": period.planning_end.isoformat(),
-            "items": items,
-            "due_this_week": due_this_week,
+            "working_week_ended": week_ended,
+            "current_week_tasks": current_week,
+            "next_week_tasks": next_week,
+            # Legacy aliases: items = carried; due_this_week = on-schedule next-week plans.
+            "items": carried_in_next if week_ended else carried_in_current,
+            "due_this_week": [t for t in next_week if not t.get("is_carried_forward")],
         }
+
+    def carry_forward(self, user: User, period_start: date | None = None) -> dict:
+        """Backward-compatible wrapper around due-date categorization."""
+        start = period_start if period_start is not None else writable_period_start()
+        return self.categorize_open_tasks(user, start)
 
     def _open_assigned_tasks(self, user_id: int) -> list[Task]:
         return (
@@ -450,29 +589,30 @@ class WeeklyUpdateService:
             .all()
         )
 
-    def _merge_live_commitments(
+    def _merge_live_task_sections(
         self,
         reports: list[dict],
-        outstanding: list[dict],
-        due_this_week: list[dict],
+        current_week_tasks: list[dict],
+        next_week_tasks: list[dict],
         week_start: date,
     ) -> None:
         target = next((row for row in reports if row["period_start"] == week_start.isoformat()), None)
         if target is None:
             return
-        seen = {item.get("task_id") for item in target["commitments"] if item.get("task_id")}
-        extras: list[dict] = []
-        for item in list(outstanding) + list(due_this_week):
-            task_id = item.get("task_id")
-            if not task_id or task_id in seen:
-                continue
-            seen.add(task_id)
-            extras.append(item)
-        if extras:
-            target["commitments"] = extras + target["commitments"]
+        if target.get("editable"):
+            target["current_week_tasks"] = list(current_week_tasks)
+            target["next_week_tasks"] = list(next_week_tasks)
+            # Keep commitments as next-week plans for backward-compatible clients.
+            target["commitments"] = list(next_week_tasks)
+        else:
+            target.setdefault("current_week_tasks", [])
+            target.setdefault("next_week_tasks", target.get("commitments") or [])
 
     def overview(self, department_id: int | None = None, period_start: date | None = None) -> dict:
         period = self._period(period_start)
+        # Ensure writable drafts exist so overview counts include empty weeks.
+        if period.period_start == writable_period_start():
+            self.ensure_all_writable_reports()
         users = self._active_users(department_id)
         user_ids = [u.id for u in users]
         reports = (
@@ -483,7 +623,7 @@ class WeeklyUpdateService:
             else []
         )
         submitted_ids = {r.user_id for r in reports if r.status == WeeklyReportStatus.SUBMITTED.value}
-        start_dt, end_dt = period_datetime_bounds(period.period_start, period.period_end)
+        start_dt, end_dt = week_datetime_bounds(period.period_start)
         completed = 0
         if user_ids:
             completed = (
@@ -554,6 +694,8 @@ class WeeklyUpdateService:
 
     def employees(self, department_id: int | None = None, period_start: date | None = None) -> dict:
         period = self._period(period_start)
+        if period.period_start == writable_period_start():
+            self.ensure_all_writable_reports()
         users = self._active_users(department_id)
         user_ids = [u.id for u in users]
         submitted_ids: set[int] = set()
@@ -605,10 +747,21 @@ class WeeklyUpdateService:
             raise HTTPException(status_code=404, detail="User not found")
         period = self._period(week_start)
         current = current_week_start()
+        writable = writable_period_start()
+        # Always provision the writable week so employees with zero tasks still see an update.
+        self.ensure_writable_report(user)
+        # Finalize the previous week if it just locked and still needs a snapshot.
+        prev = previous_period_start(writable)
+        prev_report = self._report_for(user.id, prev)
+        if prev_report is not None and not is_report_editable(prev, prev_report.status):
+            if self._finalize_locked_report(user, prev_report):
+                self.db.commit()
         if is_auto_sync_open(period.period_start):
             self.sync_week_completions(user, period.period_start)
         if current != period.period_start and is_auto_sync_open(current):
             self.sync_week_completions(user, current)
+        if writable != period.period_start and is_auto_sync_open(writable):
+            self.sync_week_completions(user, writable)
         reports = (
             self.db.query(WeeklyReport)
             .options(
@@ -622,9 +775,10 @@ class WeeklyUpdateService:
             .order_by(WeeklyReport.period_start.desc())
             .all()
         )
-        writable = writable_period_start()
-        live = self.carry_forward(user, writable)
-        outstanding = live["items"]
+        live = self.categorize_open_tasks(user, writable)
+        current_week_tasks = live.get("current_week_tasks") or []
+        next_week_tasks = live.get("next_week_tasks") or []
+        outstanding = live.get("items") or []
         due_this_week = live.get("due_this_week") or []
         daily_notes = (
             self.db.query(DailyUpdate)
@@ -635,7 +789,7 @@ class WeeklyUpdateService:
             .all()
         )
         report_views = [self._report_view(r) for r in reports]
-        self._merge_live_commitments(report_views, outstanding, due_this_week, writable)
+        self._merge_live_task_sections(report_views, current_week_tasks, next_week_tasks, writable)
         return {
             "user": {
                 **(_author(user) or {}),
@@ -648,10 +802,13 @@ class WeeklyUpdateService:
             "planning_end": period.planning_end.isoformat(),
             "writable_period_start": writable.isoformat(),
             "writable_period_end": working_week_end(writable).isoformat(),
+            "working_week_ended": live.get("working_week_ended", False),
             "focus_week": period.period_start.isoformat() if week_start else None,
             "reports": report_views,
             "outstanding": outstanding,
             "due_this_week": due_this_week,
+            "current_week_tasks": current_week_tasks,
+            "next_week_tasks": next_week_tasks,
             "legacy_daily_notes": [
                 {
                     "id": note.id,
@@ -775,6 +932,12 @@ class WeeklyUpdateService:
         cleaned = (reason or "").strip()
         if not cleaned:
             raise HTTPException(status_code=400, detail="A reason for the delay is required")
+        if weekly_report_id is not None:
+            linked = self.db.query(WeeklyReport).filter(WeeklyReport.id == weekly_report_id).first()
+            if linked is not None:
+                blocked = report_edit_block_reason(linked.period_start)
+                if blocked:
+                    raise HTTPException(status_code=403, detail=blocked)
         new_due = _coerce_due(new_due_date)
         if as_local_date(new_due) is None:
             raise HTTPException(status_code=400, detail="A revised deadline is required")
@@ -1150,6 +1313,39 @@ class WeeklyUpdateService:
             },
         )
 
+    def _split_commitment_views(
+        self,
+        report: WeeklyReport,
+        commitment_views: list[dict],
+        *,
+        editable: bool,
+    ) -> tuple[list[dict], list[dict]]:
+        """Split stored/live commitments into Current Week vs Next Week by due date."""
+        cur_start, cur_end = week_date_bounds(report.period_start)
+        next_start, next_end = week_date_bounds(next_monday(report.period_start))
+        week_ended = working_week_has_ended(report.period_start) if editable else False
+        current_week: list[dict] = []
+        next_week: list[dict] = []
+        for view in commitment_views:
+            due = as_local_date(view.get("due_date"))
+            if due is None:
+                next_week.append(view)
+                continue
+            before_current = due < cur_start
+            in_current = cur_start <= due <= cur_end
+            in_next = next_start <= due <= next_end
+            if week_ended:
+                if before_current or in_current or in_next:
+                    next_week.append(view)
+                continue
+            if before_current or in_current:
+                current_week.append(view)
+            elif in_next:
+                next_week.append(view)
+            else:
+                next_week.append(view)
+        return current_week, next_week
+
     def _report_view(self, report: WeeklyReport) -> dict:
         current = current_week_start()
         period_end = working_week_end(report.period_start)
@@ -1160,6 +1356,10 @@ class WeeklyUpdateService:
         else:
             plan_start = monday_of(report.planning_start)
             plan_end = working_week_end(plan_start)
+        commitment_views = [self._commitment_view(c) for c in report.commitments]
+        current_week_tasks, next_week_tasks = self._split_commitment_views(
+            report, commitment_views, editable=editable
+        )
         return {
             "id": report.id,
             "user_id": report.user_id,
@@ -1172,10 +1372,14 @@ class WeeklyUpdateService:
             "leave_notes": report.leave_notes,
             "editable": editable,
             "editable_until": editable_until_for(report.period_start),
+            "is_locked": not editable,
             "is_current": report.period_start == current,
+            "working_week_ended": working_week_has_ended(report.period_start) if editable else False,
             "author": _author(report.user),
             "completions": self._completion_views(report),
-            "commitments": [self._commitment_view(c) for c in report.commitments],
+            "current_week_tasks": current_week_tasks,
+            "next_week_tasks": next_week_tasks,
+            "commitments": next_week_tasks if editable else commitment_views,
             "leave": self.leave_context(
                 report.user_id,
                 report.period_start,
@@ -1252,6 +1456,15 @@ class WeeklyUpdateService:
 
     def _completion_view(self, row: WeeklyReportCompletion, carried: bool = False) -> dict:
         task = row.task
+        completion_day = row.completion_date or as_local_date(task.completed_at if task else None)
+        baseline_due = None
+        if task is not None:
+            baseline_due = as_local_date(task.original_due_date or task.due_date)
+        delayed = False
+        if completion_day is not None and baseline_due is not None and completion_day > baseline_due:
+            delayed = True
+        if carried:
+            delayed = True
         return {
             "id": row.id,
             "task_id": row.task_id,
@@ -1262,7 +1475,10 @@ class WeeklyUpdateService:
             "task_status": task.status if task else None,
             "completed_at": task.completed_at if task else None,
             "estimated_hours": _task_hours(task),
-            "is_carried_forward": carried,
+            "due_date": task.due_date if task else None,
+            "original_due_date": (task.original_due_date or task.due_date) if task else None,
+            "is_carried_forward": carried or delayed,
+            "is_delayed": delayed,
         }
 
     def _task_commitment_view(self, task: Task, carried: bool = False) -> dict:

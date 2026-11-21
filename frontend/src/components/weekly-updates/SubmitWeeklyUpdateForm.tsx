@@ -95,13 +95,23 @@ export function SubmitWeeklyUpdateForm({
   });
   const mentionUsers: MentionUser[] = (usersList ?? []).filter((u) => u.status !== 'inactive');
 
-  const carried = carry?.items ?? [];
-  const dueThisWeek = carry?.due_this_week ?? [];
+  const currentWeekTasks = carry?.current_week_tasks ?? [
+    ...(carry?.items ?? []),
+    ...((carry?.working_week_ended ? [] : carry?.due_this_week) ?? []),
+  ];
+  const nextWeekTasks = carry?.next_week_tasks ?? (carry?.due_this_week ?? []);
+  const carried = currentWeekTasks.filter(
+    (item) => item.is_carried_forward || item.commitment_type === 'carried_forward',
+  );
+  const dueCurrentWeek = currentWeekTasks.filter(
+    (item) => !(item.is_carried_forward || item.commitment_type === 'carried_forward'),
+  );
+  const dueThisWeek = nextWeekTasks;
   const structuredTaskIds = new Set(
-    [...carried, ...dueThisWeek].map((item) => item.task_id).filter((id): id is number => id != null),
+    [...currentWeekTasks, ...nextWeekTasks].map((item) => item.task_id).filter((id): id is number => id != null),
   );
   const structuredTitles = new Set(
-    [...carried, ...dueThisWeek].map((item) => item.title.trim().toLowerCase()),
+    [...currentWeekTasks, ...nextWeekTasks].map((item) => item.title.trim().toLowerCase()),
   );
 
   useEffect(() => {
@@ -243,8 +253,12 @@ export function SubmitWeeklyUpdateForm({
         if (match) seen.add(match.id);
       }
 
-      const trackerDraft = (item: WeeklyCommitment, kind: 'carried_forward' | 'existing'): CommitmentDraft => {
-        const key = kind === 'carried_forward' ? `cf-${item.task_id}` : `tw-${item.task_id}`;
+      const trackerDraft = (
+        item: WeeklyCommitment,
+        kind: 'carried_forward' | 'existing',
+        prefix: 'cf' | 'cw' | 'nw',
+      ): CommitmentDraft => {
+        const key = `${prefix}-${item.task_id}`;
         const currentDue = toDateInput(item.due_date);
         const nextDue = dueDates[key] || currentDue;
         return {
@@ -261,8 +275,9 @@ export function SubmitWeeklyUpdateForm({
         };
       };
       const plan: CommitmentDraft[] = [
-        ...carried.map((item) => trackerDraft(item, 'carried_forward')),
-        ...dueThisWeek.map((item) => trackerDraft(item, 'existing')),
+        ...carried.map((item) => trackerDraft(item, 'carried_forward', 'cf')),
+        ...dueCurrentWeek.map((item) => trackerDraft(item, 'existing', 'cw')),
+        ...dueThisWeek.map((item) => trackerDraft(item, 'existing', 'nw')),
         ...parsedPlan.items
           .filter((item) => {
             const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
@@ -295,13 +310,15 @@ export function SubmitWeeklyUpdateForm({
         if (!hours || hours <= 0) throw new Error(`Add time required for “${item.title}”`);
         const source = item.commitment_type === 'carried_forward'
           ? carried.find((c) => c.task_id === item.task_id)
-          : dueThisWeek.find((c) => c.task_id === item.task_id)
+          : dueCurrentWeek.find((c) => c.task_id === item.task_id)
+            ?? dueThisWeek.find((c) => c.task_id === item.task_id)
             ?? (myTasks ?? []).find((t: Task) => t.id === item.task_id)
             ?? existing?.commitments.find((c) => c.task_id === item.task_id || c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         const previousDue = item.commitment_type === 'carried_forward'
           ? toDateInput(carried.find((c) => c.task_id === item.task_id)?.due_date)
           : toDateInput(
-            dueThisWeek.find((c) => c.task_id === item.task_id)?.due_date
+            dueCurrentWeek.find((c) => c.task_id === item.task_id)?.due_date
+              ?? dueThisWeek.find((c) => c.task_id === item.task_id)?.due_date
               ?? (myTasks ?? []).find((t: Task) => t.id === item.task_id)?.due_date
               ?? existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase())?.due_date,
           );
@@ -343,6 +360,8 @@ export function SubmitWeeklyUpdateForm({
       }
       qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
     },
     onError: (err: unknown) => {
@@ -374,7 +393,7 @@ export function SubmitWeeklyUpdateForm({
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-medium text-text-primary">Last week’s tasks</h3>
+          <h3 className="text-sm font-medium text-text-primary">Completed Tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
             Tasks marked complete this week are already included. Uncheck anything to leave out, or add extra work below as New app screens #3hr /thursday. Press Enter for the next item — numbers are added for you.
           </p>
@@ -387,6 +406,7 @@ export function SubmitWeeklyUpdateForm({
               const doneLabel = task.completion_date
                 ? format(parseISO(task.completion_date), 'd MMM')
                 : null;
+              const delayed = Boolean(task.is_delayed || task.is_carried_forward);
               const meta = [timeLabel, doneLabel ? `Completed ${doneLabel}` : null].filter(Boolean).join(' · ');
               return (
                 <li key={task.id} className="flex items-start gap-2">
@@ -399,11 +419,14 @@ export function SubmitWeeklyUpdateForm({
                   />
                   <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
                   <div className="min-w-0 flex-1 flex items-start justify-between gap-4">
-                    <p className={clsx('text-[15px] leading-relaxed', selected ? 'text-text-primary' : 'text-text-muted line-through')}>
+                    <p className={clsx(
+                      'text-[15px] leading-relaxed',
+                      !selected ? 'text-text-muted line-through' : delayed ? 'text-amber-400' : 'text-text-primary',
+                    )}>
                       {task.title}
                     </p>
                     {meta ? (
-                      <p className="shrink-0 text-xs tabular-nums text-text-muted pt-1 text-right">{meta}</p>
+                      <p className={clsx('shrink-0 text-xs tabular-nums pt-1 text-right', delayed ? 'text-amber-400' : 'text-text-muted')}>{meta}</p>
                     ) : null}
                   </div>
                 </li>
@@ -411,7 +434,7 @@ export function SubmitWeeklyUpdateForm({
             })}
           </ol>
         ) : (
-          <p className="text-sm text-text-muted">No tracker tasks were marked complete this week.</p>
+          <p className="text-sm text-text-muted">No tasks yet</p>
         )}
         <DailyUpdateEditor
           value={doneText}
@@ -450,67 +473,120 @@ export function SubmitWeeklyUpdateForm({
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-medium text-text-primary">Next week’s tasks</h3>
+          <h3 className="text-sm font-medium text-text-primary">Current Week&apos;s Tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Overdue tracker tasks are carried forward in yellow. Tasks you already created with a due date next week appear here automatically. Press Enter to add more — numbers are added for you.
+            Incomplete tasks due this working week, including carried-forward work. Yellow means carried forward from an earlier week.
           </p>
         </div>
-        {(carried.length > 0 || dueThisWeek.length > 0) && (
-          <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
-            {carried.length > 0 && (
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="text-xs font-medium text-amber-400">Carried forward</p>
-                <p className="text-2xs text-text-muted">
-                  <span className="text-amber-400">Yellow</span> = overdue / carried forward
-                </p>
-              </div>
-            )}
-            {carried.map((item) => {
-              const key = `cf-${item.task_id}`;
-              const currentDue = toDateInput(item.due_date);
-              const nextDue = dueDates[key] || currentDue;
-              const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
-              const locked = isDueDateLocked(item);
-              const needsRevision = dateChanged && locked;
-              return (
-                <div key={`cf-${item.task_id ?? item.title}`} className="space-y-2">
-                  <div className="grid sm:grid-cols-[1fr_140px] gap-2 items-center">
-                    <p className="text-sm text-amber-400">
-                      {item.title}
-                      {item.is_overdue && <span className="ml-2 text-2xs text-accent-danger">Overdue</span>}
-                    </p>
-                    <Input
-                      label={needsRevision ? 'Revised due date' : undefined}
-                      type="date"
-                      value={nextDue}
-                      onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
-                      error={!nextDue ? 'Required' : undefined}
-                    />
-                  </div>
-                  {needsRevision && (
-                    <Input
-                      label="Reason for changing"
-                      value={revisionReasons[key] || ''}
-                      onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
-                      placeholder="Why is the due date changing?"
-                      error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
-                    />
-                  )}
+        <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
+          {carried.length === 0 && dueCurrentWeek.length === 0 ? (
+            <p className="text-sm text-text-muted">No tasks yet</p>
+          ) : null}
+          {carried.length > 0 && (
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-xs font-medium text-amber-400">Carried forward</p>
+              <p className="text-2xs text-text-muted">
+                <span className="text-amber-400">Yellow</span> = carried forward
+              </p>
+            </div>
+          )}
+          {carried.map((item) => {
+            const key = `cf-${item.task_id}`;
+            const currentDue = toDateInput(item.due_date);
+            const nextDue = dueDates[key] || currentDue;
+            const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
+            const locked = isDueDateLocked(item);
+            const needsRevision = dateChanged && locked;
+            return (
+              <div key={`cf-${item.task_id ?? item.title}`} className="space-y-2">
+                <div className="grid sm:grid-cols-[1fr_140px] gap-2 items-center">
+                  <p className="text-sm text-amber-400">
+                    {item.title}
+                    {item.is_overdue && <span className="ml-2 text-2xs text-accent-danger">Overdue</span>}
+                  </p>
+                  <Input
+                    label={needsRevision ? 'Revised due date' : undefined}
+                    type="date"
+                    value={nextDue}
+                    onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
+                    error={!nextDue ? 'Required' : undefined}
+                  />
                 </div>
-              );
-            })}
-            {dueThisWeek.length > 0 && (
-              <p className="text-xs font-medium text-text-secondary pt-1">Due next week</p>
-            )}
-            {dueThisWeek.map((item) => {
-              const key = `tw-${item.task_id}`;
+                {needsRevision && (
+                  <Input
+                    label="Reason for changing"
+                    value={revisionReasons[key] || ''}
+                    onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="Why is the due date changing?"
+                    error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
+                  />
+                )}
+              </div>
+            );
+          })}
+          {dueCurrentWeek.length > 0 && (
+            <p className="text-xs font-medium text-text-secondary pt-1">Due this week</p>
+          )}
+          {dueCurrentWeek.map((item) => {
+            const key = `cw-${item.task_id}`;
+            const currentDue = toDateInput(item.due_date);
+            const nextDue = dueDates[key] || currentDue;
+            const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
+            const locked = isDueDateLocked(item);
+            const needsRevision = dateChanged && locked;
+            return (
+              <div key={`cw-${item.task_id ?? item.title}`} className="space-y-2">
+                <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-center">
+                  <p className="text-sm text-text-primary">{item.title}</p>
+                  <p className="text-xs text-text-muted">
+                    {item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : 'Add time required'}
+                  </p>
+                  <Input
+                    label={needsRevision ? 'Revised due date' : undefined}
+                    type="date"
+                    value={nextDue}
+                    onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
+                    error={!nextDue ? 'Required' : undefined}
+                  />
+                </div>
+                {item.estimated_hours == null && (
+                  <p className="text-2xs text-accent-danger">Add time required on this task</p>
+                )}
+                {needsRevision && (
+                  <Input
+                    label="Reason for changing"
+                    value={revisionReasons[key] || ''}
+                    onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
+                    placeholder="Why is the due date changing?"
+                    error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-medium text-text-primary">Next Week&apos;s Tasks</h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Plan ahead for the upcoming working week. Tasks you create here are saved in the Task Tracker. Press Enter to add more — numbers are added for you.
+          </p>
+        </div>
+        <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
+          {dueThisWeek.length === 0 ? (
+            <p className="text-sm text-text-muted">No tasks yet</p>
+          ) : (
+            dueThisWeek.map((item) => {
+              const key = `nw-${item.task_id}`;
               const currentDue = toDateInput(item.due_date);
               const nextDue = dueDates[key] || currentDue;
               const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
               const locked = isDueDateLocked(item);
               const needsRevision = dateChanged && locked;
               return (
-                <div key={`tw-${item.task_id ?? item.title}`} className="space-y-2">
+                <div key={`nw-${item.task_id ?? item.title}`} className="space-y-2">
                   <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-center">
                     <p className="text-sm text-text-primary">{item.title}</p>
                     <p className="text-xs text-text-muted">
@@ -538,9 +614,9 @@ export function SubmitWeeklyUpdateForm({
                   )}
                 </div>
               );
-            })}
-          </div>
-        )}
+            })
+          )}
+        </div>
         <DailyUpdateEditor
           value={planText}
           onChange={setPlanText}
