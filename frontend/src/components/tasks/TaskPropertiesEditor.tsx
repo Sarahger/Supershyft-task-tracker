@@ -105,8 +105,9 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
   const [revisionError, setRevisionError] = useState('');
   const [justSaved, setJustSaved] = useState(false);
   // Completely separate from autosaved form — typing here never triggers a save.
-  const [revisedDueDate, setRevisedDueDate] = useState('');
+  const [revisedDueDate, setRevisedDueDate] = useState(() => toDateInput(task.due_date));
   const [revisionReason, setRevisionReason] = useState('');
+  const revisionDraftTouched = useRef(false);
   const dueLocked = isTaskDueDateLocked(task);
   const formRef = useRef(form);
   const savedFormRef = useRef(savedForm);
@@ -124,6 +125,19 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     setForm(next);
     setSavedForm(next);
   }, [task]);
+
+  // Keep the revised-due field showing the latest saved due date unless the user is editing it.
+  useEffect(() => {
+    revisionDraftTouched.current = false;
+    setRevisedDueDate(toDateInput(task.due_date));
+    setRevisionReason('');
+    setRevisionError('');
+  }, [task.id]);
+
+  useEffect(() => {
+    if (revisionDraftTouched.current) return;
+    setRevisedDueDate(toDateInput(task.due_date));
+  }, [task.due_date]);
 
   const { data: projects } = useQuery({
     queryKey: ['projects'],
@@ -181,7 +195,9 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       });
       return { due, reason };
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
+      revisionDraftTouched.current = false;
+      setRevisedDueDate(vars.due);
       setRevisionReason('');
       setRevisionError('');
       toast.success('Due date updated');
@@ -410,11 +426,23 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
         </div>
         {dueLocked && (
           <div className="sm:col-span-2 rounded-xl border border-dark-border bg-dark-elevated/40 p-3 space-y-3">
-            <div>
-              <p className="text-xs font-medium text-text-secondary">Change due date</p>
-              <p className="text-2xs text-text-muted mt-0.5">
-                Nothing is saved until you click Update due date.
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-text-secondary">Change due date</p>
+                <p className="text-2xs text-text-muted mt-0.5">
+                  Nothing is saved until you click Update due date.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                className="shrink-0"
+                loading={revisionMutation.isPending}
+                disabled={!canSaveRevision || revisionMutation.isPending}
+                onClick={saveDeadlineRevision}
+              >
+                Update due date
+              </Button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input
@@ -422,6 +450,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
                 type="date"
                 value={revisedDueDate}
                 onChange={(e) => {
+                  revisionDraftTouched.current = true;
                   setRevisionError('');
                   setRevisedDueDate(e.target.value);
                 }}
@@ -430,6 +459,7 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
                 label="Reason for changing"
                 value={revisionReason}
                 onChange={(e) => {
+                  revisionDraftTouched.current = true;
                   setRevisionError('');
                   setRevisionReason(e.target.value);
                 }}
@@ -443,21 +473,14 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
                 error={revisionError || undefined}
               />
             </div>
-            <Button
-              type="button"
-              className="w-full sm:w-auto sm:min-w-[10rem]"
-              loading={revisionMutation.isPending}
-              disabled={!canSaveRevision || revisionMutation.isPending}
-              onClick={saveDeadlineRevision}
-            >
-              Update due date
-            </Button>
           </div>
         )}
         {(task.deadline_revisions && task.deadline_revisions.length > 0) && (
           <div className="sm:col-span-2 rounded-xl border border-dark-border px-3 py-2 space-y-1.5">
             <p className="text-xs font-medium text-text-secondary">Due date history</p>
-            {(task.deadline_revisions ?? []).map((rev) => (
+            {[...(task.deadline_revisions ?? [])]
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+              .map((rev) => (
               <p key={rev.id} className="text-xs text-text-muted">
                 {toDateInput(rev.previous_due_date)} → {toDateInput(rev.new_due_date)}
                 {rev.reason ? ` · ${rev.reason}` : ''}
