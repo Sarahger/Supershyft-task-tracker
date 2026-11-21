@@ -127,9 +127,11 @@ function CommitmentRow({
   freezeCarriedForward?: boolean;
 }) {
   const revised = hasRevisedDue(item);
-  const dueLabel = formatShortDate(item.original_due_date && freezeCarriedForward ? item.original_due_date : item.due_date);
+  const latestRevision = item.deadline_revisions?.[item.deadline_revisions.length - 1];
+  // Always show the current (new) due date; "Revised due" indicates it changed from the original.
+  const dueLabel = formatShortDate(latestRevision?.new_due_date || item.due_date);
   const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
-  const latestReason = item.deadline_revisions?.[item.deadline_revisions.length - 1]?.reason;
+  const latestReason = latestRevision?.reason;
   const carried = freezeCarriedForward
     ? item.commitment_type === 'carried_forward'
     : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward');

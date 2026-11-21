@@ -176,10 +176,18 @@ function stripHashTime(text: string): { title: string; hours: number | null; lab
 
 export function parseWeeklyPlanList(
   text: string,
-  options?: { periodStart?: string | Date; now?: Date },
+  options?: {
+    periodStart?: string | Date;
+    now?: Date;
+    /** Resolve /weekday tokens against the reporting week (current) or next planning week. */
+    weekScope?: 'current' | 'next';
+  },
 ): ParsedWeeklyPlan {
   const now = options?.now ?? new Date();
-  const planningMonday = planningMondayOf(options?.periodStart, now);
+  const planningMonday =
+    options?.weekScope === 'current'
+      ? reportingMondayOf(options?.periodStart, now)
+      : planningMondayOf(options?.periodStart, now);
 
   const lines = text
     .split(/\r?\n/)

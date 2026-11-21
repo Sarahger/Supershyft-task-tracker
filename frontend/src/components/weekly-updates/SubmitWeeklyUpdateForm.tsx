@@ -66,6 +66,7 @@ export function SubmitWeeklyUpdateForm({
   const qc = useQueryClient();
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
   const [doneText, setDoneText] = useState('1. ');
+  const [currentPlanText, setCurrentPlanText] = useState('1. ');
   const [planText, setPlanText] = useState('1. ');
   const [dueDates, setDueDates] = useState<Record<string, string>>({});
   const [revisionReasons, setRevisionReasons] = useState<Record<string, string>>({});
@@ -204,8 +205,12 @@ export function SubmitWeeklyUpdateForm({
   }, [existing, suggestions]);
 
   const parsedDone = useMemo(() => parseWeeklyDoneList(doneText, { periodStart }), [doneText, periodStart]);
+  const parsedCurrentPlan = useMemo(
+    () => parseWeeklyPlanList(currentPlanText, { periodStart, weekScope: 'current' }),
+    [currentPlanText, periodStart],
+  );
   const parsedPlan = useMemo(
-    () => parseWeeklyPlanList(planText, { periodStart }),
+    () => parseWeeklyPlanList(planText, { periodStart, weekScope: 'next' }),
     [planText, periodStart],
   );
 
@@ -280,33 +285,38 @@ export function SubmitWeeklyUpdateForm({
           original_due_date: item.original_due_date,
         };
       };
+      const typedDraft = (
+        item: { title: string; estimatedHours: number | null; dueDate: string | null },
+        keyPrefix: 'cw-new' | 'nw-new',
+      ): CommitmentDraft | null => {
+        const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+        if (match && structuredTaskIds.has(match.id)) return null;
+        if (structuredTitles.has(item.title.trim().toLowerCase())) return null;
+        const key = `${keyPrefix}:${item.title.trim().toLowerCase()}`;
+        const nextDue = dueDates[key] || item.dueDate || '';
+        const currentDue = match ? toDateInput(match.due_date) : '';
+        return {
+          key: `${keyPrefix}-${item.title}`,
+          task_id: match?.id ?? null,
+          title: item.title,
+          description: '',
+          estimated_hours: item.estimatedHours != null ? String(item.estimatedHours) : '',
+          due_date: nextDue,
+          commitment_type: (match ? 'existing' : 'new') as 'existing' | 'new',
+          revision_reason: match && currentDue && nextDue && nextDue !== currentDue ? (revisionReasons[key] || '') : '',
+        };
+      };
+
       const plan: CommitmentDraft[] = [
         ...carried.map((item) => trackerDraft(item, 'carried_forward', 'cf')),
         ...dueCurrentWeek.map((item) => trackerDraft(item, 'existing', 'cw')),
         ...dueThisWeek.map((item) => trackerDraft(item, 'existing', 'nw')),
+        ...parsedCurrentPlan.items
+          .map((item) => typedDraft(item, 'cw-new'))
+          .filter((item): item is CommitmentDraft => item != null),
         ...parsedPlan.items
-          .filter((item) => {
-            const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
-            if (match && structuredTaskIds.has(match.id)) return false;
-            if (structuredTitles.has(item.title.trim().toLowerCase())) return false;
-            return true;
-          })
-          .map((item) => {
-            const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
-            const key = item.title.trim().toLowerCase();
-            const nextDue = dueDates[key] || item.dueDate || '';
-            const currentDue = match ? toDateInput(match.due_date) : '';
-            return {
-              key: `p-${item.title}`,
-              task_id: match?.id ?? null,
-              title: item.title,
-              description: '',
-              estimated_hours: item.estimatedHours != null ? String(item.estimatedHours) : '',
-              due_date: nextDue,
-              commitment_type: (match ? 'existing' : 'new') as 'existing' | 'new',
-              revision_reason: match && currentDue && nextDue && nextDue !== currentDue ? (revisionReasons[key] || '') : '',
-            };
-          }),
+          .map((item) => typedDraft(item, 'nw-new'))
+          .filter((item): item is CommitmentDraft => item != null),
       ];
 
       for (const item of plan) {
@@ -333,7 +343,7 @@ export function SubmitWeeklyUpdateForm({
         }
       }
 
-      const mentionSource = [doneText, planText, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
+      const mentionSource = [doneText, currentPlanText, planText, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
 
       return weeklyUpdatesApi.upsert({
         period_start: periodStart,
@@ -488,7 +498,7 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">Current Week&apos;s Tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Incomplete tasks due this working week, including carried-forward work. Yellow means carried forward from an earlier week.
+            Incomplete tasks due this working week, including carried-forward work. Add new ones below — they are saved in the Task Tracker. Yellow means carried forward from an earlier week.
           </p>
         </div>
         <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
@@ -578,6 +588,58 @@ export function SubmitWeeklyUpdateForm({
             );
           })}
         </div>
+        <DailyUpdateEditor
+          value={currentPlanText}
+          onChange={setCurrentPlanText}
+          users={mentionUsers}
+          showExtras={false}
+          numberedList
+          placeholder={'Finish onboarding flow /friday #3h\nReview with @Name /thursday #1h'}
+        />
+        {parsedCurrentPlan.items.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-text-secondary">Review due dates</p>
+            {parsedCurrentPlan.items.map((item) => {
+              const key = `cw-new:${item.title.trim().toLowerCase()}`;
+              const due = dueDates[key] || item.dueDate || '';
+              const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+              const existingItem = existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+              const currentDue = toDateInput(match?.due_date || existingItem?.due_date);
+              const dateChanged = Boolean((match || existingItem) && currentDue && due && due !== currentDue);
+              const locked = isDueDateLocked(match ?? existingItem);
+              const needsRevision = dateChanged && locked;
+              return (
+                <div key={key} className="space-y-2">
+                  <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-start">
+                    <div>
+                      <p className="text-sm text-text-primary">{item.title}</p>
+                      {item.missingEffort && (
+                        <p className="text-2xs text-accent-danger">Add time required in the list, e.g. #3h or (4hrs)</p>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-muted pt-2">{item.timeLabel || formatHoursLabel(item.estimatedHours)}</p>
+                    <Input
+                      label={needsRevision ? 'Revised due date' : undefined}
+                      type="date"
+                      value={due}
+                      onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
+                      error={!due ? 'Required' : undefined}
+                    />
+                  </div>
+                  {needsRevision && (
+                    <Input
+                      label="Reason for changing"
+                      value={revisionReasons[key] || ''}
+                      onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
+                      placeholder="Why is the due date changing?"
+                      error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -642,10 +704,10 @@ export function SubmitWeeklyUpdateForm({
           <div className="space-y-2">
             <p className="text-xs font-medium text-text-secondary">Review due dates</p>
             {parsedPlan.items.map((item) => {
-              const key = item.title.trim().toLowerCase();
+              const key = `nw-new:${item.title.trim().toLowerCase()}`;
               const due = dueDates[key] || item.dueDate || '';
-              const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === key);
-              const existingItem = existing?.commitments.find((c) => c.title.trim().toLowerCase() === key);
+              const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+              const existingItem = existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
               const currentDue = toDateInput(match?.due_date || existingItem?.due_date);
               const dateChanged = Boolean((match || existingItem) && currentDue && due && due !== currentDue);
               const locked = isDueDateLocked(match ?? existingItem);
