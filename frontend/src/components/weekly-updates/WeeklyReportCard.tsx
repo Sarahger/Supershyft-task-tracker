@@ -96,11 +96,7 @@ function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number 
       <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{index}.</span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-1 md:gap-4">
-          <TaskTitle
-            title={item.title}
-            taskId={item.task_id}
-            className={delayed ? 'text-amber-400' : 'text-text-muted'}
-          />
+          <TaskTitle title={item.title} taskId={item.task_id} className="text-text-primary" />
           {timeLabel || doneLabel || dueLabel ? (
             <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">
               {timeLabel}

@@ -413,7 +413,6 @@ export function SubmitWeeklyUpdateForm({
                 ? format(parseISO(task.completion_date), 'd MMM')
                 : null;
               const delayed = Boolean(task.is_delayed || task.is_carried_forward);
-              const meta = [timeLabel, doneLabel ? `Completed ${doneLabel}` : null].filter(Boolean).join(' · ');
               return (
                 <li key={task.id} className="flex items-start gap-2">
                   <input
@@ -427,12 +426,20 @@ export function SubmitWeeklyUpdateForm({
                   <div className="min-w-0 flex-1 flex items-start justify-between gap-4">
                     <p className={clsx(
                       'text-[15px] leading-relaxed',
-                      !selected ? 'text-text-muted line-through' : delayed ? 'text-amber-400' : 'text-text-primary',
+                      selected ? 'text-text-primary' : 'text-text-muted line-through',
                     )}>
                       {task.title}
                     </p>
-                    {meta ? (
-                      <p className={clsx('shrink-0 text-xs tabular-nums pt-1 text-right', delayed ? 'text-amber-400' : 'text-text-muted')}>{meta}</p>
+                    {timeLabel || doneLabel ? (
+                      <p className="shrink-0 text-xs tabular-nums pt-1 text-right text-text-muted">
+                        {timeLabel}
+                        {timeLabel && doneLabel ? ' · ' : null}
+                        {doneLabel ? (
+                          <>
+                            <span className={delayed ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}
+                          </>
+                        ) : null}
+                      </p>
                     ) : null}
                   </div>
                 </li>
