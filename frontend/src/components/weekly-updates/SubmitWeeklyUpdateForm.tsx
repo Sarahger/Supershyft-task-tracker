@@ -173,6 +173,8 @@ export function SubmitWeeklyUpdateForm({
       completion_date?: string | null;
       estimated_hours?: number | null;
       source: 'suggested' | 'manual';
+      is_delayed?: boolean;
+      is_carried_forward?: boolean;
     }>();
     for (const item of existing?.completions ?? []) {
       if (!item.task_id) continue;
@@ -182,6 +184,8 @@ export function SubmitWeeklyUpdateForm({
         completion_date: item.completion_date,
         estimated_hours: item.estimated_hours,
         source: item.source === 'manual' ? 'manual' : 'suggested',
+        is_delayed: item.is_delayed,
+        is_carried_forward: item.is_carried_forward,
       });
     }
     for (const item of suggestions?.items ?? []) {
@@ -192,6 +196,8 @@ export function SubmitWeeklyUpdateForm({
         completion_date: item.completion_date,
         estimated_hours: item.estimated_hours,
         source: 'suggested',
+        is_delayed: item.is_delayed,
+        is_carried_forward: item.is_carried_forward,
       });
     }
     return [...byId.values()];
