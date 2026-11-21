@@ -1,29 +1,51 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addDays, format, parseISO } from 'date-fns';
 import { departmentsApi, weeklyUpdatesApi } from '../../services/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
 import { EmptyState, Skeleton } from '../ui/Skeleton';
 import { EmployeeProfileStrip } from './EmployeeProfileStrip';
-import { LegacyDailyNotes } from './LegacyDailyNotes';
 import { OverdueRevisionModal } from './OverdueRevisionModal';
 import { SubmitWeeklyUpdateForm } from './SubmitWeeklyUpdateForm';
 import { WeeklyReportCard } from './WeeklyReportCard';
-import { mondayOf } from '../../lib/weeklyPlanParse';
+import {
+  mondayOf,
+  monthKeyFromDate,
+  monthSelectOptions,
+  weeksInMonth,
+} from '../../lib/weeklyPlanParse';
 import type { WeeklyCommitment } from '../../types';
 
 function isoMonday(day: Date = new Date()) {
   return format(mondayOf(day), 'yyyy-MM-dd');
 }
 
+function monthKeyFromWeekStart(weekStartIso: string): string {
+  try {
+    return format(parseISO(weekStartIso), 'yyyy-MM');
+  } catch {
+    return monthKeyFromDate();
+  }
+}
+
 export function WeeklyUpdatesPanel() {
   const { user } = useAuth();
   const [departmentId, setDepartmentId] = useState<number | ''>('');
   const [weekStart, setWeekStart] = useState(isoMonday());
+  const [selectedMonth, setSelectedMonth] = useState(() => monthKeyFromDate());
   const [selectedUserId, setSelectedUserId] = useState<number | null>(user?.id ?? null);
   const [writing, setWriting] = useState(false);
   const [reviseItem, setReviseItem] = useState<WeeklyCommitment | null>(null);
   const [didAlignWriteWeek, setDidAlignWriteWeek] = useState(false);
+
+  const monthOptions = useMemo(() => monthSelectOptions(), []);
+  const weekOptions = useMemo(() => {
+    const [yearStr, monthStr] = selectedMonth.split('-');
+    const year = Number(yearStr);
+    const monthIndex = Number(monthStr) - 1;
+    if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return [];
+    return weeksInMonth(year, monthIndex);
+  }, [selectedMonth]);
 
   const params = {
     week_start: weekStart,
@@ -57,47 +79,71 @@ export function WeeklyUpdatesPanel() {
   });
 
   useEffect(() => {
-    if (!history?.focus_week) return;
-    const el = document.getElementById(`week-${history.focus_week}`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [history?.focus_week, selectedUserId]);
-
-  useEffect(() => {
     if (!history?.writable_period_start || didAlignWriteWeek) return;
     if (weekStart === isoMonday() && history.writable_period_start < weekStart) {
       setWeekStart(history.writable_period_start);
+      setSelectedMonth(monthKeyFromWeekStart(history.writable_period_start));
     }
     setDidAlignWriteWeek(true);
   }, [history?.writable_period_start, weekStart, didAlignWriteWeek]);
 
+  // Keep the week select valid when the month changes or weekStart is outside the month.
+  useEffect(() => {
+    if (!weekOptions.length) return;
+    if (weekOptions.some((w) => w.monday === weekStart)) return;
+    const todayMonday = isoMonday();
+    const preferred =
+      weekOptions.find((w) => w.monday === todayMonday)?.monday
+      ?? weekOptions[0]?.monday;
+    if (preferred) setWeekStart(preferred);
+  }, [weekOptions, weekStart]);
+
   const selected = employees.find((e) => e.id === selectedUserId);
   const isOwn = selectedUserId === user?.id;
   const writablePeriod = history?.writable_period_start ?? history?.current_period_start ?? weekStart;
-  const selectedReport = history?.reports.find((r) => r.period_start === weekStart);
+  const selectedReport = history?.reports.find((r) => r.period_start === weekStart) ?? null;
   const canWriteSelected = isOwn && Boolean(
     selectedReport?.editable || (!selectedReport && weekStart === writablePeriod),
   );
-  const writePeriod = canWriteSelected ? weekStart : writablePeriod;
-  const currentReport = history?.reports.find((r) => r.period_start === writePeriod);
-  const canWrite = isOwn && Boolean(currentReport?.editable || (!currentReport && writePeriod === writablePeriod));
+  const canWrite = canWriteSelected;
   const writeWeekEndIso =
-    writePeriod === history?.writable_period_start && history.writable_period_end
+    weekStart === history?.writable_period_start && history.writable_period_end
       ? history.writable_period_end
-      : writePeriod === history?.current_period_start && history.current_period_end
+      : weekStart === history?.current_period_start && history.current_period_end
         ? history.current_period_end
-        : format(addDays(parseISO(writePeriod), 6), 'yyyy-MM-dd');
+        : format(addDays(parseISO(weekStart), 6), 'yyyy-MM-dd');
   const writeWeekEnd = format(parseISO(writeWeekEndIso), 'MMMM d, yyyy');
-  const weekLabel = `${format(parseISO(writePeriod), 'MMMM d')} – ${writeWeekEnd}`;
+  const weekLabel = `${format(parseISO(weekStart), 'MMMM d')} – ${writeWeekEnd}`;
   const waitingOnPreviousLock = isOwn && weekStart > writablePeriod;
   const liveCurrentWeek = history?.current_week_tasks ?? history?.outstanding ?? [];
   const liveNextWeek = history?.next_week_tasks ?? history?.due_this_week ?? [];
+  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport && !waitingOnPreviousLock;
+  const showSelectedCard = Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
 
-  const jumpToWeek = (value: string) => {
-    if (!value) return;
-    const monday = isoMonday(parseISO(value));
+  const jumpToWeek = (mondayIso: string) => {
+    if (!mondayIso) return;
+    const monday = isoMonday(parseISO(mondayIso));
+    setSelectedMonth(monthKeyFromWeekStart(monday));
     setWeekStart(monday);
     requestAnimationFrame(() => {
       document.getElementById(`week-${monday}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const onMonthChange = (monthValue: string) => {
+    setSelectedMonth(monthValue);
+    const [yearStr, monthStr] = monthValue.split('-');
+    const weeks = weeksInMonth(Number(yearStr), Number(monthStr) - 1);
+    if (!weeks.length) return;
+    const todayMonday = isoMonday();
+    const todayMonth = monthKeyFromDate();
+    const nextWeek =
+      monthValue === todayMonth
+        ? (weeks.find((w) => w.monday === todayMonday) ?? weeks[weeks.length - 1])
+        : weeks[0];
+    setWeekStart(nextWeek.monday);
+    requestAnimationFrame(() => {
+      document.getElementById(`week-${nextWeek.monday}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
 
@@ -136,13 +182,28 @@ export function WeeklyUpdatesPanel() {
               </select>
             </label>
             <label className="block">
-              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Jump to week</span>
-              <input
-                type="date"
+              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Month</span>
+              <select
                 className="input w-full text-sm"
-                value={weekStart}
+                value={selectedMonth}
+                onChange={(e) => onMonthChange(e.target.value)}
+              >
+                {monthOptions.map((month) => (
+                  <option key={month.value} value={month.value}>{month.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Week</span>
+              <select
+                className="input w-full text-sm"
+                value={weekOptions.some((w) => w.monday === weekStart) ? weekStart : (weekOptions[0]?.monday ?? '')}
                 onChange={(e) => jumpToWeek(e.target.value)}
-              />
+              >
+                {weekOptions.map((week) => (
+                  <option key={week.monday} value={week.monday}>{week.label}</option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -179,7 +240,7 @@ export function WeeklyUpdatesPanel() {
             </div>
           )}
 
-          {isOwn && canWrite && !writing && !currentReport && !waitingOnPreviousLock && (
+          {showUnwrittenCard && (
             <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -239,11 +300,11 @@ export function WeeklyUpdatesPanel() {
             </div>
           )}
 
-          {writing && isOwn && (
+          {writing && isOwn && canWrite && (
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5 sm:p-6">
               <SubmitWeeklyUpdateForm
-                periodStart={writePeriod}
-                existing={currentReport}
+                periodStart={weekStart}
+                existing={selectedReport ?? undefined}
                 onClose={() => setWriting(false)}
               />
             </div>
@@ -253,58 +314,53 @@ export function WeeklyUpdatesPanel() {
           {historyError && (
             <EmptyState title="Could not load weekly updates" description="Try again in a moment." />
           )}
-          {!historyLoading && history && history.reports.length === 0 && !writing && !(isOwn && canWrite && !waitingOnPreviousLock) && (
+          {!historyLoading && history && !showSelectedCard && !showUnwrittenCard && !writing && (
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5">
               <p className="text-sm text-text-muted">
                 {isOwn
                   ? waitingOnPreviousLock
                     ? "This week's update opens at 2:00 PM Monday, after last week's update is locked."
-                    : 'No weekly update yet — write one when you are ready.'
-                  : `${selected?.first_name ?? 'This person'} has no weekly updates yet.`}
+                    : 'No weekly update for this week yet.'
+                  : `${selected?.first_name ?? 'This person'} has no weekly update for this week.`}
               </p>
             </div>
           )}
 
-          {history?.reports
-            .filter((report) => !(writing && report.period_start === writePeriod))
-            .map((report) => {
-              const live = report.period_start === writablePeriod || report.is_current;
-              const currentIds = new Set((report.current_week_tasks ?? []).map((c) => c.task_id).filter(Boolean));
-              const nextIds = new Set((report.next_week_tasks ?? report.commitments).map((c) => c.task_id).filter(Boolean));
-              const merged = live
-                ? {
-                    ...report,
-                    current_week_tasks: [
-                      ...liveCurrentWeek.filter((c) => c.task_id && !currentIds.has(c.task_id)),
-                      ...(report.current_week_tasks ?? []),
-                    ],
-                    next_week_tasks: [
-                      ...liveNextWeek.filter((c) => c.task_id && !nextIds.has(c.task_id)),
-                      ...(report.next_week_tasks ?? report.commitments),
-                    ],
-                  }
-                : {
-                    ...report,
-                    current_week_tasks: report.current_week_tasks ?? [],
-                    next_week_tasks: report.next_week_tasks ?? report.commitments,
-                  };
-              const openCount =
-                (merged.current_week_tasks?.length ?? 0) + (merged.next_week_tasks?.length ?? 0);
-              return (
-                <WeeklyReportCard
-                  key={report.id}
-                  report={merged}
-                  author={author}
-                  onEdit={isOwn && canWrite && !writing && report.period_start === writePeriod
-                    ? () => setWriting(true)
-                    : undefined}
-                  actionLabel={report.status === 'draft' && openCount === 0 ? 'Write update' : 'Edit'}
-                  onRevise={isOwn && report.editable ? setReviseItem : undefined}
-                />
-              );
-            })}
-
-          {history && <LegacyDailyNotes notes={history.legacy_daily_notes} />}
+          {showSelectedCard && selectedReport && (() => {
+            const report = selectedReport;
+            const live = report.period_start === writablePeriod || report.is_current;
+            const currentIds = new Set((report.current_week_tasks ?? []).map((c) => c.task_id).filter(Boolean));
+            const nextIds = new Set((report.next_week_tasks ?? report.commitments).map((c) => c.task_id).filter(Boolean));
+            const merged = live
+              ? {
+                  ...report,
+                  current_week_tasks: [
+                    ...liveCurrentWeek.filter((c) => c.task_id && !currentIds.has(c.task_id)),
+                    ...(report.current_week_tasks ?? []),
+                  ],
+                  next_week_tasks: [
+                    ...liveNextWeek.filter((c) => c.task_id && !nextIds.has(c.task_id)),
+                    ...(report.next_week_tasks ?? report.commitments),
+                  ],
+                }
+              : {
+                  ...report,
+                  current_week_tasks: report.current_week_tasks ?? [],
+                  next_week_tasks: report.next_week_tasks ?? report.commitments,
+                };
+            const openCount =
+              (merged.current_week_tasks?.length ?? 0) + (merged.next_week_tasks?.length ?? 0);
+            return (
+              <WeeklyReportCard
+                key={report.id}
+                report={merged}
+                author={author}
+                onEdit={isOwn && canWrite && !writing ? () => setWriting(true) : undefined}
+                actionLabel={report.status === 'draft' && openCount === 0 ? 'Write update' : 'Edit'}
+                onRevise={isOwn && report.editable ? setReviseItem : undefined}
+              />
+            );
+          })()}
         </section>
       </div>
 

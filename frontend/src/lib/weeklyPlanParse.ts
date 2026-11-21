@@ -321,6 +321,74 @@ export function mondayOf(day: Date = new Date()): Date {
   return copy;
 }
 
+/** True for every Sunday and the 2nd & 4th Saturdays of the month (matches backend). */
+export function isWeekendOff(day: Date): boolean {
+  const weekday = day.getDay();
+  if (weekday === 0) return true;
+  if (weekday === 6) {
+    const saturdayOrdinal = Math.floor((day.getDate() - 1) / 7) + 1;
+    return saturdayOrdinal === 2 || saturdayOrdinal === 4;
+  }
+  return false;
+}
+
+/** Last Mon–Sun day that is still a working day (Fri when 2nd/4th Sat is off). */
+export function workingWeekEnd(monday: Date): Date {
+  const start = mondayOf(monday);
+  let last = start;
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = addDays(start, offset);
+    if (!isWeekendOff(day)) last = day;
+  }
+  return last;
+}
+
+export interface MonthWeekOption {
+  monday: string;
+  end: string;
+  label: string;
+}
+
+/** Working weeks that overlap the given calendar month. */
+export function weeksInMonth(year: number, monthIndex: number): MonthWeekOption[] {
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0);
+  let cursor = mondayOf(monthStart);
+  const weeks: MonthWeekOption[] = [];
+  while (cursor <= monthEnd) {
+    const end = workingWeekEnd(cursor);
+    if (end >= monthStart) {
+      const mondayIso = format(cursor, 'yyyy-MM-dd');
+      const endIso = format(end, 'yyyy-MM-dd');
+      const sameMonth = cursor.getMonth() === end.getMonth();
+      const label = sameMonth
+        ? `${format(cursor, 'd')}–${format(end, 'd')}`
+        : `${format(cursor, 'd MMM')} – ${format(end, 'd MMM')}`;
+      weeks.push({ monday: mondayIso, end: endIso, label });
+    }
+    cursor = addDays(cursor, 7);
+  }
+  return weeks;
+}
+
+export function monthKeyFromDate(day: Date = new Date()): string {
+  return format(day, 'yyyy-MM');
+}
+
+/** Month options spanning ~12 months back and 3 months forward. */
+export function monthSelectOptions(now: Date = new Date()): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  const start = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+  for (let i = 0; i < 16; i += 1) {
+    const month = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    options.push({
+      value: format(month, 'yyyy-MM'),
+      label: format(month, 'MMMM yyyy'),
+    });
+  }
+  return options;
+}
+
 export function toDateInput(value?: string | null): string {
   if (!value) return '';
   try {
