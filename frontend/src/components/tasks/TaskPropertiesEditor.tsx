@@ -81,22 +81,24 @@ function pendingRevisedDue(form: TaskFormState, task: Task, dueLocked: boolean) 
   return Boolean(nextRevised && nextRevised !== currentDue);
 }
 
-function revisionNeedsReason(form: TaskFormState, task: Task, dueLocked: boolean) {
-  return pendingRevisedDue(form, task, dueLocked) && !form.revision_reason.trim();
-}
-
 function canAutosave(form: TaskFormState) {
   if (!form.title.trim()) return false;
   if (form.time_required.trim() && parseDurationInput(form.time_required) == null) return false;
   return true;
 }
 
-async function persistTaskProperties(taskId: number, snapshot: TaskFormState, currentTask: Task) {
+async function persistTaskProperties(
+  taskId: number,
+  snapshot: TaskFormState,
+  currentTask: Task,
+  options?: { includeRevision?: boolean },
+) {
   const locked = isTaskDueDateLocked(currentTask);
   const currentDue = toDateInput(currentTask.due_date);
   const nextRevised = snapshot.revised_due_date.trim();
   const reason = snapshot.revision_reason.trim();
-  if (locked && nextRevised && nextRevised !== currentDue && reason) {
+  // Deadline revisions are explicit-only — never auto-capture while typing the reason.
+  if (options?.includeRevision && locked && nextRevised && nextRevised !== currentDue && reason) {
     await tasksApi.reviseDeadline(taskId, {
       reason,
       new_due_date: new Date(`${nextRevised}T12:00:00`).toISOString(),
@@ -163,19 +165,26 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
   });
 
-  const isDirty = useMemo(() => !sameForm(form, savedForm), [form, savedForm]);
+  const isCoreDirty = useMemo(() => !sameCore(form, savedForm), [form, savedForm]);
+  const revisionPending = useMemo(
+    () => dueLocked && Boolean(form.revised_due_date.trim()) && form.revised_due_date.trim() !== toDateInput(task.due_date),
+    [dueLocked, form.revised_due_date, task.due_date],
+  );
 
   const saveMutation = useMutation({
     mutationFn: async (snapshot: TaskFormState) => {
-      await persistTaskProperties(taskId, snapshot, taskRef.current);
+      // Autosave never includes deadline revisions — those require the Save button.
+      await persistTaskProperties(taskId, snapshot, taskRef.current, { includeRevision: false });
       return snapshot;
     },
     onSuccess: (_data, snapshot) => {
-      setSavedForm(snapshot);
+      setSavedForm((prev) => ({
+        ...snapshot,
+        // Keep any in-progress revision draft the user is still typing.
+        revised_due_date: prev.revised_due_date,
+        revision_reason: prev.revision_reason,
+      }));
       setTimeRequiredError('');
-      if (!revisionNeedsReason(snapshot, taskRef.current, isTaskDueDateLocked(taskRef.current))) {
-        setRevisionError('');
-      }
       setJustSaved(true);
       qc.invalidateQueries({ queryKey: ['task', taskId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
@@ -192,47 +201,82 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     },
     onSettled: (_data, _error, snapshot) => {
       const latest = formRef.current;
-      if (sameForm(latest, snapshot)) return;
+      if (sameCore(latest, snapshot)) return;
       if (!canAutosave(latest)) return;
-      const currentTask = taskRef.current;
-      const incompleteRevision = revisionNeedsReason(latest, currentTask, isTaskDueDateLocked(currentTask));
-      if (incompleteRevision && sameCore(latest, snapshot)) return;
       saveMutation.mutate(latest);
+    },
+  });
+
+  const revisionMutation = useMutation({
+    mutationFn: async (snapshot: TaskFormState) => {
+      await persistTaskProperties(taskId, snapshot, taskRef.current, { includeRevision: true });
+      return snapshot;
+    },
+    onSuccess: (_data, snapshot) => {
+      const cleared = {
+        ...snapshot,
+        revision_reason: '',
+        revised_due_date: snapshot.revised_due_date,
+      };
+      setForm(cleared);
+      setSavedForm(cleared);
+      setRevisionError('');
+      setJustSaved(true);
+      toast.success('Due date updated');
+      qc.invalidateQueries({ queryKey: ['task', taskId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['my-tasks'] });
+      qc.invalidateQueries({ queryKey: ['weekly-updates'] });
+    },
+    onError: (err: unknown) => {
+      const message =
+        (err as Error)?.message
+        || (err as { response?: { data?: { detail?: string; message?: string } } })?.response?.data?.detail
+        || (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || 'Failed to update due date';
+      toast.error(typeof message === 'string' ? message : 'Failed to update due date');
     },
   });
 
   const mutateSave = saveMutation.mutate;
 
   const flushSave = (snapshot: TaskFormState = formRef.current) => {
-    if (sameForm(snapshot, savedFormRef.current)) return;
+    if (sameCore(snapshot, savedFormRef.current)) return;
     if (!canAutosave(snapshot)) return;
-    const currentTask = taskRef.current;
-    if (revisionNeedsReason(snapshot, currentTask, isTaskDueDateLocked(currentTask)) && sameCore(snapshot, savedFormRef.current)) {
-      return;
-    }
     mutateSave(snapshot);
   };
 
+  const saveDeadlineRevision = () => {
+    const snapshot = formRef.current;
+    if (!snapshot.revised_due_date.trim()) {
+      setRevisionError('Pick a revised due date');
+      return;
+    }
+    if (snapshot.revised_due_date.trim() === toDateInput(taskRef.current.due_date)) {
+      setRevisionError('Choose a new due date that is different from the current one');
+      return;
+    }
+    if (!snapshot.revision_reason.trim()) {
+      setRevisionError('Add a reason for changing the due date');
+      return;
+    }
+    setRevisionError('');
+    revisionMutation.mutate(snapshot);
+  };
+
   useEffect(() => {
-    if (!isDirty) return;
+    if (!isCoreDirty) return;
     if (!canAutosave(form)) {
       if (form.time_required.trim() && parseDurationInput(form.time_required) == null) {
         setTimeRequiredError('Use a duration like 1h or 30m');
       }
       return;
     }
-    const incompleteRevision = revisionNeedsReason(form, task, dueLocked);
-    if (incompleteRevision) {
-      setRevisionError('Add a reason for changing the due date');
-      if (sameCore(form, savedForm)) return;
-    } else {
-      setRevisionError('');
-    }
     const timer = window.setTimeout(() => {
       mutateSave(form);
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [form, isDirty, dueLocked, task, savedForm, mutateSave]);
+  }, [form, isCoreDirty, mutateSave]);
 
   useEffect(() => {
     if (!justSaved) return;
@@ -245,10 +289,10 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
       const latest = formRef.current;
       const saved = savedFormRef.current;
       const currentTask = taskRef.current;
-      if (sameForm(latest, saved)) return;
+      // Unmount autosave keeps core fields only — never auto-submit a partial deadline revision.
+      if (sameCore(latest, saved)) return;
       if (!canAutosave(latest)) return;
-      if (revisionNeedsReason(latest, currentTask, isTaskDueDateLocked(currentTask)) && sameCore(latest, saved)) return;
-      void persistTaskProperties(taskId, latest, currentTask).catch(() => undefined);
+      void persistTaskProperties(taskId, latest, currentTask, { includeRevision: false }).catch(() => undefined);
     };
   }, [taskId]);
 
@@ -403,28 +447,42 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
           </p>
         </div>
         {dueLocked && (
-          <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Revised due date"
-              type="date"
-              value={form.revised_due_date}
-              onChange={(e) => {
-                setRevisionError('');
-                setForm({ ...form, revised_due_date: e.target.value });
-              }}
-              onBlur={() => flushSave()}
-            />
-            <Input
-              label="Reason for changing"
-              value={form.revision_reason}
-              onChange={(e) => {
-                setRevisionError('');
-                setForm({ ...form, revision_reason: e.target.value });
-              }}
-              onBlur={() => flushSave()}
-              placeholder="Why is the due date changing?"
-              error={revisionError || undefined}
-            />
+          <div className="sm:col-span-2 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Revised due date"
+                type="date"
+                value={form.revised_due_date}
+                onChange={(e) => {
+                  setRevisionError('');
+                  setForm({ ...form, revised_due_date: e.target.value });
+                }}
+              />
+              <Input
+                label="Reason for changing"
+                value={form.revision_reason}
+                onChange={(e) => {
+                  setRevisionError('');
+                  setForm({ ...form, revision_reason: e.target.value });
+                }}
+                placeholder="Why is the due date changing?"
+                error={revisionError || undefined}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <p className="text-2xs text-text-muted mr-auto">
+                Due date changes are saved only when you click Update.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                loading={revisionMutation.isPending}
+                disabled={!revisionPending || !form.revision_reason.trim() || revisionMutation.isPending}
+                onClick={saveDeadlineRevision}
+              >
+                Update due date
+              </Button>
+            </div>
           </div>
         )}
         {(task.deadline_revisions && task.deadline_revisions.length > 0) && (
