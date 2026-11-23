@@ -397,8 +397,8 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h2 className="text-sm font-medium text-text-primary">Write weekly update</h2>
           <p className="text-xs text-text-muted mt-0.5">
-            Week of {carry?.planning_start && carry?.planning_end
-              ? `${format(parseISO(carry.planning_start), 'd MMM')} – ${format(parseISO(carry.planning_end), 'd MMM yyyy')}`
+            Week of {carry?.period_start && carry?.period_end
+              ? `${format(parseISO(carry.period_start), 'd MMM')} – ${format(parseISO(carry.period_end), 'd MMM yyyy')}`
               : format(parseISO(periodStart), 'd MMM yyyy')} · Type @ to tag someone
           </p>
         </div>
