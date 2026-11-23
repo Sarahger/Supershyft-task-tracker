@@ -1,4 +1,4 @@
-"""Periodic maintenance: archive completed tasks, purge old deleted tasks."""
+"""Periodic maintenance: archive completed tasks after 30 days, purge archived after 6 months."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ from app.services.storage import delete_stored_file
 
 logger = logging.getLogger(__name__)
 
-COMPLETED_RETENTION_DAYS = 7
-DELETED_RETENTION_DAYS = 30
+COMPLETED_RETENTION_DAYS = 30
+DELETED_RETENTION_DAYS = 180
 _CLEANUP_MIN_INTERVAL_SEC = 60 * 60  # at most once per hour per process
 _last_cleanup_at = 0.0
 _cleanup_lock = threading.Lock()

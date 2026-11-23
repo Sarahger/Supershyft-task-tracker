@@ -56,8 +56,8 @@ class Settings(BaseSettings):
     MEET_POOL_AUTO_RELEASE_MINUTES: int = 60
     TASK_CALL_BUFFER_MINUTES: int = 5
 
-    COMPLETED_RETENTION_DAYS: int = 7
-    DELETED_RETENTION_DAYS: int = 30
+    COMPLETED_RETENTION_DAYS: int = 30
+    DELETED_RETENTION_DAYS: int = 180
     CRON_SECRET: str = ""
 
     # Telegram bot (set in Vercel / local .env — never commit real values)

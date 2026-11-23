@@ -32,7 +32,7 @@ def cron_task_retention(
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
 ):
-    """Daily job: archive completed (>7d) and permanently delete archived (>30d)."""
+    """Daily job: archive completed (>30d) and permanently delete archived (>180d / 6 months)."""
     _verify_cron(authorization)
     result = run_task_retention_cleanup(db)
     return APIResponse(

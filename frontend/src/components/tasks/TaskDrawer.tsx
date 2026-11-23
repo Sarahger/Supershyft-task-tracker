@@ -404,27 +404,29 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
             <div className="pr-10 mb-6">
               <h1 className="text-2xl font-semibold text-text-primary leading-snug tracking-tight">{task.title}</h1>
               <span className="inline-flex items-center mt-3 px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
-                Deleted
+                Archived
               </span>
             </div>
             <div className="space-y-5">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Reason for deletion</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Reason</p>
                 <p className="text-sm text-text-primary leading-relaxed">
                   {task.deletion_reason || 'No reason provided'}
                 </p>
               </div>
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Deleted by</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Archived by</p>
                 <p className="text-sm text-text-primary">
                   {task.deleted_by
                     ? `${task.deleted_by.first_name} ${task.deleted_by.last_name}`
-                    : 'Unknown'}
+                    : task.deletion_reason?.toLowerCase().startsWith('auto-archived')
+                      ? 'System'
+                      : 'Unknown'}
                 </p>
               </div>
               {task.deleted_at && (
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Deleted on</p>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Archived on</p>
                   <p className="text-sm text-text-primary">
                     {format(new Date(task.deleted_at), 'MMM d, yyyy · h:mm a')}
                   </p>

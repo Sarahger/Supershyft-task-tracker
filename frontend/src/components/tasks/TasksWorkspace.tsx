@@ -31,8 +31,8 @@ const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ 
 
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
-/** Top pills: all departments, a specific department, or deleted. */
-export type DeptTab = 'all' | 'deleted' | number;
+/** Top pills: all departments, a specific department, or archived. */
+export type DeptTab = 'all' | 'archived' | number;
 
 interface TasksWorkspaceProps {
   title: string;
@@ -158,7 +158,7 @@ export function TasksWorkspace({
     };
   }, [calendarWeek]);
 
-  const isDeletedView = deptTab === 'deleted' && showQuickFilters;
+  const isDeletedView = deptTab === 'archived' && showQuickFilters;
   const selectedDepartmentId = typeof deptTab === 'number' ? deptTab : undefined;
 
   const sharedListFilters = useMemo(() => ({
@@ -397,14 +397,14 @@ export function TasksWorkspace({
     const options: { id: string; label: string }[] = [
       { id: 'all', label: 'All' },
       ...depts.map((d) => ({ id: String(d.id), label: d.name })),
-      { id: 'deleted', label: 'Deleted' },
+      { id: 'archived', label: 'Archived' },
     ];
     return options;
   }, [departments]);
 
   const selectDeptTab = (id: string) => {
     setPage(1);
-    if (id === 'all' || id === 'deleted') {
+    if (id === 'all' || id === 'archived') {
       setDeptTab(id);
       return;
     }

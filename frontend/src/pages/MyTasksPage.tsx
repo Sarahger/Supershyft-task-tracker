@@ -11,6 +11,7 @@ import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
+import { DeletedTasksList } from '../components/tasks/DeletedTasksList';
 import { FloatingActionButton } from '../components/layout/FloatingActionButton';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
@@ -116,6 +117,7 @@ export default function MyTasksPage() {
   const allowDelete = canDeleteTasks(user);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const deleteMutation = useDeleteTaskMutation((taskId) => {
     setDeleteTarget(null);
     setSelectedIds((prev) => {
@@ -133,6 +135,23 @@ export default function MyTasksPage() {
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => tasksApi.my().then((r) => r.data.data),
+    enabled: !showArchived,
+  });
+
+  const { data: archivedTasks, isLoading: archivedLoading } = useQuery({
+    queryKey: ['my-tasks', 'archived', user?.id],
+    enabled: showArchived && !!user?.id,
+    queryFn: async () => {
+      const res = await tasksApi.list({
+        archived: true,
+        assignee_id: user!.id,
+        page: 1,
+        page_size: 200,
+        sort_by: 'deleted_at',
+        sort_order: 'desc',
+      });
+      return res.data.data.items;
+    },
   });
 
   const statusMutation = useMutation({
@@ -162,7 +181,9 @@ export default function MyTasksPage() {
 
   const groups = useMemo(() => groupTasksByDue(tasks || []), [tasks]);
 
-  if (isLoading) return <TaskDatabaseSkeleton />;
+  if ((!showArchived && isLoading) || (showArchived && archivedLoading)) {
+    return <TaskDatabaseSkeleton />;
+  }
 
   const openCount = (tasks || []).filter((t) => !['completed', 'cancelled'].includes(t.status)).length;
 
@@ -179,79 +200,120 @@ export default function MyTasksPage() {
       <header className="mb-8 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
-          <p className="text-sm text-text-muted mt-0.5">{openCount} open</p>
+          <p className="text-sm text-text-muted mt-0.5">
+            {showArchived
+              ? `${archivedTasks?.length ?? 0} archived`
+              : `${openCount} open`}
+          </p>
         </div>
-        <Button
-          onClick={() => openCreate()}
-          size="sm"
-          className="h-9 px-2.5 py-0 shrink-0 gap-1.5"
-          aria-label="New task"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">New task</span>
-        </Button>
+        {!showArchived && (
+          <Button
+            onClick={() => openCreate()}
+            size="sm"
+            className="h-9 px-2.5 py-0 shrink-0 gap-1.5"
+            aria-label="New task"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">New task</span>
+          </Button>
+        )}
       </header>
 
-      {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 px-3 py-2 mb-4 rounded-md bg-surface-subtle border border-dark-border max-md:hidden">
-          <span className="text-sm text-text-secondary">{selectedIds.size} selected</span>
-          <select
-            className="input py-1 text-xs w-auto"
-            defaultValue=""
-            onChange={(e) => {
-              if (!e.target.value) return;
-              bulkMutation.mutate({ ids: Array.from(selectedIds), status: e.target.value });
-              e.target.value = '';
-            }}
-          >
-            <option value="" disabled>Change status</option>
-            {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => setSelectedIds(new Set())}
-            className="toolbar-btn ml-auto text-text-muted"
-          >
-            <X className="h-3.5 w-3.5" /> Clear
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-1.5 mb-5 overflow-x-auto flex-nowrap pb-0.5 -mx-1 px-1">
+        {(
+          [
+            { id: 'active', label: 'Active' },
+            { id: 'archived', label: 'Archived' },
+          ] as const
+        ).map((opt) => {
+          const active = showArchived ? opt.id === 'archived' : opt.id === 'active';
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => {
+                setShowArchived(opt.id === 'archived');
+                setSelectedIds(new Set());
+              }}
+              className={clsx(
+                'shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors',
+                active
+                  ? 'bg-accent-primary text-white'
+                  : 'bg-dark-card border border-dark-border text-text-secondary hover:bg-dark-hover',
+              )}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
 
-      {!tasks?.length ? (
-        <EmptyState
-          title="Nothing assigned yet"
-          description="Create a task or wait for one to be assigned to you."
-          action={
-            <Button onClick={() => openCreate()} className="mt-2 gap-1.5">
-              <Plus className="h-4 w-4" />
-              New task
-            </Button>
-          }
-        />
+      {showArchived ? (
+        <DeletedTasksList tasks={archivedTasks || []} onTaskClick={openTask} />
       ) : (
         <>
-          {groups.today.length > 0 && <Section title="Today's tasks" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
-          {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
-          {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} {...listProps} /></Section>}
-          {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} {...listProps} /></Section>}
-          {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} {...listProps} /></Section>}
-          {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} {...listProps} /></Section>}
-          {groups.completed.length > 0 && (
-            <CollapsibleSection title="Completed" count={groups.completed.length} defaultOpen={false}>
-              <TaskList tasks={groups.completed} {...listProps} />
-            </CollapsibleSection>
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 px-3 py-2 mb-4 rounded-md bg-surface-subtle border border-dark-border max-md:hidden">
+              <span className="text-sm text-text-secondary">{selectedIds.size} selected</span>
+              <select
+                className="input py-1 text-xs w-auto"
+                defaultValue=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  bulkMutation.mutate({ ids: Array.from(selectedIds), status: e.target.value });
+                  e.target.value = '';
+                }}
+              >
+                <option value="" disabled>Change status</option>
+                {SELECTABLE_STATUS_OPTIONS.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="toolbar-btn ml-auto text-text-muted"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            </div>
           )}
-          {groups.cancelled.length > 0 && (
-            <CollapsibleSection title="Cancelled" count={groups.cancelled.length} defaultOpen={false}>
-              <TaskList tasks={groups.cancelled} {...listProps} />
-            </CollapsibleSection>
+
+          {!tasks?.length ? (
+            <EmptyState
+              title="Nothing assigned yet"
+              description="Create a task or wait for one to be assigned to you."
+              action={
+                <Button onClick={() => openCreate()} className="mt-2 gap-1.5">
+                  <Plus className="h-4 w-4" />
+                  New task
+                </Button>
+              }
+            />
+          ) : (
+            <>
+              {groups.today.length > 0 && <Section title="Today's tasks" count={groups.today.length}><TaskList tasks={groups.today} {...listProps} /></Section>}
+              {groups.thisWeek.length > 0 && <Section title="This week" count={groups.thisWeek.length}><TaskList tasks={groups.thisWeek} {...listProps} /></Section>}
+              {groups.overdue.length > 0 && <Section title="Overdue" count={groups.overdue.length}><TaskList tasks={groups.overdue} {...listProps} /></Section>}
+              {groups.blocked.length > 0 && <Section title="Blocked" count={groups.blocked.length}><TaskList tasks={groups.blocked} {...listProps} /></Section>}
+              {groups.review.length > 0 && <Section title="Waiting for review" count={groups.review.length}><TaskList tasks={groups.review} {...listProps} /></Section>}
+              {groups.later.length > 0 && <Section title="Upcoming" count={groups.later.length}><TaskList tasks={groups.later} {...listProps} /></Section>}
+              {groups.completed.length > 0 && (
+                <CollapsibleSection title="Completed" count={groups.completed.length} defaultOpen={false}>
+                  <TaskList tasks={groups.completed} {...listProps} />
+                </CollapsibleSection>
+              )}
+              {groups.cancelled.length > 0 && (
+                <CollapsibleSection title="Cancelled" count={groups.cancelled.length} defaultOpen={false}>
+                  <TaskList tasks={groups.cancelled} {...listProps} />
+                </CollapsibleSection>
+              )}
+            </>
           )}
         </>
       )}
 
-      {isMobile && <FloatingActionButton onClick={() => openCreate()} />}
+      {isMobile && !showArchived && <FloatingActionButton onClick={() => openCreate()} />}
 
       {allowDelete && (
       <DeleteTaskModal
