@@ -789,7 +789,25 @@ class WeeklyUpdateService:
             .all()
         )
         report_views = [self._report_view(r) for r in reports]
-        self._merge_live_task_sections(report_views, current_week_tasks, next_week_tasks, writable)
+        # Merge live Current/Next onto every still-editable report. On Monday morning
+        # last week stays editable until 2PM while the new week is also writable —
+        # each needs buckets relative to its own period_start.
+        for view in report_views:
+            if not view.get("editable"):
+                continue
+            start = date.fromisoformat(view["period_start"])
+            if start == writable:
+                self._merge_live_task_sections(
+                    report_views, current_week_tasks, next_week_tasks, start
+                )
+            else:
+                buckets = self.categorize_open_tasks(user, start)
+                self._merge_live_task_sections(
+                    report_views,
+                    buckets.get("current_week_tasks") or [],
+                    buckets.get("next_week_tasks") or [],
+                    start,
+                )
         return {
             "user": {
                 **(_author(user) or {}),

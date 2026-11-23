@@ -318,10 +318,13 @@ export function WeeklyUpdatesPanel() {
 
           {showSelectedCard && selectedReport && (() => {
             const report = selectedReport;
-            const live = report.period_start === writablePeriod || report.is_current;
+            // Only overlay history-level live buckets onto the writable week.
+            // Earlier still-editable weeks already carry their own live sections from the API.
+            const overlayWritableLive =
+              report.period_start === writablePeriod || report.is_current;
             const currentIds = new Set((report.current_week_tasks ?? []).map((c) => c.task_id).filter(Boolean));
             const nextIds = new Set((report.next_week_tasks ?? report.commitments).map((c) => c.task_id).filter(Boolean));
-            const merged = live
+            const merged = overlayWritableLive
               ? {
                   ...report,
                   current_week_tasks: [
