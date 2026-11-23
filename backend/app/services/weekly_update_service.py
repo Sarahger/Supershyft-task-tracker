@@ -199,7 +199,8 @@ class WeeklyUpdateService:
             ]
         else:
             for task in self._completed_tasks_for_user(user.id, period.period_start):
-                baseline = as_local_date(task.original_due_date or task.due_date)
+                # Delay is relative to the current (possibly revised) due date.
+                baseline = as_local_date(task.due_date)
                 completion_day = as_local_date(task.completed_at) or today_local()
                 delayed = bool(baseline and completion_day > baseline)
                 items.append(
@@ -1473,14 +1474,14 @@ class WeeklyUpdateService:
     def _completion_view(self, row: WeeklyReportCompletion, carried: bool = False) -> dict:
         task = row.task
         completion_day = row.completion_date or as_local_date(task.completed_at if task else None)
-        baseline_due = None
-        if task is not None:
-            baseline_due = as_local_date(task.original_due_date or task.due_date)
-        delayed = False
-        if completion_day is not None and baseline_due is not None and completion_day > baseline_due:
-            delayed = True
-        if carried:
-            delayed = True
+        # Delay is relative to the current (possibly revised) due date — meeting a
+        # revised deadline should not stay yellow just because the original slipped.
+        effective_due = as_local_date(task.due_date) if task is not None else None
+        delayed = bool(
+            completion_day is not None
+            and effective_due is not None
+            and completion_day > effective_due
+        )
         return {
             "id": row.id,
             "task_id": row.task_id,
@@ -1493,7 +1494,9 @@ class WeeklyUpdateService:
             "estimated_hours": _task_hours(task),
             "due_date": task.due_date if task else None,
             "original_due_date": (task.original_due_date or task.due_date) if task else None,
-            "is_carried_forward": carried or delayed,
+            # Yellow only when the effective (revised) deadline was missed — not merely
+            # because the task was carried forward earlier and later revised on time.
+            "is_carried_forward": carried and delayed,
             "is_delayed": delayed,
         }
 

@@ -30,7 +30,7 @@ function leaveSummary(ctx?: WeeklyLeaveContext | null) {
   return items;
 }
 
-function hasRevisedDue(item: WeeklyCommitment): boolean {
+function hasRevisedDue(item: { original_due_date?: string | null; due_date?: string | null; deadline_revisions?: unknown[] }): boolean {
   if (item.deadline_revisions && item.deadline_revisions.length > 0) return true;
   if (!item.original_due_date || !item.due_date) return false;
   return toDateInput(item.original_due_date) !== toDateInput(item.due_date);
@@ -89,7 +89,10 @@ function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number 
   const timeLabel = item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : null;
   const doneLabel = formatShortDate(item.completion_date || item.completed_at);
   const delayed = Boolean(item.is_delayed || item.is_carried_forward);
-  const dueLabel = formatShortDate(item.original_due_date || item.due_date);
+  const revised = hasRevisedDue(item);
+  // Prefer the current (revised) due date; tag it when it differs from the original.
+  const dueLabel = formatShortDate(item.due_date || item.original_due_date);
+  const duePrefix = revised ? 'Revised due' : 'Due';
 
   return (
     <li className="flex items-start gap-2 py-1">
@@ -101,7 +104,7 @@ function CompletionRow({ item, index }: { item: WeeklyCompletion; index: number 
             <p className="text-xs tabular-nums text-text-muted md:pt-1 md:text-right md:shrink-0">
               {timeLabel}
               {timeLabel && (doneLabel || dueLabel) ? ' · ' : null}
-              {dueLabel ? <>Due {dueLabel}{doneLabel ? ' · ' : null}</> : null}
+              {dueLabel ? <>{duePrefix} {dueLabel}{doneLabel ? ' · ' : null}</> : null}
               {doneLabel ? (
                 <>
                   <span className={delayed ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}

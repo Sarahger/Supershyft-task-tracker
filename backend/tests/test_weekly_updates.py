@@ -996,9 +996,45 @@ def test_delayed_completion_marked_yellow(client, users, db_session):
     assert match is not None
     completions = match["completions"]
     assert any(
-        c["task_id"] == task.id and c.get("is_delayed") is True and c.get("is_carried_forward") is True
+        c["task_id"] == task.id and c.get("is_delayed") is True
         for c in completions
     )
+
+
+def test_revised_completion_uses_current_due_not_original(client, users, db_session):
+    """Meeting a revised deadline should show the new due date and not mark delayed."""
+    emp = users["employee"]
+    monday = writable_period_start()
+    if not is_report_editable(monday, "draft"):
+        pytest.skip("writable week not editable in this window")
+    original_due = monday - timedelta(days=10)
+    revised_due = monday
+    completed_at = due_at_noon(monday)
+    task = Task(
+        title="Camp journey design revised on time",
+        status="completed",
+        priority="medium",
+        estimated_hours=3,
+        created_by_id=emp.id,
+        due_date=due_at_noon(revised_due),
+        original_due_date=due_at_noon(original_due),
+        completed_at=completed_at,
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+
+    history = client.get(f"/api/weekly-updates/users/{emp.id}", headers=auth_header(emp))
+    assert history.status_code == 200
+    reports = history.json()["data"]["reports"]
+    match = next((r for r in reports if r["period_start"] == monday.isoformat()), None)
+    assert match is not None
+    row = next((c for c in match["completions"] if c["task_id"] == task.id), None)
+    assert row is not None
+    assert row.get("is_delayed") is False
+    assert row.get("is_carried_forward") is False
+    assert date.fromisoformat(row["due_date"][:10]) == revised_due
+    assert date.fromisoformat(row["original_due_date"][:10]) == original_due
 
 
 def test_ensure_all_writable_reports_idempotent(client, users, db_session):
