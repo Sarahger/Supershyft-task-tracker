@@ -36,7 +36,6 @@ export function WeeklyUpdatesPanel() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(user?.id ?? null);
   const [writing, setWriting] = useState(false);
   const [reviseItem, setReviseItem] = useState<WeeklyCommitment | null>(null);
-  const [didAlignWriteWeek, setDidAlignWriteWeek] = useState(false);
 
   const monthOptions = useMemo(() => monthSelectOptions(), []);
   const weekOptions = useMemo(() => {
@@ -78,15 +77,6 @@ export function WeeklyUpdatesPanel() {
     enabled: selectedUserId != null,
   });
 
-  useEffect(() => {
-    if (!history?.writable_period_start || didAlignWriteWeek) return;
-    if (weekStart === isoMonday() && history.writable_period_start < weekStart) {
-      setWeekStart(history.writable_period_start);
-      setSelectedMonth(monthKeyFromWeekStart(history.writable_period_start));
-    }
-    setDidAlignWriteWeek(true);
-  }, [history?.writable_period_start, weekStart, didAlignWriteWeek]);
-
   // Keep the week select valid when the month changes or weekStart is outside the month.
   useEffect(() => {
     if (!weekOptions.length) return;
@@ -114,10 +104,10 @@ export function WeeklyUpdatesPanel() {
         : format(addDays(parseISO(weekStart), 6), 'yyyy-MM-dd');
   const writeWeekEnd = format(parseISO(writeWeekEndIso), 'MMMM d, yyyy');
   const weekLabel = `${format(parseISO(weekStart), 'MMMM d')} – ${writeWeekEnd}`;
-  const waitingOnPreviousLock = isOwn && weekStart > writablePeriod;
+  const waitingForWeekToStart = isOwn && weekStart > writablePeriod;
   const liveCurrentWeek = history?.current_week_tasks ?? history?.outstanding ?? [];
   const liveNextWeek = history?.next_week_tasks ?? history?.due_this_week ?? [];
-  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport && !waitingOnPreviousLock;
+  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport && !waitingForWeekToStart;
   const showSelectedCard = Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
 
   const jumpToWeek = (mondayIso: string) => {
@@ -225,17 +215,17 @@ export function WeeklyUpdatesPanel() {
         </aside>
 
         <section className="min-h-[280px] min-w-0 space-y-4 md:overflow-y-auto">
-          {waitingOnPreviousLock && !writing && (
+          {waitingForWeekToStart && !writing && (
             <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 flex items-center justify-between gap-3">
               <p className="text-sm text-text-secondary">
-                Last week&apos;s update stays editable until 2:00 PM Monday. This week&apos;s update starts after that lock.
+                This week&apos;s update opens at 12:00 AM Monday. Last week&apos;s update stays editable until 2:00 PM Monday.
               </p>
               <button
                 type="button"
                 onClick={() => jumpToWeek(writablePeriod)}
                 className="shrink-0 text-sm text-accent-primary hover:underline"
               >
-                Open last week
+                Open current week
               </button>
             </div>
           )}
@@ -318,8 +308,8 @@ export function WeeklyUpdatesPanel() {
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5">
               <p className="text-sm text-text-muted">
                 {isOwn
-                  ? waitingOnPreviousLock
-                    ? "This week's update opens at 2:00 PM Monday, after last week's update is locked."
+                  ? waitingForWeekToStart
+                    ? "This week's update opens at 12:00 AM Monday."
                     : 'No weekly update for this week yet.'
                   : `${selected?.first_name ?? 'This person'} has no weekly update for this week.`}
               </p>

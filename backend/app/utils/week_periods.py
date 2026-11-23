@@ -9,6 +9,7 @@ from app.core.company_holidays import is_working_day
 from app.utils.month_weeks import get_app_timezone
 
 # Weekly updates stay editable until 2:00 PM on the Monday after the reporting week.
+# The next week opens at Monday 00:00, so Monday morning both weeks can be editable.
 # This lock only gates writing; it does not change Monday-based week boundaries.
 EDIT_CUTOFF = time(14, 0)
 RESOLVED_STATUSES = frozenset({"completed", "cancelled"})
@@ -113,8 +114,13 @@ def editable_until_for(period_start: date) -> datetime:
 
 
 def period_unlocks_at(period_start: date) -> datetime:
-    """A week can start only after the previous week locks at Monday 2:00 PM."""
-    return editable_until_for(previous_period_start(period_start))
+    """A week opens for writing at Monday 00:00 of that week.
+
+    Previous week's edit window (until Monday 2:00 PM) overlaps this, so both
+    last week and the new week can be editable Monday morning.
+    """
+    zone = get_app_timezone()
+    return datetime.combine(period_start, time.min, tzinfo=zone)
 
 
 def is_report_editable(period_start: date, status: str, now: datetime | None = None) -> bool:
@@ -123,18 +129,18 @@ def is_report_editable(period_start: date, status: str, now: datetime | None = N
 
 
 def writable_period_start(now: datetime | None = None) -> date:
-    current = now_local(now)
-    this_monday = monday_of(current.date())
-    last_monday = previous_period_start(this_monday)
-    if current < editable_until_for(last_monday):
-        return last_monday
-    return this_monday
+    """Calendar week currently in progress (opens Monday 00:00).
+
+    Last week's report stays separately editable until Monday 2:00 PM via
+    ``is_report_editable`` / ``editable_until_for``.
+    """
+    return current_week_start(now)
 
 
 def report_edit_block_reason(period_start: date, now: datetime | None = None) -> str | None:
     current = now_local(now)
     if current < period_unlocks_at(period_start):
-        return "This week's update opens at 2:00 PM Monday, after last week's update is locked"
+        return "This week's update opens at 12:00 AM on Monday"
     if current >= editable_until_for(period_start):
         return "This weekly update can only be edited until 2:00 PM on the following Monday"
     return None

@@ -139,17 +139,29 @@ def test_overdue_starts_after_due_calendar_day():
     assert is_due_date_overdue(due, status="completed", now=next_midnight) is False
 
 
-def test_current_week_waits_until_previous_week_locks():
+def test_new_week_opens_monday_midnight_while_previous_stays_editable():
     previous = date(2026, 10, 26)
     current = date(2026, 11, 2)
     zone = get_app_timezone()
+    sunday_night = datetime(2026, 11, 1, 23, 59, tzinfo=zone)
+    monday_midnight = datetime(2026, 11, 2, 0, 0, tzinfo=zone)
     before_cutoff = datetime(2026, 11, 2, 13, 59, tzinfo=zone)
     at_cutoff = datetime(2026, 11, 2, 14, 0, tzinfo=zone)
 
-    assert is_report_editable(previous, "submitted", before_cutoff)
-    assert not is_report_editable(current, "draft", before_cutoff)
-    assert writable_period_start(before_cutoff) == previous
+    # Before Monday: only the previous week is writable.
+    assert is_report_editable(previous, "submitted", sunday_night)
+    assert not is_report_editable(current, "draft", sunday_night)
+    assert writable_period_start(sunday_night) == previous
 
+    # Monday 00:00–14:00: both weeks are editable; writable points at the new week.
+    assert is_report_editable(previous, "submitted", monday_midnight)
+    assert is_report_editable(current, "draft", monday_midnight)
+    assert writable_period_start(monday_midnight) == current
+    assert is_report_editable(previous, "submitted", before_cutoff)
+    assert is_report_editable(current, "draft", before_cutoff)
+    assert writable_period_start(before_cutoff) == current
+
+    # After Monday 2:00 PM: previous locks; current remains the writable week.
     assert not is_report_editable(previous, "submitted", at_cutoff)
     assert is_report_editable(current, "draft", at_cutoff)
     assert writable_period_start(at_cutoff) == current
@@ -351,15 +363,16 @@ def test_weekly_due_date_can_change_for_24_hours_then_needs_revision(client, use
     assert not revised.json()["data"].get("create_errors")
 
 
-def test_current_week_cannot_start_until_previous_week_locks(client, users):
+def test_current_and_previous_week_both_writable_on_monday_morning(client, users):
     emp = users["employee"]
     current = current_week_start()
     previous = current - timedelta(days=7)
     due = (previous + timedelta(days=9)).isoformat() + "T12:00:00+05:30"
+
     current_payload = {
         "period_start": current.isoformat(),
         "completions": [{
-            "title": "Too early",
+            "title": "Starting this week early",
             "source": "manual",
             "included": True,
             "estimated_hours": 1,
@@ -367,15 +380,6 @@ def test_current_week_cannot_start_until_previous_week_locks(client, users):
         }],
         "commitments": [],
     }
-    if is_report_editable(current, "draft"):
-        allowed = client.put("/api/weekly-updates", json=current_payload, headers=auth_header(emp))
-        assert allowed.status_code == 200, allowed.text
-        return
-
-    blocked = client.put("/api/weekly-updates", json=current_payload, headers=auth_header(emp))
-    assert blocked.status_code == 403
-    assert "Monday" in blocked.json()["detail"] or "locked" in blocked.json()["detail"].lower()
-
     previous_payload = {
         "period_start": previous.isoformat(),
         "completions": [{
@@ -394,11 +398,22 @@ def test_current_week_cannot_start_until_previous_week_locks(client, users):
             }
         ],
     }
-    allowed = client.put("/api/weekly-updates", json=previous_payload, headers=auth_header(emp))
-    assert allowed.status_code == 200, allowed.text
-    data = allowed.json()["data"]
-    assert data["period_start"] == previous.isoformat()
-    assert data["editable"] is True
+
+    if is_report_editable(current, "draft"):
+        allowed_current = client.put("/api/weekly-updates", json=current_payload, headers=auth_header(emp))
+        assert allowed_current.status_code == 200, allowed_current.text
+
+    if is_report_editable(previous, "draft"):
+        allowed_prev = client.put("/api/weekly-updates", json=previous_payload, headers=auth_header(emp))
+        assert allowed_prev.status_code == 200, allowed_prev.text
+        data = allowed_prev.json()["data"]
+        assert data["period_start"] == previous.isoformat()
+        assert data["editable"] is True
+    elif is_report_editable(current, "draft"):
+        # Past Monday 2PM: previous is locked, current remains writable.
+        locked = client.put("/api/weekly-updates", json=previous_payload, headers=auth_header(emp))
+        assert locked.status_code == 403
+        assert "2:00 PM" in locked.json()["detail"] or "Monday" in locked.json()["detail"]
 
 
 def test_suggestions_only_include_this_weeks_completed_tasks(client, users, db_session):
