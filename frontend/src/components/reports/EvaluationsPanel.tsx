@@ -37,7 +37,7 @@ const RATING_PILL: Record<number, { selected: string; idle: string; text: string
   1: { selected: 'border border-red-400/50 bg-red-500/30 text-red-300', idle: 'border border-red-500/40 text-red-400 hover:bg-red-500/15', text: 'text-red-400' },
 };
 
-type PeriodPreset = 'week' | 'biweek' | 'month' | 'custom';
+type PeriodMode = 'month' | 'week';
 
 function ratingTone(rating?: number | null) {
   return rating != null ? RATING_PILL[rating] : undefined;
@@ -119,20 +119,42 @@ function errorMessage(err: unknown, fallback: string) {
   return typeof detail === 'string' ? detail : fallback;
 }
 
-function clampPeriod(startIso: string, endIso: string, month: string): { start: string; end: string } {
-  const monthBegin = startOfMonth(parseISO(monthStart(month)));
-  const monthFinish = endOfMonth(monthBegin);
+function fullMonthRange(month: string): { start: string; end: string } {
+  const begin = startOfMonth(parseISO(monthStart(month)));
+  return {
+    start: format(begin, 'yyyy-MM-dd'),
+    end: format(endOfMonth(begin), 'yyyy-MM-dd'),
+  };
+}
+
+function isFullMonthRange(startIso: string, endIso: string): boolean {
+  try {
+    const start = parseISO(startIso.slice(0, 10));
+    const end = parseISO(endIso.slice(0, 10));
+    return (
+      format(start, 'yyyy-MM-dd') === format(startOfMonth(start), 'yyyy-MM-dd')
+      && format(end, 'yyyy-MM-dd') === format(endOfMonth(start), 'yyyy-MM-dd')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Keep week ranges inside one calendar month, at least 7 days. */
+function clampWeekRange(startIso: string, endIso: string): { start: string; end: string } {
   let start = parseISO(startIso);
   let end = parseISO(endIso);
-  if (start < monthBegin) start = monthBegin;
-  if (start > monthFinish) start = monthBegin;
-  if (end > monthFinish) end = monthFinish;
+  const monthBegin = startOfMonth(start);
+  const monthFinish = endOfMonth(start);
+  if (end.getMonth() !== start.getMonth() || end.getFullYear() !== start.getFullYear()) {
+    end = monthFinish;
+  }
   if (end < start) end = start;
   const minEnd = addDays(start, 6);
   if (end < minEnd) {
     end = minEnd > monthFinish ? monthFinish : minEnd;
   }
-  // If start is too late for a 7-day window, pull start back.
+  if (end > monthFinish) end = monthFinish;
   const maxStart = addDays(monthFinish, -6);
   if (start > maxStart && getDaysInMonth(monthBegin) >= 7) {
     start = maxStart < monthBegin ? monthBegin : maxStart;
@@ -144,26 +166,11 @@ function clampPeriod(startIso: string, endIso: string, month: string): { start: 
   };
 }
 
-function presetRange(preset: PeriodPreset, month: string, startHint?: string): { start: string; end: string } {
-  const monthBegin = startOfMonth(parseISO(monthStart(month)));
-  const monthFinish = endOfMonth(monthBegin);
-  const hint = startHint ? parseISO(startHint) : monthBegin;
-  const start = hint < monthBegin || hint > monthFinish ? monthBegin : hint;
-  if (preset === 'month') {
-    return { start: format(monthBegin, 'yyyy-MM-dd'), end: format(monthFinish, 'yyyy-MM-dd') };
-  }
-  if (preset === 'week') {
-    const end = addDays(start, 6);
-    return clampPeriod(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'), month);
-  }
-  if (preset === 'biweek') {
-    const end = addDays(start, 13);
-    return clampPeriod(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'), month);
-  }
-  return clampPeriod(
-    format(start, 'yyyy-MM-dd'),
-    format(addDays(start, 6), 'yyyy-MM-dd'),
-    month,
+function defaultWeekRange(month: string): { start: string; end: string } {
+  const begin = startOfMonth(parseISO(monthStart(month)));
+  return clampWeekRange(
+    format(begin, 'yyyy-MM-dd'),
+    format(addDays(begin, 6), 'yyyy-MM-dd'),
   );
 }
 
@@ -438,19 +445,21 @@ function EvaluationForm({
   onSaved: (record: EvaluationRecord) => void;
 }) {
   const existing = mode === 'new' ? null : mode;
-  const initialPreset: PeriodPreset = existing ? 'custom' : 'week';
   const initialRange = existing
     ? {
         start: existing.period_start.slice(0, 10),
         end: (existing.period_end || existing.period_start).slice(0, 10),
       }
-    : presetRange('week', month);
+    : fullMonthRange(month);
+  const initialMode: PeriodMode = existing && !isFullMonthRange(initialRange.start, initialRange.end)
+    ? 'week'
+    : 'month';
 
   const [userId, setUserId] = useState(existing ? String(existing.user_id) : initialUserId ? String(initialUserId) : '');
+  const [periodMode, setPeriodMode] = useState<PeriodMode>(initialMode);
   const [calendarMonth, setCalendarMonth] = useState(
     existing ? existing.period_start.slice(0, 7) : month,
   );
-  const [preset, setPreset] = useState<PeriodPreset>(initialPreset);
   const [periodStart, setPeriodStart] = useState(initialRange.start);
   const [periodEnd, setPeriodEnd] = useState(initialRange.end);
   const [comment, setComment] = useState(existing?.overall_comment ?? '');
@@ -462,10 +471,15 @@ function EvaluationForm({
   const complete = scores.every((row) => row.rating != null);
   const locked = Boolean(existing);
 
-  const applyPreset = (next: PeriodPreset, nextMonth = calendarMonth, start = periodStart) => {
-    setPreset(next);
-    if (next === 'custom') return;
-    const range = presetRange(next, nextMonth, start);
+  const switchMode = (next: PeriodMode) => {
+    setPeriodMode(next);
+    if (next === 'month') {
+      const range = fullMonthRange(calendarMonth);
+      setPeriodStart(range.start);
+      setPeriodEnd(range.end);
+      return;
+    }
+    const range = defaultWeekRange(calendarMonth);
     setPeriodStart(range.start);
     setPeriodEnd(range.end);
   };
@@ -521,37 +535,20 @@ function EvaluationForm({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block sm:col-span-2">
-          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Calendar month</span>
-          <input
-            type="month"
-            className="input w-full text-sm sm:max-w-xs"
-            value={calendarMonth}
-            disabled={locked}
-            onChange={(e) => {
-              const next = e.target.value || currentMonth();
-              setCalendarMonth(next);
-              applyPreset(preset === 'custom' ? 'week' : preset, next);
-            }}
-          />
-        </label>
-
         <div className="sm:col-span-2">
-          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period length</span>
+          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period type</span>
           <div className="flex flex-wrap gap-2">
             {([
-              ['week', '1 week'],
-              ['biweek', '2 weeks'],
-              ['month', 'Full month'],
-              ['custom', 'Custom'],
+              ['month', 'Month'],
+              ['week', 'Week'],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 disabled={locked}
-                onClick={() => applyPreset(value)}
+                onClick={() => switchMode(value)}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  preset === value
+                  periodMode === value
                     ? 'border-accent-primary bg-accent-primary/15 text-accent-primary'
                     : 'border-dark-border text-text-secondary hover:bg-dark-hover'
                 }`}
@@ -562,42 +559,61 @@ function EvaluationForm({
           </div>
         </div>
 
-        <label className="block">
-          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period start</span>
-          <input
-            type="date"
-            className="input w-full text-sm"
-            value={periodStart}
-            min={monthStart(calendarMonth)}
-            max={format(endOfMonth(parseISO(monthStart(calendarMonth))), 'yyyy-MM-dd')}
-            disabled={locked}
-            onChange={(e) => {
-              const nextStart = e.target.value;
-              setPeriodStart(nextStart);
-              setPreset('custom');
-              const clamped = clampPeriod(nextStart, periodEnd, calendarMonth);
-              setPeriodStart(clamped.start);
-              setPeriodEnd(clamped.end);
-            }}
-          />
-        </label>
-        <label className="block">
-          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period end</span>
-          <input
-            type="date"
-            className="input w-full text-sm"
-            value={periodEnd}
-            min={periodStart}
-            max={format(endOfMonth(parseISO(monthStart(calendarMonth))), 'yyyy-MM-dd')}
-            disabled={locked}
-            onChange={(e) => {
-              setPreset('custom');
-              const clamped = clampPeriod(periodStart, e.target.value, calendarMonth);
-              setPeriodStart(clamped.start);
-              setPeriodEnd(clamped.end);
-            }}
-          />
-        </label>
+        {periodMode === 'month' ? (
+          <label className="block sm:col-span-2">
+            <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Month</span>
+            <input
+              type="month"
+              className="input w-full text-sm sm:max-w-xs"
+              value={calendarMonth}
+              disabled={locked}
+              onChange={(e) => {
+                const next = e.target.value || currentMonth();
+                setCalendarMonth(next);
+                const range = fullMonthRange(next);
+                setPeriodStart(range.start);
+                setPeriodEnd(range.end);
+              }}
+            />
+          </label>
+        ) : (
+          <>
+            <label className="block">
+              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Start date</span>
+              <input
+                type="date"
+                className="input w-full text-sm"
+                value={periodStart}
+                disabled={locked}
+                onChange={(e) => {
+                  const nextStart = e.target.value;
+                  const monthKey = nextStart.slice(0, 7);
+                  setCalendarMonth(monthKey);
+                  const clamped = clampWeekRange(nextStart, periodEnd.slice(0, 7) === monthKey ? periodEnd : format(addDays(parseISO(nextStart), 6), 'yyyy-MM-dd'));
+                  setPeriodStart(clamped.start);
+                  setPeriodEnd(clamped.end);
+                }}
+              />
+            </label>
+            <label className="block">
+              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">End date</span>
+              <input
+                type="date"
+                className="input w-full text-sm"
+                value={periodEnd}
+                min={periodStart}
+                max={format(endOfMonth(parseISO(periodStart)), 'yyyy-MM-dd')}
+                disabled={locked}
+                onChange={(e) => {
+                  const clamped = clampWeekRange(periodStart, e.target.value);
+                  setPeriodStart(clamped.start);
+                  setPeriodEnd(clamped.end);
+                  setCalendarMonth(clamped.start.slice(0, 7));
+                }}
+              />
+            </label>
+          </>
+        )}
 
         <label className="block sm:col-span-2">
           <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Employee</span>
@@ -611,7 +627,10 @@ function EvaluationForm({
       </div>
 
       <p className="text-xs text-text-muted">
-        Evaluating {rangeLabel(periodStart, periodEnd)}. Periods must stay in one month, last at least 7 days, and must not overlap another evaluation for the same person.
+        {periodMode === 'month'
+          ? `Evaluating ${monthLabel(monthStart(calendarMonth))}.`
+          : `Evaluating ${rangeLabel(periodStart, periodEnd)}. Pick 1–3 weeks in the same month (at least 7 days).`}
+        {' '}Periods cannot overlap for the same person.
       </p>
 
       {showRatingChart && (

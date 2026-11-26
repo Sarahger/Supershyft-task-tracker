@@ -329,8 +329,30 @@ def test_title_folders_and_date_filter():
         )
         assert empty.status_code == 200, empty.text
         folders = client.get("/api/work-vault/folders", params={"owner_id": emp.id}, headers=auth_header(other))
-        names = {row["name"] for row in folders.json()["data"]["items"]}
+        folder_rows = folders.json()["data"]["items"]
+        names = {row["name"] for row in folder_rows}
         assert names == {"App screens", "Later uploads"}
+        # Newest activity first: empty folder created after App screens uploads.
+        assert [row["name"] for row in folder_rows] == ["Later uploads", "App screens"]
+
+        # Uploading into an older folder should move it back to the top.
+        bumped = create_link(
+            client,
+            emp,
+            title="Screen three",
+            url="https://www.figma.com/file/three",
+            folder_name="App screens",
+        )
+        assert bumped.status_code == 200, bumped.text
+        folders_after = client.get(
+            "/api/work-vault/folders",
+            params={"owner_id": emp.id},
+            headers=auth_header(other),
+        )
+        assert [row["name"] for row in folders_after.json()["data"]["items"]] == [
+            "App screens",
+            "Later uploads",
+        ]
 
         old = session.query(WorkVaultResource).filter(WorkVaultResource.id == first.json()["data"]["id"]).one()
         old.created_at = datetime.now(timezone.utc) - timedelta(days=40)
@@ -343,8 +365,11 @@ def test_title_folders_and_date_filter():
             headers=auth_header(other),
         )
         assert listed.status_code == 200
-        assert listed.json()["data"]["total"] == 1
-        assert listed.json()["data"]["items"][0]["id"] == second.json()["data"]["id"]
+        assert listed.json()["data"]["total"] == 2
+        listed_ids = {row["id"] for row in listed.json()["data"]["items"]}
+        assert first.json()["data"]["id"] not in listed_ids
+        assert second.json()["data"]["id"] in listed_ids
+        assert bumped.json()["data"]["id"] in listed_ids
     finally:
         app.dependency_overrides.clear()
         session.close()

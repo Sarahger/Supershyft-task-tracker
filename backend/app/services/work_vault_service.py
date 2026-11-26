@@ -608,7 +608,6 @@ class WorkVaultService:
         folders = (
             self.db.query(WorkVaultFolder)
             .filter(WorkVaultFolder.owner_id == owner_id)
-            .order_by(func.lower(WorkVaultFolder.name))
             .all()
         )
         counts: dict[int, int] = {}
@@ -647,6 +646,11 @@ class WorkVaultService:
                     updated_at=latest.get(folder.id) or folder.updated_at or folder.created_at,
                 )
             )
+        # Latest activity first: recent upload, else folder update/create time.
+        items.sort(
+            key=lambda row: (row.get("updated_at") or row["created_at"], row["id"]),
+            reverse=True,
+        )
         return {"items": items}
 
     def delete_folder(self, user: User, folder_id: int) -> None:

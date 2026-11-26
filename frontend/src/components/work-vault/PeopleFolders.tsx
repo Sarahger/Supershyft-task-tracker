@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Folder, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { workVaultApi } from '../../services/endpoints';
 import { EmptyState } from '../ui/Skeleton';
 import { Button } from '../ui/Button';
@@ -11,6 +12,47 @@ import { ResourceGrid, ResourceGridSkeleton, ResourceRow } from './ResourceRow';
 import { apiErrorMessage, uploaderName } from '../../lib/workVault';
 import { useAuth } from '../../contexts/AuthContext';
 import type { WorkVaultPersonFolder, WorkVaultResource, WorkVaultTitleFolder } from '../../types';
+
+const DESCRIPTION_COLLAPSE_AT = 160;
+
+function ExpandableDescription({
+  text,
+  className,
+  clampClass = 'line-clamp-3',
+}: {
+  text: string;
+  className?: string;
+  clampClass?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const long = text.length > DESCRIPTION_COLLAPSE_AT || text.split('\n').length > 3;
+
+  return (
+    <div className={className}>
+      <p
+        className={clsx(
+          'text-2xs text-text-secondary whitespace-pre-wrap break-words',
+          !expanded && long && clampClass,
+        )}
+      >
+        {text}
+      </p>
+      {long ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+          className="text-2xs text-accent-primary mt-0.5 hover:underline"
+        >
+          {expanded ? 'See less' : 'See more'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 export function PeopleFolders({
   folders,
@@ -153,14 +195,14 @@ export function PeopleFolders({
           <ArrowLeft className="h-4 w-4" />
           {uploaderName(openFolder)}
         </button>
-        <div className="flex items-center gap-3 mb-4 px-1">
-          <FolderOpen className="h-6 w-6 text-text-muted" />
+        <div className="flex items-start gap-3 mb-4 px-1">
+          <FolderOpen className="h-6 w-6 text-text-muted shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold text-text-primary truncate">{openTitle.name}</h2>
             {openTitle.description ? (
-              <p className="text-2xs text-text-secondary mt-0.5 line-clamp-2">{openTitle.description}</p>
+              <ExpandableDescription text={openTitle.description} className="mt-0.5" clampClass="line-clamp-4" />
             ) : null}
-            <p className="text-2xs text-text-muted">
+            <p className="text-2xs text-text-muted mt-0.5">
               {openTitle.count} {openTitle.count === 1 ? 'item' : 'items'}
             </p>
           </div>
@@ -304,15 +346,15 @@ export function PeopleFolders({
                     <button
                       type="button"
                       onClick={() => setOpenTitleId(folder.id)}
-                      className="flex items-center gap-3 px-3 py-3 text-left min-w-0 flex-1"
+                      className="flex items-start gap-3 px-3 py-3 text-left min-w-0 flex-1"
                     >
-                      <Folder className="h-8 w-8 text-text-muted shrink-0" />
+                      <Folder className="h-8 w-8 text-text-muted shrink-0 mt-0.5" />
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-text-primary truncate">{folder.name}</span>
                         {folder.description ? (
-                          <span className="block text-2xs text-text-secondary truncate">{folder.description}</span>
+                          <ExpandableDescription text={folder.description} className="mt-0.5" />
                         ) : null}
-                        <span className="block text-2xs text-text-muted">
+                        <span className="block text-2xs text-text-muted mt-0.5">
                           {folder.count} {folder.count === 1 ? 'item' : 'items'}
                         </span>
                       </span>
