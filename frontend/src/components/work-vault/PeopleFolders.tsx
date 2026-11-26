@@ -346,15 +346,12 @@ export function PeopleFolders({
                     <button
                       type="button"
                       onClick={() => setOpenTitleId(folder.id)}
-                      className="flex items-start gap-3 px-3 py-3 text-left min-w-0 flex-1"
+                      className="flex items-center gap-3 px-3 py-3 text-left min-w-0 flex-1"
                     >
-                      <Folder className="h-8 w-8 text-text-muted shrink-0 mt-0.5" />
+                      <Folder className="h-8 w-8 text-text-muted shrink-0" />
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-text-primary truncate">{folder.name}</span>
-                        {folder.description ? (
-                          <ExpandableDescription text={folder.description} className="mt-0.5" />
-                        ) : null}
-                        <span className="block text-2xs text-text-muted mt-0.5">
+                        <span className="block text-2xs text-text-muted">
                           {folder.count} {folder.count === 1 ? 'item' : 'items'}
                         </span>
                       </span>
