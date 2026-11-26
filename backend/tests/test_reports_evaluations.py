@@ -86,17 +86,25 @@ OFFICIAL = {
 }
 
 
-def score_payload(ratings: dict[str, int] | None = None, user_id: int = 1, period: str = "2026-11-01"):
+def score_payload(
+    ratings: dict[str, int] | None = None,
+    user_id: int = 1,
+    period_start: str = "2026-11-01",
+    period_end: str | None = "2026-11-30",
+):
     chosen = ratings or OFFICIAL
-    return {
+    body = {
         "user_id": user_id,
-        "period_start": period,
-        "overall_comment": "Solid month",
+        "period_start": period_start,
+        "overall_comment": "Solid period",
         "scores": [
             {"parameter_key": key, "rating": rating, "remarks": "Noted"}
             for key, rating in chosen.items()
         ],
     }
+    if period_end is not None:
+        body["period_end"] = period_end
+    return body
 
 
 def test_official_example_is_77():
@@ -130,6 +138,7 @@ def test_draft_is_hidden_until_submit_and_score_is_server_owned(client, users, d
     body = created.json()["data"]
     assert body["status"] == "draft"
     assert body["overall_score"] == 77
+    assert body["period_end"] == "2026-11-30"
     evaluation_id = body["id"]
 
     duplicate = client.post(
@@ -149,7 +158,7 @@ def test_draft_is_hidden_until_submit_and_score_is_server_owned(client, users, d
 
     submitted = client.post(
         f"/api/reports/evaluations/{evaluation_id}/submit",
-        json=score_payload(user_id=employee.id, ratings={"deadline_adherence": 4, "quality_of_work": 3, "discipline_process": 4, "ownership_accountability": 4, "teamwork_collaboration": 5, "punctuality": 4}),
+        json=score_payload(user_id=employee.id),
         headers=auth_header(manager),
     )
     assert submitted.status_code == 200, submitted.text
@@ -179,6 +188,125 @@ def test_draft_is_hidden_until_submit_and_score_is_server_owned(client, users, d
     revisions = db_session.query(EmployeeEvaluationRevision).all()
     assert len(revisions) == 1
     assert "77" in revisions[0].snapshot_json
+
+
+def test_weekly_periods_average_for_month(client, users):
+    manager = users["manager"]
+    employee = users["employee"]
+    headers = auth_header(manager)
+
+    week1 = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-01", period_end="2026-11-07"),
+        headers=headers,
+    )
+    assert week1.status_code == 200, week1.text
+    week1_id = week1.json()["data"]["id"]
+    submit1 = client.post(
+        f"/api/reports/evaluations/{week1_id}/submit",
+        json=score_payload(user_id=employee.id, period_start="2026-11-01", period_end="2026-11-07"),
+        headers=headers,
+    )
+    assert submit1.status_code == 200
+
+    weaker = dict(OFFICIAL)
+    weaker["deadline_adherence"] = 2
+    weaker["quality_of_work"] = 2
+    week2 = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(
+            ratings=weaker,
+            user_id=employee.id,
+            period_start="2026-11-08",
+            period_end="2026-11-14",
+        ),
+        headers=headers,
+    )
+    assert week2.status_code == 200, week2.text
+    week2_id = week2.json()["data"]["id"]
+    submit2 = client.post(
+        f"/api/reports/evaluations/{week2_id}/submit",
+        json=score_payload(
+            ratings=weaker,
+            user_id=employee.id,
+            period_start="2026-11-08",
+            period_end="2026-11-14",
+        ),
+        headers=headers,
+    )
+    assert submit2.status_code == 200
+    score1 = submit1.json()["data"]["overall_score"]
+    score2 = submit2.json()["data"]["overall_score"]
+    expected_avg = round((score1 + score2) / 2, 2)
+
+    listing = client.get(
+        "/api/reports/evaluations",
+        params={"period_start": "2026-11-01"},
+        headers=headers,
+    )
+    assert listing.status_code == 200
+    item = next(row for row in listing.json()["data"]["items"] if row["user_id"] == employee.id)
+    assert item["submitted_count"] == 2
+    assert item["evaluation_count"] == 2
+    assert item["monthly_average"] == expected_avg
+    assert len(item["evaluations"]) == 2
+
+    ranked = client.get(
+        "/api/reports/analytics",
+        params={"start_date": "2026-11-01", "end_date": "2026-11-30"},
+        headers=headers,
+    )
+    performers = ranked.json()["data"]["top_performers"]
+    assert len(performers) == 1
+    assert performers[0]["score"] == expected_avg
+    assert performers[0]["evaluation_count"] == 2
+
+
+def test_rejects_overlap_and_cross_month_and_short_period(client, users):
+    manager = users["manager"]
+    employee = users["employee"]
+    headers = auth_header(manager)
+
+    first = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-01", period_end="2026-11-14"),
+        headers=headers,
+    )
+    assert first.status_code == 200, first.text
+
+    overlap = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-10", period_end="2026-11-20"),
+        headers=headers,
+    )
+    assert overlap.status_code == 409
+
+    cross = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-28", period_end="2026-12-04"),
+        headers=headers,
+    )
+    assert cross.status_code == 400
+
+    short = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-20", period_end="2026-11-22"),
+        headers=headers,
+    )
+    assert short.status_code == 400
+
+
+def test_month_start_only_defaults_to_full_month(client, users):
+    manager = users["manager"]
+    employee = users["employee"]
+    created = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-01", period_end=None),
+        headers=auth_header(manager),
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["data"]["period_start"] == "2026-11-01"
+    assert created.json()["data"]["period_end"] == "2026-11-30"
 
 
 def test_status_counts_and_completion_trend(client, users, db_session):

@@ -210,10 +210,13 @@ function PerformersChart({
 }) {
   const rows = data.top_performers.map((row) => ({
     ...row,
-    label: `${row.name} · ${periodLabel(row.period_start)}`,
+    label: `${row.name} · ${periodLabel(row.period_start)} avg`,
   }));
   return (
-    <ChartCard title="Top-Performing Employees" description="Finalized KRA/KPI scores for this period. Drafts are not included.">
+    <ChartCard
+      title="Top-Performing Employees"
+      description="Monthly average of finalized period scores. Drafts are not included."
+    >
       {rows.length === 0 ? <EmptyChart text="No finalized evaluations for this period." /> : (
         <ResponsiveContainer width="100%" height={Math.max(240, rows.length * 36)}>
           <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 24 }}>
@@ -223,7 +226,11 @@ function PerformersChart({
               contentStyle={chartTheme.tooltip}
               formatter={(value, _name, item) => {
                 const row = item.payload as typeof rows[number];
-                return [`${value}/100 · ${periodLabel(row.period_start)}`, 'Score'];
+                const count = row.evaluation_count ?? 1;
+                return [
+                  `${value}/100 · ${periodLabel(row.period_start)} avg (${count} period${count === 1 ? '' : 's'})`,
+                  'Monthly avg',
+                ];
               }}
             />
             <Bar

@@ -269,3 +269,56 @@ def run_lightweight_migrations(engine) -> None:
             )
             if result.rowcount:
                 logger.info("Normalized %s tasks from ready_for_review → in_review", result.rowcount)
+
+    if "employee_evaluations" in tables:
+        dialect = engine.dialect.name
+        eval_cols = {c["name"] for c in inspector.get_columns("employee_evaluations")}
+        if "period_end" not in eval_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE employee_evaluations ADD COLUMN IF NOT EXISTS period_end DATE"
+            else:
+                sql = "ALTER TABLE employee_evaluations ADD COLUMN period_end DATE"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added employee_evaluations.period_end column")
+        with engine.begin() as conn:
+            if dialect == "postgresql":
+                conn.execute(
+                    text(
+                        "UPDATE employee_evaluations SET period_end = "
+                        "(date_trunc('month', period_start)::date + INTERVAL '1 month' - INTERVAL '1 day')::date "
+                        "WHERE period_end IS NULL"
+                    )
+                )
+            else:
+                # SQLite: last day of month via date(period_start, '+1 month', '-1 day')
+                conn.execute(
+                    text(
+                        "UPDATE employee_evaluations SET period_end = "
+                        "date(period_start, '+1 month', '-1 day') "
+                        "WHERE period_end IS NULL"
+                    )
+                )
+        # Drop legacy one-per-month unique constraint/index when present.
+        for name in ("uq_employee_evaluation_period",):
+            try:
+                with engine.begin() as conn:
+                    if dialect == "postgresql":
+                        conn.execute(text(f'ALTER TABLE employee_evaluations DROP CONSTRAINT IF EXISTS "{name}"'))
+                        conn.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+                    else:
+                        conn.execute(text(f'DROP INDEX IF EXISTS "{name}"'))
+                logger.info("Dropped legacy evaluation constraint/index %s", name)
+            except Exception:
+                logger.debug("Could not drop legacy evaluation constraint/index %s", name, exc_info=True)
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_evaluation_period_range "
+                        "ON employee_evaluations (user_id, period_start, period_end)"
+                    )
+                )
+            logger.info("Ensured uq_employee_evaluation_period_range index")
+        except Exception:
+            logger.debug("Could not create evaluation range unique index", exc_info=True)

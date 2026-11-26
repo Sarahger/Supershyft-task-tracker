@@ -255,6 +255,8 @@ export interface ReportAnalytics {
     name: string;
     score: number | null;
     period_start: string;
+    period_end?: string;
+    evaluation_count?: number;
   }>;
 }
 
@@ -286,6 +288,7 @@ export interface EvaluationRecord {
   departments: string[];
   department_snapshot?: string | null;
   period_start: string;
+  period_end: string;
   status: 'draft' | 'submitted';
   overall_comment?: string | null;
   overall_score: number | null;
@@ -309,20 +312,36 @@ export interface EvaluationRecord {
   }>;
 }
 
+export interface EvaluationPeriodSummary {
+  evaluation_id: number;
+  period_start: string;
+  period_end: string;
+  overall_score: number | null;
+  status: 'draft' | 'submitted';
+  evaluator?: { id: number; name: string } | null;
+  submitted_at?: string | null;
+}
+
 export interface EvaluationListItem {
   user_id: number;
   name: string;
   departments: string[];
   evaluation_id: number | null;
   period_start: string;
+  period_end?: string;
+  monthly_average?: number | null;
+  evaluation_count?: number;
+  submitted_count?: number;
   overall_score: number | null;
-  status: 'not_started' | 'draft' | 'submitted';
+  status: 'not_started' | 'draft' | 'submitted' | 'partial';
   last_evaluated_at?: string | null;
   evaluator?: { id: number; name: string } | null;
+  evaluations?: EvaluationPeriodSummary[];
 }
 
 export interface EvaluationList {
   period_start: string;
+  period_end?: string;
   parameters: KraParameter[];
   rating_scale: KraRatingMeaning[];
   items: EvaluationListItem[];

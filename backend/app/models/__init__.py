@@ -859,11 +859,14 @@ class AnnouncementAttachment(Base):
 
 class EmployeeEvaluation(Base):
     __tablename__ = "employee_evaluations"
-    __table_args__ = (UniqueConstraint("user_id", "period_start", name="uq_employee_evaluation_period"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "period_start", "period_end", name="uq_employee_evaluation_period_range"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     period_start = Column(Date, nullable=False, index=True)
+    period_end = Column(Date, nullable=False, index=True)
     evaluator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(20), nullable=False, default="draft")
     overall_comment = Column(Text, nullable=True)

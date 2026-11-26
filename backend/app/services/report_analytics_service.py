@@ -104,35 +104,46 @@ def _status_counts(tasks: list[Task]) -> list[dict]:
 
 
 def _top_performers(db: Session, start: date, end: date, department_id: int | None) -> list[dict]:
+    """Rank by monthly average of submitted period scores (latest month in range)."""
     rows = (
         db.query(EmployeeEvaluation)
         .options(joinedload(EmployeeEvaluation.employee).joinedload(User.departments))
         .filter(EmployeeEvaluation.status == "submitted")
         .all()
     )
-    latest: dict[int, EmployeeEvaluation] = {}
+    # user_id -> month_start -> list of submitted evals
+    by_user_month: dict[int, dict[date, list[EmployeeEvaluation]]] = {}
     for row in rows:
-        month_end = _month_end(row.period_start)
-        if row.period_start > end or month_end < start:
+        month_start = row.period_start.replace(day=1)
+        month_end = _month_end(month_start)
+        if month_start > end or month_end < start:
             continue
         employee = row.employee
         if employee is None or employee.status != "active":
             continue
         if department_id is not None and not any(d.id == department_id for d in (employee.departments or [])):
             continue
-        current = latest.get(row.user_id)
-        if current is None or row.period_start > current.period_start:
-            latest[row.user_id] = row
+        if row.overall_score is None:
+            continue
+        by_user_month.setdefault(row.user_id, {}).setdefault(month_start, []).append(row)
+
     ranked = []
-    for row in latest.values():
-        employee = row.employee
+    for user_id, months in by_user_month.items():
+        latest_month = max(months.keys())
+        month_rows = months[latest_month]
+        avg = round(sum(r.overall_score for r in month_rows) / len(month_rows), 2)
+        # Prefer the latest period eval id for deep-link into the Evaluations tab.
+        anchor = max(month_rows, key=lambda r: (r.period_start, r.id))
+        employee = anchor.employee
         ranked.append(
             {
-                "user_id": row.user_id,
-                "evaluation_id": row.id,
+                "user_id": user_id,
+                "evaluation_id": anchor.id,
                 "name": employee.full_name if employee else "Unknown",
-                "score": row.overall_score,
-                "period_start": row.period_start.isoformat(),
+                "score": avg,
+                "period_start": latest_month.isoformat(),
+                "period_end": _month_end(latest_month).isoformat(),
+                "evaluation_count": len(month_rows),
             }
         )
     ranked.sort(key=lambda item: (-(item["score"] or 0), item["name"]))

@@ -1,11 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
+import {
+  addDays,
+  endOfMonth,
+  format,
+  getDaysInMonth,
+  parseISO,
+  startOfMonth,
+} from 'date-fns';
 import { reportsApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/Toast';
-import type { EvaluationRecord, EvaluationScore, KraParameter, KraRatingMeaning } from '../../types';
+import type {
+  EvaluationListItem,
+  EvaluationRecord,
+  EvaluationScore,
+  KraParameter,
+  KraRatingMeaning,
+} from '../../types';
 
 const FALLBACK_PARAMETERS: KraParameter[] = [
   { key: 'deadline_adherence', name: 'Deadline Adherence', weight: 30 },
@@ -23,6 +36,8 @@ const RATING_PILL: Record<number, { selected: string; idle: string; text: string
   2: { selected: 'border border-orange-400/50 bg-orange-500/30 text-orange-300', idle: 'border border-orange-500/40 text-orange-400 hover:bg-orange-500/15', text: 'text-orange-400' },
   1: { selected: 'border border-red-400/50 bg-red-500/30 text-red-300', idle: 'border border-red-500/40 text-red-400 hover:bg-red-500/15', text: 'text-red-400' },
 };
+
+type PeriodPreset = 'week' | 'biweek' | 'month' | 'custom';
 
 function ratingTone(rating?: number | null) {
   return rating != null ? RATING_PILL[rating] : undefined;
@@ -76,6 +91,24 @@ function dateLabel(value?: string | null) {
   }
 }
 
+function rangeLabel(start?: string | null, end?: string | null) {
+  if (!start) return '—';
+  const endValue = end || start;
+  try {
+    const a = parseISO(start.slice(0, 10));
+    const b = parseISO(endValue.slice(0, 10));
+    if (format(a, 'yyyy-MM-dd') === format(b, 'yyyy-MM-dd')) {
+      return format(a, 'd MMM yyyy');
+    }
+    if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) {
+      return `${format(a, 'd')} – ${format(b, 'd MMM yyyy')}`;
+    }
+    return `${format(a, 'd MMM')} – ${format(b, 'd MMM yyyy')}`;
+  } catch {
+    return `${start} – ${endValue}`;
+  }
+}
+
 function previewScore(rating: number | null, weight: number) {
   if (rating == null) return null;
   return Math.round((rating / 5) * weight * 100) / 100;
@@ -84,6 +117,54 @@ function previewScore(rating: number | null, weight: number) {
 function errorMessage(err: unknown, fallback: string) {
   const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
   return typeof detail === 'string' ? detail : fallback;
+}
+
+function clampPeriod(startIso: string, endIso: string, month: string): { start: string; end: string } {
+  const monthBegin = startOfMonth(parseISO(monthStart(month)));
+  const monthFinish = endOfMonth(monthBegin);
+  let start = parseISO(startIso);
+  let end = parseISO(endIso);
+  if (start < monthBegin) start = monthBegin;
+  if (start > monthFinish) start = monthBegin;
+  if (end > monthFinish) end = monthFinish;
+  if (end < start) end = start;
+  const minEnd = addDays(start, 6);
+  if (end < minEnd) {
+    end = minEnd > monthFinish ? monthFinish : minEnd;
+  }
+  // If start is too late for a 7-day window, pull start back.
+  const maxStart = addDays(monthFinish, -6);
+  if (start > maxStart && getDaysInMonth(monthBegin) >= 7) {
+    start = maxStart < monthBegin ? monthBegin : maxStart;
+    end = monthFinish;
+  }
+  return {
+    start: format(start, 'yyyy-MM-dd'),
+    end: format(end, 'yyyy-MM-dd'),
+  };
+}
+
+function presetRange(preset: PeriodPreset, month: string, startHint?: string): { start: string; end: string } {
+  const monthBegin = startOfMonth(parseISO(monthStart(month)));
+  const monthFinish = endOfMonth(monthBegin);
+  const hint = startHint ? parseISO(startHint) : monthBegin;
+  const start = hint < monthBegin || hint > monthFinish ? monthBegin : hint;
+  if (preset === 'month') {
+    return { start: format(monthBegin, 'yyyy-MM-dd'), end: format(monthFinish, 'yyyy-MM-dd') };
+  }
+  if (preset === 'week') {
+    const end = addDays(start, 6);
+    return clampPeriod(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'), month);
+  }
+  if (preset === 'biweek') {
+    const end = addDays(start, 13);
+    return clampPeriod(format(start, 'yyyy-MM-dd'), format(end, 'yyyy-MM-dd'), month);
+  }
+  return clampPeriod(
+    format(start, 'yyyy-MM-dd'),
+    format(addDays(start, 6), 'yyyy-MM-dd'),
+    month,
+  );
 }
 
 type DraftScore = { parameter_key: string; name: string; weight: number; rating: number | null; remarks: string };
@@ -111,6 +192,10 @@ function scoresFromRecord(record: EvaluationRecord, parameters: KraParameter[]):
   });
 }
 
+function statusLabel(status: string) {
+  return status.replace('_', ' ');
+}
+
 export function EvaluationsPanel({
   departmentId,
   initialEvaluationId,
@@ -126,6 +211,7 @@ export function EvaluationsPanel({
   const [editing, setEditing] = useState<EvaluationRecord | 'new' | null>(null);
   const [startUserId, setStartUserId] = useState<number | null>(null);
   const [viewId, setViewId] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const { data: list, isLoading } = useQuery({
     queryKey: ['evaluations', month, departmentId ?? null],
@@ -157,16 +243,23 @@ export function EvaluationsPanel({
     qc.invalidateQueries({ queryKey: ['reports-analytics'] });
   };
 
+  const toggleExpanded = (userId: number) => {
+    setExpanded((prev) => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h2 className="text-sm font-medium text-text-primary">Employee Evaluations</h2>
           <p className="text-xs text-text-muted mt-1">
-            One monthly scorecard per employee. A rating of 3 means the employee meets expectations.
+            Evaluate weekly, bi-weekly, or monthly (same calendar month, no overlapping periods).
+            The monthly score is the average of all submitted period scores.
           </p>
         </div>
-        <Button type="button" onClick={() => { setStartUserId(null); setEditing('new'); setViewId(null); }}>New Evaluation</Button>
+        <Button type="button" onClick={() => { setStartUserId(null); setEditing('new'); setViewId(null); }}>
+          New Evaluation
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -186,7 +279,7 @@ export function EvaluationsPanel({
           className="input py-1.5 text-sm w-auto"
           value={month}
           onChange={(e) => setMonth(e.target.value || currentMonth())}
-          aria-label="Evaluation month"
+          aria-label="Comparison month"
         />
       </div>
 
@@ -238,8 +331,8 @@ export function EvaluationsPanel({
                 <tr className="border-b border-dark-border text-left">
                   <th className="px-4 py-3 text-2xs font-medium text-text-muted uppercase">Employee</th>
                   <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Department</th>
-                  <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Evaluation period</th>
-                  <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Overall score</th>
+                  <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Periods</th>
+                  <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Monthly avg</th>
                   <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Status</th>
                   <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Last evaluated</th>
                   <th className="px-4 py-3 text-2xs font-medium text-text-muted uppercase">Action</th>
@@ -251,33 +344,71 @@ export function EvaluationsPanel({
                     <td colSpan={7} className="px-4 py-8 text-center text-text-muted">No employees match these filters.</td>
                   </tr>
                 )}
-                {items.map((row) => (
-                  <tr key={row.user_id} className="border-b border-dark-border">
-                    <td className="px-4 py-3 text-text-primary">{row.name}</td>
-                    <td className="px-3 py-3 text-text-secondary">{row.departments.length ? row.departments.join(', ') : '—'}</td>
-                    <td className="px-3 py-3 text-text-secondary">{monthLabel(row.period_start)}</td>
-                    <td className={`px-3 py-3 tabular-nums font-medium ${scoreTone(row.overall_score)?.text ?? 'text-text-muted'}`}>
-                      {row.overall_score == null ? '—' : `${row.overall_score}/100`}
-                    </td>
-                    <td className="px-3 py-3 capitalize">{row.status.replace('_', ' ')}</td>
-                    <td className="px-3 py-3 text-text-secondary">{dateLabel(row.last_evaluated_at)}</td>
-                    <td className="px-4 py-3">
-                      {row.evaluation_id ? (
-                        <button type="button" className="text-accent-primary hover:underline" onClick={() => { setViewId(row.evaluation_id); setEditing(null); }}>
-                          Open
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-accent-primary hover:underline"
-                          onClick={() => { setStartUserId(row.user_id); setEditing('new'); setViewId(null); }}
-                        >
-                          Start
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {items.map((row) => {
+                  const periods = row.evaluations ?? [];
+                  const isOpen = Boolean(expanded[row.user_id]);
+                  return (
+                    <Fragment key={row.user_id}>
+                      <tr className="border-b border-dark-border">
+                        <td className="px-4 py-3 text-text-primary">{row.name}</td>
+                        <td className="px-3 py-3 text-text-secondary">{row.departments.length ? row.departments.join(', ') : '—'}</td>
+                        <td className="px-3 py-3 text-text-secondary">
+                          {row.evaluation_count ? (
+                            <button
+                              type="button"
+                              className="text-accent-primary hover:underline"
+                              onClick={() => toggleExpanded(row.user_id)}
+                            >
+                              {row.submitted_count ?? 0}/{row.evaluation_count} · {isOpen ? 'Hide' : 'Show'}
+                            </button>
+                          ) : (
+                            'None'
+                          )}
+                        </td>
+                        <td className={`px-3 py-3 tabular-nums font-medium ${scoreTone(row.monthly_average ?? row.overall_score)?.text ?? 'text-text-muted'}`}>
+                          {(row.monthly_average ?? row.overall_score) == null
+                            ? '—'
+                            : `${row.monthly_average ?? row.overall_score}/100`}
+                        </td>
+                        <td className="px-3 py-3 capitalize">{statusLabel(row.status)}</td>
+                        <td className="px-3 py-3 text-text-secondary">{dateLabel(row.last_evaluated_at)}</td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className="text-accent-primary hover:underline"
+                            onClick={() => { setStartUserId(row.user_id); setEditing('new'); setViewId(null); }}
+                          >
+                            Start
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && periods.map((period) => (
+                        <tr key={`${row.user_id}-${period.evaluation_id}`} className="border-b border-dark-border bg-dark-elevated/40">
+                          <td className="px-4 py-2 text-text-muted text-xs" colSpan={2}>
+                            Period score
+                          </td>
+                          <td className="px-3 py-2 text-text-secondary text-xs">
+                            {rangeLabel(period.period_start, period.period_end)}
+                          </td>
+                          <td className={`px-3 py-2 tabular-nums text-xs ${scoreTone(period.overall_score)?.text ?? 'text-text-muted'}`}>
+                            {period.overall_score == null ? '—' : `${period.overall_score}/100`}
+                          </td>
+                          <td className="px-3 py-2 capitalize text-xs">{statusLabel(period.status)}</td>
+                          <td className="px-3 py-2 text-text-secondary text-xs">{dateLabel(period.submitted_at)}</td>
+                          <td className="px-4 py-2">
+                            <button
+                              type="button"
+                              className="text-accent-primary hover:underline text-xs"
+                              onClick={() => { setViewId(period.evaluation_id); setEditing(null); }}
+                            >
+                              Open
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -299,7 +430,7 @@ function EvaluationForm({
 }: {
   mode: EvaluationRecord | 'new';
   month: string;
-  employees: { user_id: number; name: string; evaluation_id: number | null }[];
+  employees: EvaluationListItem[];
   initialUserId?: number | null;
   parameters: KraParameter[];
   scale: KraRatingMeaning[];
@@ -307,8 +438,21 @@ function EvaluationForm({
   onSaved: (record: EvaluationRecord) => void;
 }) {
   const existing = mode === 'new' ? null : mode;
+  const initialPreset: PeriodPreset = existing ? 'custom' : 'week';
+  const initialRange = existing
+    ? {
+        start: existing.period_start.slice(0, 10),
+        end: (existing.period_end || existing.period_start).slice(0, 10),
+      }
+    : presetRange('week', month);
+
   const [userId, setUserId] = useState(existing ? String(existing.user_id) : initialUserId ? String(initialUserId) : '');
-  const [period, setPeriod] = useState(existing ? existing.period_start.slice(0, 7) : month);
+  const [calendarMonth, setCalendarMonth] = useState(
+    existing ? existing.period_start.slice(0, 7) : month,
+  );
+  const [preset, setPreset] = useState<PeriodPreset>(initialPreset);
+  const [periodStart, setPeriodStart] = useState(initialRange.start);
+  const [periodEnd, setPeriodEnd] = useState(initialRange.end);
   const [comment, setComment] = useState(existing?.overall_comment ?? '');
   const [scores, setScores] = useState<DraftScore[]>(existing ? scoresFromRecord(existing, parameters) : blankScores(parameters));
   const [confirming, setConfirming] = useState(false);
@@ -316,10 +460,20 @@ function EvaluationForm({
 
   const total = scores.reduce((sum, row) => sum + (previewScore(row.rating, row.weight) ?? 0), 0);
   const complete = scores.every((row) => row.rating != null);
+  const locked = Boolean(existing);
+
+  const applyPreset = (next: PeriodPreset, nextMonth = calendarMonth, start = periodStart) => {
+    setPreset(next);
+    if (next === 'custom') return;
+    const range = presetRange(next, nextMonth, start);
+    setPeriodStart(range.start);
+    setPeriodEnd(range.end);
+  };
 
   const payload = () => ({
     user_id: Number(userId),
-    period_start: monthStart(period),
+    period_start: periodStart,
+    period_end: periodEnd,
     overall_comment: comment.trim() || null,
     scores: scores.map((row) => ({
       parameter_key: row.parameter_key,
@@ -331,16 +485,9 @@ function EvaluationForm({
   const save = useMutation({
     mutationFn: async (submit: boolean) => {
       if (!userId) throw new Error('Select an employee');
-      if (!period) throw new Error('Select an evaluation month');
+      if (!periodStart || !periodEnd) throw new Error('Select an evaluation period');
       const body = payload();
       if (!existing) {
-        const match = employees.find((row) => row.user_id === Number(userId) && row.evaluation_id && period === month);
-        if (match?.evaluation_id) {
-          const saved = await reportsApi.saveEvaluation(match.evaluation_id, body);
-          if (!submit) return saved.data.data;
-          const submitted = await reportsApi.submitEvaluation(match.evaluation_id, body);
-          return submitted.data.data;
-        }
         const created = await reportsApi.createEvaluation(body);
         if (!submit) return created.data.data;
         const submitted = await reportsApi.submitEvaluation(created.data.data.id, body);
@@ -374,20 +521,98 @@ function EvaluationForm({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block sm:col-span-2">
+          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Calendar month</span>
+          <input
+            type="month"
+            className="input w-full text-sm sm:max-w-xs"
+            value={calendarMonth}
+            disabled={locked}
+            onChange={(e) => {
+              const next = e.target.value || currentMonth();
+              setCalendarMonth(next);
+              applyPreset(preset === 'custom' ? 'week' : preset, next);
+            }}
+          />
+        </label>
+
+        <div className="sm:col-span-2">
+          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period length</span>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['week', '1 week'],
+              ['biweek', '2 weeks'],
+              ['month', 'Full month'],
+              ['custom', 'Custom'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={locked}
+                onClick={() => applyPreset(value)}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  preset === value
+                    ? 'border-accent-primary bg-accent-primary/15 text-accent-primary'
+                    : 'border-dark-border text-text-secondary hover:bg-dark-hover'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <label className="block">
+          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period start</span>
+          <input
+            type="date"
+            className="input w-full text-sm"
+            value={periodStart}
+            min={monthStart(calendarMonth)}
+            max={format(endOfMonth(parseISO(monthStart(calendarMonth))), 'yyyy-MM-dd')}
+            disabled={locked}
+            onChange={(e) => {
+              const nextStart = e.target.value;
+              setPeriodStart(nextStart);
+              setPreset('custom');
+              const clamped = clampPeriod(nextStart, periodEnd, calendarMonth);
+              setPeriodStart(clamped.start);
+              setPeriodEnd(clamped.end);
+            }}
+          />
+        </label>
+        <label className="block">
+          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period end</span>
+          <input
+            type="date"
+            className="input w-full text-sm"
+            value={periodEnd}
+            min={periodStart}
+            max={format(endOfMonth(parseISO(monthStart(calendarMonth))), 'yyyy-MM-dd')}
+            disabled={locked}
+            onChange={(e) => {
+              setPreset('custom');
+              const clamped = clampPeriod(periodStart, e.target.value, calendarMonth);
+              setPeriodStart(clamped.start);
+              setPeriodEnd(clamped.end);
+            }}
+          />
+        </label>
+
+        <label className="block sm:col-span-2">
           <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Employee</span>
-          <select className="input w-full text-sm" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={Boolean(existing)}>
+          <select className="input w-full text-sm" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={locked}>
             <option value="">Select an employee</option>
             {employees.map((row) => (
               <option key={row.user_id} value={row.user_id}>{row.name}</option>
             ))}
           </select>
         </label>
-        <label className="block">
-          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Evaluation month</span>
-          <input type="month" className="input w-full text-sm" value={period} onChange={(e) => setPeriod(e.target.value)} disabled={Boolean(existing)} />
-        </label>
       </div>
+
+      <p className="text-xs text-text-muted">
+        Evaluating {rangeLabel(periodStart, periodEnd)}. Periods must stay in one month, last at least 7 days, and must not overlap another evaluation for the same person.
+      </p>
 
       {showRatingChart && (
         <div className="rounded-xl border border-dark-border overflow-x-auto">
@@ -468,7 +693,8 @@ function EvaluationForm({
       <Modal isOpen={confirming} onClose={() => setConfirming(false)} title="Submit evaluation" size="sm">
         <div className="space-y-4">
           <p className="text-sm text-text-secondary">
-            Submit this scorecard for {monthLabel(monthStart(period))}? The overall score is {total}/100.
+            Submit this scorecard for {rangeLabel(periodStart, periodEnd)}? The period score is {total}/100.
+            It will count toward the {monthLabel(monthStart(calendarMonth))} average.
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={() => setConfirming(false)}>Cancel</Button>
@@ -500,6 +726,11 @@ function EvaluationDetail({
 
   if (!data) return <p className="text-sm text-text-muted">Loading evaluation…</p>;
   const submitted = (history?.evaluations ?? []).filter((row) => row.status === 'submitted');
+  const monthKey = data.period_start.slice(0, 7);
+  const monthSubmitted = submitted.filter((row) => row.period_start.slice(0, 7) === monthKey);
+  const monthlyAvg = monthSubmitted.length
+    ? Math.round((monthSubmitted.reduce((sum, row) => sum + (row.overall_score ?? 0), 0) / monthSubmitted.length) * 100) / 100
+    : null;
 
   return (
     <div className="space-y-4">
@@ -507,11 +738,16 @@ function EvaluationDetail({
         <div>
           <h3 className="text-sm font-medium text-text-primary">{data.employee?.name ?? 'Evaluation'}</h3>
           <p className="text-xs text-text-muted mt-1">
-            {data.department_snapshot || data.departments.join(', ') || 'No department'} · {monthLabel(data.period_start)} · {data.status}
+            {data.department_snapshot || data.departments.join(', ') || 'No department'} · {rangeLabel(data.period_start, data.period_end)} · {data.status}
           </p>
           <p className="text-xs text-text-muted mt-1">
             Evaluator {data.evaluator?.name ?? '—'} · Submitted {dateLabel(data.submitted_at)}
           </p>
+          {monthlyAvg != null && (
+            <p className="text-xs text-text-muted mt-1">
+              {monthLabel(data.period_start)} average ({monthSubmitted.length} period{monthSubmitted.length === 1 ? '' : 's'}): {monthlyAvg}/100
+            </p>
+          )}
         </div>
         <button type="button" className="text-sm text-accent-primary hover:underline" onClick={() => onEdit(data)}>Edit</button>
       </div>
@@ -549,7 +785,9 @@ function EvaluationDetail({
                 <tr className="border-b border-dark-border text-left">
                   <th className="px-3 py-2 text-text-muted">Parameter</th>
                   {submitted.map((row) => (
-                    <th key={row.id} className="px-3 py-2 text-text-muted">{monthLabel(row.period_start)}</th>
+                    <th key={row.id} className="px-3 py-2 text-text-muted whitespace-nowrap">
+                      {rangeLabel(row.period_start, row.period_end)}
+                    </th>
                   ))}
                 </tr>
               </thead>

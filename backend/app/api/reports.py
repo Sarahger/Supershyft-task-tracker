@@ -23,6 +23,7 @@ class EvaluationScoreIn(BaseModel):
 class EvaluationWrite(BaseModel):
     user_id: int | None = None
     period_start: date | None = None
+    period_end: date | None = None
     overall_comment: str | None = Field(None, max_length=4000)
     scores: list[EvaluationScoreIn] = []
 
