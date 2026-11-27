@@ -65,7 +65,6 @@ def list_tasks(
     page_size: int = Query(50, ge=1, le=500),
     status: str | None = None,
     priority: str | None = None,
-    project_id: int | None = None,
     assignee_id: int | None = None,
     reviewer_id: int | None = None,
     department_id: int | None = None,
@@ -93,7 +92,6 @@ def list_tasks(
         for k, v in {
             "status": status,
             "priority": priority,
-            "project_id": project_id,
             "assignee_id": assignee_id,
             "reviewer_id": reviewer_id,
             "department_id": department_id,
@@ -794,7 +792,6 @@ def global_search(q: str = Query(..., min_length=1), db: Session = Depends(get_d
     return APIResponse(
         data={
             "tasks": [{"id": t.id, "type": "task", "title": t.title, "subtitle": t.status, "link": f"/tasks/{t.id}"} for t in results["tasks"]],
-            "projects": [{"id": p.id, "type": "project", "title": p.name, "subtitle": p.status, "link": f"/projects/{p.id}"} for p in results["projects"]],
             "users": [{"id": u.id, "type": "user", "title": u.full_name, "subtitle": u.email, "link": f"/users/{u.id}"} for u in results["users"]],
             "clients": [{"id": c.id, "type": "client", "title": c.name, "link": f"/clients/{c.id}"} for c in results["clients"]],
             "tags": [{"id": t.id, "type": "tag", "title": t.name} for t in results["tags"]],

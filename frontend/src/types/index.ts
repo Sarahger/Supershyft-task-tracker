@@ -41,7 +41,6 @@ export interface UserAssignedTask {
   title: string;
   status: string;
   priority: string;
-  project_name?: string | null;
   due_date?: string;
   estimated_hours?: number | null;
   actual_hours?: number | null;
@@ -88,8 +87,6 @@ export interface Task {
   due_date?: string;
   start_date?: string;
   end_date?: string;
-  project_id?: number;
-  project_name?: string;
   client_id?: number;
   review_required: boolean;
   testing_required: boolean;
@@ -109,7 +106,6 @@ export interface Task {
   creator?: UserBrief;
   task_type?: { id: number; name: string };
   task_type_id?: number;
-  project?: { id: number; name: string };
   checklists?: Checklist[];
   dependencies?: {
     id: number;
@@ -159,22 +155,6 @@ export interface UserBrief {
   role?: string;
   profile_picture?: string;
   job_title?: string;
-}
-
-export interface Project {
-  id: number;
-  name: string;
-  description?: string;
-  status: string;
-  health: string;
-  start_date?: string;
-  end_date?: string;
-  open_tasks_count: number;
-  completed_tasks_count: number;
-  overdue_tasks_count: number;
-  tasks_count: number;
-  progress: number;
-  created_at: string;
 }
 
 export interface Department {
@@ -392,7 +372,6 @@ export interface DashboardData {
   recent_tasks: Task[];
   pending_reviews: Task[];
   recent_activity: ActivityItem[];
-  projects: { id: number; name: string; health: string; status: string }[];
   status_distribution: Record<string, number>;
   priority_distribution: Record<string, number>;
   role: string;
@@ -483,7 +462,6 @@ export interface MeetingActionResult {
 
 export interface SearchResults {
   tasks: SearchResult[];
-  projects: SearchResult[];
   users: SearchResult[];
   clients: SearchResult[];
   tags: SearchResult[];
@@ -1006,8 +984,6 @@ export interface WorkVaultResource {
   description: string;
   category: string;
   tags: string[];
-  project_id?: number | null;
-  project_name?: string | null;
   resource_type: 'file' | 'link';
   file_kind: WorkVaultFileKind;
   filename?: string | null;

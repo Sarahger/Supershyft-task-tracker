@@ -40,7 +40,6 @@ interface TasksWorkspaceProps {
   queryKey: string[];
   fetchTasks?: () => Promise<Task[]>;
   listFilters?: Record<string, unknown>;
-  showProject?: boolean;
   showViewSelector?: boolean;
   defaultView?: ViewMode;
   fullWidth?: boolean;
@@ -52,9 +51,7 @@ function groupTasks(tasks: Task[], groupBy: GroupBy): { label: string; tasks: Ta
   if (groupBy === 'status') return groupTasksByDueSections(tasks);
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
-    let key = 'Other';
-    if (groupBy === 'priority') key = t.priority;
-    else if (groupBy === 'project') key = t.project_name || 'No project';
+    const key = groupBy === 'priority' ? t.priority : 'Other';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
   }
@@ -67,7 +64,6 @@ export function TasksWorkspace({
   queryKey,
   fetchTasks,
   listFilters,
-  showProject = false,
   showViewSelector = true,
   defaultView = 'table',
   fullWidth = false,
@@ -80,10 +76,9 @@ export function TasksWorkspace({
   const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const defaultProjectId = typeof listFilters?.project_id === 'number' ? listFilters.project_id : undefined;
   const handleOpenCreate = useCallback(() => {
-    openCreate(defaultProjectId != null ? { projectId: defaultProjectId } : undefined);
-  }, [openCreate, defaultProjectId]);
+    openCreate();
+  }, [openCreate]);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -100,7 +95,7 @@ export function TasksWorkspace({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
-  const { columns, toggleColumn, setColumns } = useColumnVisibility();
+  const { columns, setColumns } = useColumnVisibility();
 
   useEffect(() => {
     const fromUrl = searchParams.get('assignee') ?? '';
@@ -204,7 +199,7 @@ export function TasksWorkspace({
         sort_order: 'asc',
       };
     }
-    // Load the full active task set so mobile project groups / kanban aren't
+    // Load the full active task set so mobile groups / kanban aren't
     // capped at the first page of 50 newest tasks.
     return {
       ...sharedListFilters,
@@ -463,8 +458,6 @@ export function TasksWorkspace({
           sortDir={sortDir}
           onSortFieldChange={(v) => setSortField(v as SortField)}
           onSortDirToggle={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
-          groupBy={groupBy}
-          onGroupByChange={setGroupBy}
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
           showViewSelector={showViewsEffective}
@@ -491,14 +484,10 @@ export function TasksWorkspace({
         sortDir={sortDir}
         onSortFieldChange={(v) => setSortField(v as SortField)}
         onSortDirToggle={() => setSortDir((d) => d === 'asc' ? 'desc' : 'asc')}
-        groupBy={groupBy}
-        onGroupByChange={setGroupBy}
         viewMode={viewMode}
         onViewModeChange={handleViewModeChange}
         onNewTask={isDeletedView ? undefined : handleOpenCreate}
         totalCount={data?.total}
-        visibleColumns={columns}
-        onToggleColumn={toggleColumn}
         selectedCount={selectedIds.size}
         onBulkStatusChange={(status) => bulkMutation.mutate({ ids: Array.from(selectedIds), status })}
         onClearSelection={() => setSelectedIds(new Set())}
@@ -555,7 +544,6 @@ export function TasksWorkspace({
             currentMonth={calendarMonth}
             onMonthChange={setCalendarMonth}
             onTaskClick={openTask}
-            showProject={showProject}
           />
         </Suspense>
       ) : viewMode === 'weekly' ? (
@@ -566,7 +554,6 @@ export function TasksWorkspace({
             currentWeek={calendarWeek}
             onWeekChange={setCalendarWeek}
             onTaskClick={openTask}
-            showProject={showProject}
           />
         </Suspense>
       ) : isMobile ? (
@@ -589,7 +576,6 @@ export function TasksWorkspace({
               <TaskDatabase
                 tasks={group.tasks}
                 onTaskClick={openTask}
-                showProject={showProject}
                 columns={columns}
                 onColumnsChange={setColumns}
                 sortField={sortField}

@@ -97,7 +97,6 @@ class TaskService:
             end_date=data.get("end_date"),
             due_date=data.get("due_date"),
             original_due_date=data.get("due_date"),
-            project_id=data.get("project_id"),
             client_id=data.get("client_id"),
             sprint_id=data.get("sprint_id"),
             milestone_id=data.get("milestone_id"),
@@ -163,6 +162,9 @@ class TaskService:
             del data["tag_ids"]
 
         # Ignore client-sent actual_hours — always derived from start/end.
+        # Projects are no longer part of the product; drop any leftover link.
+        data.pop("project_id", None)
+        task.project_id = None
         data.pop("actual_hours", None)
         data.pop("start_date", None)
         data.pop("end_date", None)
@@ -442,8 +444,6 @@ class TaskService:
             "status": task.status,
             "priority": task.priority,
             "due_date": task.due_date,
-            "project_id": task.project_id,
-            "project_name": task.project.name if task.project else None,
             "estimated_hours": task.estimated_hours,
             "assignees": [
                 {
@@ -500,8 +500,6 @@ class TaskService:
             "due_date": task.due_date,
             "start_date": task.start_date,
             "end_date": task.end_date,
-            "project_id": task.project_id,
-            "project_name": task.project.name if task.project else None,
             "review_required": task.review_required,
             "testing_required": task.testing_required,
             "assignees": [
@@ -574,7 +572,6 @@ class TaskService:
             ],
             "departments": [{"id": d.id, "name": d.name} for d in task.departments],
             "task_type": {"id": task.task_type.id, "name": task.task_type.name} if task.task_type else None,
-            "project": {"id": task.project.id, "name": task.project.name} if task.project else None,
             "client": {"id": task.client.id, "name": task.client.name} if task.client else None,
             "reviewer": user_to_dict(task.reviewer),
             "creator": user_to_dict(task.creator),

@@ -92,11 +92,8 @@ export function WeeklyUpdatesPanel() {
   const isOwn = selectedUserId === user?.id;
   const writablePeriod = history?.writable_period_start ?? history?.current_period_start ?? weekStart;
   const selectedReport = history?.reports.find((r) => r.period_start === weekStart) ?? null;
-  // Current and upcoming weeks are open for writing (including empty drafts).
-  const canWriteSelected = isOwn && Boolean(
-    selectedReport?.editable || (!selectedReport && weekStart >= writablePeriod),
-  );
-  const canWrite = canWriteSelected;
+  // Current week and every future week are editable (including empty drafts).
+  const canWrite = Boolean(isOwn && weekStart >= writablePeriod);
   const writeWeekEndIso =
     weekStart === history?.writable_period_start && history.writable_period_end
       ? history.writable_period_end
@@ -235,7 +232,7 @@ export function WeeklyUpdatesPanel() {
                   <p className="text-sm text-text-muted mt-1">No tasks yet</p>
                 </div>
                 <div>
-                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Current Week&apos;s Tasks</p>
+                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Weekly Tasks</p>
                   {liveCurrentWeek.length === 0 ? (
                     <p className="text-sm text-text-muted mt-1">No tasks yet</p>
                   ) : (
@@ -308,9 +305,9 @@ export function WeeklyUpdatesPanel() {
                 key={report.id}
                 report={merged}
                 author={author}
-                onEdit={isOwn && canWrite && !writing ? () => setWriting(true) : undefined}
+                onEdit={canWrite && !writing ? () => setWriting(true) : undefined}
                 actionLabel={report.status === 'draft' && openCount === 0 ? 'Write update' : 'Edit'}
-                onRevise={isOwn && report.editable ? setReviseItem : undefined}
+                onRevise={canWrite ? setReviseItem : undefined}
               />
             );
           })()}

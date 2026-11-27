@@ -490,7 +490,7 @@ export function SubmitWeeklyUpdateForm({
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-medium text-text-primary">Current Week&apos;s Tasks</h3>
+          <h3 className="text-sm font-medium text-text-primary">Weekly Tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
             Incomplete tasks due this working week, including carried-forward work. Add new ones below — they are saved in the Task Tracker. For later weeks, open that week and write there. Yellow means carried forward from an earlier week.
           </p>

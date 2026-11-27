@@ -130,7 +130,6 @@ class SearchResultItem(BaseModel):
 
 class SearchResponse(BaseModel):
     tasks: list[SearchResultItem] = []
-    projects: list[SearchResultItem] = []
     users: list[SearchResultItem] = []
     clients: list[SearchResultItem] = []
     comments: list[SearchResultItem] = []
@@ -151,6 +150,5 @@ class ReportFilter(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     department_id: int | None = None
-    project_id: int | None = None
     user_id: int | None = None
     client_id: int | None = None

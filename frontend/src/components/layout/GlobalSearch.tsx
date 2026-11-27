@@ -81,7 +81,6 @@ export function GlobalSearch() {
   const allResults = results
     ? [
         ...(results.tasks ?? []).map((r) => ({ ...r, type: 'task' as const })),
-        ...(results.projects ?? []).map((r) => ({ ...r, type: 'project' as const })),
         ...(results.users ?? []).map((r) => ({ ...r, type: 'user' as const })),
       ]
     : [];
@@ -93,10 +92,9 @@ export function GlobalSearch() {
     navigate(`/?assignee=${user.id}`);
   };
 
-  const openResult = (r: { type: 'task' | 'project' | 'user'; id: number }) => {
+  const openResult = (r: { type: 'task' | 'user'; id: number }) => {
     close();
     if (r.type === 'task') openTask(r.id);
-    else if (r.type === 'project') navigate(`/projects/${r.id}`);
     else openUser(r.id);
   };
 

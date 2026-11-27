@@ -13,7 +13,6 @@ from app.models import (
     Comment,
     Department,
     Milestone,
-    Project,
     Sprint,
     Tag,
     Task,
@@ -152,34 +151,10 @@ def seed():
         clients[name] = c
     db.flush()
 
-    # Projects
-    project_data = [
-        ("Mobile App", "Native mobile application for iOS and Android", "active", "healthy"),
-        ("Website Redesign", "Complete overhaul of company website", "active", "at_risk"),
-        ("Admin Dashboard", "Internal admin dashboard rebuild", "active", "healthy"),
-        ("Marketing Campaign Q2", "Q2 marketing campaign across channels", "active", "healthy"),
-        ("Health Camp", "Community health camp initiative", "planning", "healthy"),
-        ("Documentation", "Technical documentation overhaul", "active", "delayed"),
-    ]
-    projects = {}
-    for name, desc, status, health in project_data:
-        p = Project(
-            name=name,
-            description=desc,
-            status=status,
-            health=health,
-            start_date=now - timedelta(days=30),
-            end_date=now + timedelta(days=60),
-            created_by_id=managers[0].id,
-        )
-        db.add(p)
-        projects[name] = p
-    db.flush()
-
     # Sprint & Milestone
     sprint = Sprint(name="Sprint 12", start_date=now - timedelta(days=7), end_date=now + timedelta(days=7), is_active=True)
     db.add(sprint)
-    milestone = Milestone(name="MVP Launch", due_date=now + timedelta(days=30), project_id=projects["Mobile App"].id)
+    milestone = Milestone(name="MVP Launch", due_date=now + timedelta(days=30))
     db.add(milestone)
     db.flush()
 
@@ -232,7 +207,6 @@ def seed():
             estimated_hours=hours,
             start_date=now - timedelta(days=10 + i),
             due_date=now + timedelta(days=i * 2 - 5),
-            project_id=projects[project].id if project and project in projects else (projects["Mobile App"].id if project == "Product" else None),
             client_id=clients["Acme Corp"].id if i % 3 == 0 else None,
             sprint_id=sprint.id if i < 20 else None,
             milestone_id=milestone.id if "Mobile" in (project or "") else None,

@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
-  LayoutList, FolderKanban, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Video, NotebookPen, CalendarCheck, Library,
+  LayoutList, CheckSquare, BarChart3, Users, Settings, LogOut, Menu, X, Video, NotebookPen, CalendarCheck, Library,
 } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -28,7 +28,6 @@ const navItems: {
   { to: '/weekly-updates', icon: NotebookPen, label: 'Weekly Updates' },
   { to: '/work-vault', icon: Library, label: 'Work Vault' },
   { to: '/attendance', icon: CalendarCheck, label: 'Attendance' },
-  { to: '/projects', icon: FolderKanban, label: 'Projects' },
   { to: '/meetings', icon: Video, label: 'Meetings' },
   { to: '/reports', icon: BarChart3, label: 'Reports', roles: MANAGER_ACCESS_ROLES },
   { to: '/users', icon: Users, label: 'Users', roles: MANAGER_ACCESS_ROLES },

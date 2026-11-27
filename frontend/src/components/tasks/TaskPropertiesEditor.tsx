@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
 import clsx from 'clsx';
-import { tasksApi, projectsApi, usersApi } from '../../services/endpoints';
+import { tasksApi, usersApi } from '../../services/endpoints';
 import { Button } from '../ui/Button';
 import { Input, Textarea, Select } from '../ui/Input';
 import { Modal } from '../ui/Modal';
@@ -29,7 +29,6 @@ interface TaskFormState {
   priority: string;
   status: string;
   due_date: string;
-  project_id: string;
   reviewer_id: string;
   assignee_ids: number[];
   review_required: boolean;
@@ -47,7 +46,6 @@ function taskToForm(task: Task): TaskFormState {
     priority: task.priority,
     status: task.status,
     due_date: locked ? originalDue : currentDue,
-    project_id: task.project_id ? String(task.project_id) : '',
     reviewer_id: task.reviewer_id ? String(task.reviewer_id) : '',
     assignee_ids: task.assignees?.map((a) => a.user_id) ?? [],
     review_required: task.review_required,
@@ -81,7 +79,6 @@ async function persistTaskProperties(
     ...(locked
       ? {}
       : { due_date: snapshot.due_date ? new Date(`${snapshot.due_date}T12:00:00`).toISOString() : null }),
-    project_id: snapshot.project_id ? Number(snapshot.project_id) : null,
     reviewer_id: snapshot.reviewer_id ? Number(snapshot.reviewer_id) : null,
     assignee_ids: snapshot.assignee_ids,
     review_required: snapshot.review_required,
@@ -138,11 +135,6 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
     if (revisionDraftTouched.current) return;
     setRevisedDueDate(toDateInput(task.due_date));
   }, [task.due_date]);
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-  });
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
@@ -489,15 +481,6 @@ export function TaskPropertiesEditor({ task, taskId }: TaskPropertiesEditorProps
             ))}
           </div>
         )}
-        <Select
-          label="Project"
-          value={form.project_id}
-          onChange={(e) => setForm({ ...form, project_id: e.target.value })}
-          options={[
-            { value: '', label: 'No project' },
-            ...(projects ?? []).map((p: { id: number; name: string }) => ({ value: String(p.id), label: p.name })),
-          ]}
-        />
       </div>
 
       <div>

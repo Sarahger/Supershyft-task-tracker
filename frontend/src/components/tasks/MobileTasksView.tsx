@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { FolderKanban, ChevronDown, Plus } from 'lucide-react';
+import { ChevronDown, LayoutList, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
 import { MobileTaskCard } from './MobileTaskCard';
@@ -7,9 +7,9 @@ import { EmptyState } from '../ui/Skeleton';
 import { Button } from '../ui/Button';
 import { groupTasksByDueSections } from './TaskCard';
 
-const STORAGE_KEY = 'mobile-expanded-projects';
+const STORAGE_KEY = 'mobile-expanded-groups';
 
-function buildGroups(tasks: Task[], groupBy: 'project' | 'status' | 'priority' | 'none'): ProjectGroup[] {
+function buildGroups(tasks: Task[], groupBy: 'status' | 'priority' | 'none'): TaskGroup[] {
   if (groupBy === 'none') {
     return [{ name: 'All tasks', tasks, completed: 0, total: tasks.length, progress: 0 }];
   }
@@ -28,9 +28,7 @@ function buildGroups(tasks: Task[], groupBy: 'project' | 'status' | 'priority' |
   }
   const map = new Map<string, Task[]>();
   for (const t of tasks) {
-    let key = 'Other';
-    if (groupBy === 'priority') key = t.priority;
-    else key = t.project_name || 'No project';
+    const key = groupBy === 'priority' ? t.priority : 'Other';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(t);
   }
@@ -49,7 +47,7 @@ function buildGroups(tasks: Task[], groupBy: 'project' | 'status' | 'priority' |
     .sort((a, b) => b.total - a.total);
 }
 
-interface ProjectGroup {
+interface TaskGroup {
   name: string;
   tasks: Task[];
   completed: number;
@@ -62,10 +60,10 @@ interface MobileTasksViewProps {
   onTaskClick: (id: number) => void;
   onCreateTask: () => void;
   isLoading?: boolean;
-  groupBy?: 'project' | 'status' | 'priority' | 'none';
+  groupBy?: 'status' | 'priority' | 'none';
 }
 
-export function MobileTasksView({ tasks, onTaskClick, onCreateTask, isLoading, groupBy = 'project' }: MobileTasksViewProps) {
+export function MobileTasksView({ tasks, onTaskClick, onCreateTask, isLoading, groupBy = 'status' }: MobileTasksViewProps) {
   const groups = useMemo(() => buildGroups(tasks, groupBy), [tasks, groupBy]);
 
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -78,7 +76,7 @@ export function MobileTasksView({ tasks, onTaskClick, onCreateTask, isLoading, g
 
   const didInit = useRef(false);
 
-  // Expand first project only on first visit (no saved preference yet)
+  // Expand the first group only on first visit (no saved preference yet)
   useEffect(() => {
     if (didInit.current || groups.length === 0) return;
     didInit.current = true;
@@ -134,7 +132,7 @@ export function MobileTasksView({ tasks, onTaskClick, onCreateTask, isLoading, g
       {groups.map((group) => {
         const isOpen = expanded.has(group.name);
         return (
-          <section key={group.name} className="mobile-project-accordion rounded-2xl border border-dark-border bg-dark-card overflow-hidden">
+          <section key={group.name} className="rounded-2xl border border-dark-border bg-dark-card overflow-hidden">
             <button
               type="button"
               onClick={() => toggle(group.name)}
@@ -142,23 +140,13 @@ export function MobileTasksView({ tasks, onTaskClick, onCreateTask, isLoading, g
               aria-expanded={isOpen}
             >
               <div className="h-10 w-10 rounded-xl bg-accent-primary/10 flex items-center justify-center shrink-0">
-                <FolderKanban className="h-5 w-5 text-accent-primary" />
+                <LayoutList className="h-5 w-5 text-accent-primary" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-text-primary truncate">{group.name}</p>
                 <p className="text-xs text-text-muted mt-0.5">
-                  {groupBy === 'project'
-                    ? `${group.total} task${group.total !== 1 ? 's' : ''} · ${group.progress}% complete`
-                    : `${group.total} task${group.total !== 1 ? 's' : ''}`}
+                  {`${group.total} task${group.total !== 1 ? 's' : ''}`}
                 </p>
-                {groupBy === 'project' && (
-                <div className="mt-2 h-1.5 rounded-full bg-dark-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-accent-primary transition-all duration-300"
-                    style={{ width: `${group.progress}%` }}
-                  />
-                </div>
-                )}
               </div>
               <ChevronDown
                 className={clsx(

@@ -9,7 +9,6 @@ export default function HomePage() {
       title="Tasks"
       subtitle={user ? `Welcome back, ${user.first_name}` : undefined}
       queryKey={['tasks']}
-      showProject
       showViewSelector
       fullWidth
       showQuickFilters

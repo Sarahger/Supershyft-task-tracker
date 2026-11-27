@@ -48,9 +48,6 @@ export function TaskCard({ task, onClick, compact }: TaskCardProps) {
             )}
           </div>
           <h3 className={`font-medium text-text-primary ${compact ? 'text-sm' : ''} truncate`}>{task.title}</h3>
-          {!compact && task.project_name && (
-            <p className="text-xs text-text-muted mt-0.5">{task.project_name}</p>
-          )}
         </div>
         {task.assignees?.length > 0 && (
           <AvatarGroup users={task.assignees.map((a) => a.user!).filter(Boolean)} />

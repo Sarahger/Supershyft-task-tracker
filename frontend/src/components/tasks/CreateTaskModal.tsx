@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { Calendar, ChevronDown, Clock, Flag, Folder, CornerDownLeft, ListPlus, X } from 'lucide-react';
+import { Calendar, ChevronDown, Clock, Flag, CornerDownLeft, ListPlus, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
-import { Input, Textarea, Select } from '../ui/Input';
+import { Input, Textarea } from '../ui/Input';
 import { Avatar } from '../ui/Avatar';
 import { toast } from '../ui/Toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
-import { tasksApi, projectsApi, usersApi } from '../../services/endpoints';
+import { tasksApi, usersApi } from '../../services/endpoints';
 import {
   matchMentionUsers,
   mentionDisplayName,
@@ -41,7 +40,6 @@ interface CreateTaskModalProps {
 
 export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   const { user: currentUser } = useAuth();
-  const { createDefaultProjectId } = useTaskDrawer();
   const [mode, setMode] = useState<'quick' | 'paste'>('quick');
   const [pasteSeed, setPasteSeed] = useState('');
   const [text, setText] = useState('');
@@ -49,19 +47,12 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
   const [priority, setPriority] = useState<QuickPriority>('medium');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [description, setDescription] = useState('');
-  const [projectId, setProjectId] = useState('');
   const [reviewRequired, setReviewRequired] = useState(false);
   const [testingRequired, setTestingRequired] = useState(false);
   const [menuHighlight, setMenuHighlight] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const qc = useQueryClient();
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => projectsApi.list({ page_size: 100 }).then((r) => r.data.data.items),
-    enabled: isOpen && mode === 'quick',
-  });
 
   const { data: users } = useQuery({
     queryKey: ['users-list'],
@@ -136,7 +127,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     setPriority('medium');
     setShowAdvanced(false);
     setDescription('');
-    setProjectId(createDefaultProjectId ? String(createDefaultProjectId) : '');
     setReviewRequired(false);
     setTestingRequired(false);
     setMenuHighlight(0);
@@ -148,7 +138,7 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     return undefined;
     // intentionally omit mode — switching to paste should not wipe quick fields mid-flight
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, currentUser?.id, createDefaultProjectId]);
+  }, [isOpen, currentUser?.id]);
 
   const openPasteMode = (seed = '') => {
     setPasteSeed(seed);
@@ -185,8 +175,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
-      qc.invalidateQueries({ queryKey: ['project-tasks'] });
-      qc.invalidateQueries({ queryKey: ['project-my-tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       toast.success('Task created');
@@ -247,7 +235,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
       description: description.trim() || undefined,
       priority,
       status: 'to_do',
-      project_id: projectId ? Number(projectId) : undefined,
       due_date: parsed.dueDate ? formatDueForApi(parsed.dueDate) : undefined,
       estimated_hours: parsed.estimatedHours,
       assignee_ids: assigneeIds,
@@ -290,17 +277,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
 
   const dueSummary = parsed.dueLabel ?? 'no due date';
   const timeSummary = parsed.timeLabel ? `${parsed.timeLabel} required` : null;
-
-  const selectedProject = useMemo(() => {
-    if (!projectId || !projects) return null;
-    return projects.find((p: { id: number; name: string }) => String(p.id) === projectId) ?? null;
-  }, [projectId, projects]);
-
-  const projectPillLabel = selectedProject
-    ? selectedProject.name.length > 10
-      ? `${selectedProject.name.slice(0, 10)}…`
-      : selectedProject.name
-    : null;
 
   if (mode === 'paste') {
     return (
@@ -511,26 +487,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
                 <span className="text-xs text-text-muted">No assignees — type @ to add</span>
               )}
             </div>
-
-            {selectedProject && projectPillLabel && (
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span
-                  className="chip inline-flex items-center gap-1.5 pl-1.5 pr-1.5 py-0.5 border border-dark-border bg-surface-active/40"
-                  title={selectedProject.name}
-                >
-                  <Folder className="h-3 w-3 text-text-muted shrink-0" />
-                  <span className="text-xs text-text-primary">{projectPillLabel}</span>
-                  <button
-                    type="button"
-                    onClick={() => setProjectId('')}
-                    className="rounded p-0.5 text-text-muted hover:text-text-primary hover:bg-surface-active transition-colors"
-                    aria-label={`Remove project ${selectedProject.name}`}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              </div>
-            )}
           </div>
 
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-dark-border/80">
@@ -606,20 +562,6 @@ export function CreateTaskModal({ isOpen, onClose }: CreateTaskModalProps) {
               placeholder="Add details…"
               rows={2}
             />
-            {projects && (
-              <Select
-                label="Project"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                options={[
-                  { value: '', label: 'No project' },
-                  ...projects.map((p: { id: number; name: string }) => ({
-                    value: String(p.id),
-                    label: p.name,
-                  })),
-                ]}
-              />
-            )}
             <label className="flex items-center gap-2 text-sm text-text-secondary">
               <input
                 type="checkbox"

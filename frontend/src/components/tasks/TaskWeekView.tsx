@@ -30,7 +30,6 @@ interface TaskWeekViewProps {
   currentWeek: Date;
   onWeekChange: (week: Date) => void;
   onTaskClick: (id: number) => void;
-  showProject?: boolean;
 }
 
 function parseTaskDueDate(task: Task): Date | null {
@@ -42,11 +41,9 @@ function parseTaskDueDate(task: Task): Date | null {
 function WeekTaskCard({
   task,
   onClick,
-  showProject,
 }: {
   task: Task;
   onClick: () => void;
-  showProject?: boolean;
 }) {
   const due = parseTaskDueDate(task);
   const overdue =
@@ -64,7 +61,6 @@ function WeekTaskCard({
       <p className="font-medium truncate text-text-primary">{task.title}</p>
       <p className="text-2xs text-text-muted mt-0.5 truncate">
         {STATUS_LABELS[task.status] || task.status}
-        {showProject && task.project_name ? ` · ${task.project_name}` : ''}
       </p>
     </button>
   );
@@ -76,7 +72,6 @@ export function TaskWeekView({
   currentWeek,
   onWeekChange,
   onTaskClick,
-  showProject,
 }: TaskWeekViewProps) {
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
@@ -157,7 +152,6 @@ export function TaskWeekView({
                       key={task.id}
                       task={task}
                       onClick={() => onTaskClick(task.id)}
-                      showProject={showProject}
                     />
                   ))
                 ) : (
@@ -180,7 +174,6 @@ export function TaskWeekView({
                 key={task.id}
                 task={task}
                 onClick={() => onTaskClick(task.id)}
-                showProject={showProject}
               />
             ))}
           </div>

@@ -35,7 +35,6 @@ interface TaskCalendarProps {
   currentMonth: Date;
   onMonthChange: (month: Date) => void;
   onTaskClick: (id: number) => void;
-  showProject?: boolean;
 }
 
 function parseTaskDueDate(task: Task): Date | null {
@@ -56,11 +55,9 @@ function taskDueKey(task: Task) {
 function CalendarTaskChip({
   task,
   onClick,
-  showProject,
 }: {
   task: Task;
   onClick: () => void;
-  showProject?: boolean;
 }) {
   const overdue = (() => {
     const due = parseTaskDueDate(task);
@@ -80,7 +77,7 @@ function CalendarTaskChip({
         overdue ? 'border-l-2 calendar-overdue' : priorityAccent[task.priority] || priorityAccent.low,
         'text-text-primary',
       )}
-      title={`${task.title}${showProject && task.project_name ? ` · ${task.project_name}` : ''} · ${STATUS_LABELS[task.status] || task.status}`}
+      title={`${task.title} · ${STATUS_LABELS[task.status] || task.status}`}
     >
       {task.title}
     </button>
@@ -93,7 +90,6 @@ export function TaskCalendar({
   currentMonth,
   onMonthChange,
   onTaskClick,
-  showProject,
 }: TaskCalendarProps) {
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
@@ -229,7 +225,6 @@ export function TaskCalendar({
                     <CalendarTaskChip
                       key={task.id}
                       task={task}
-                      showProject={showProject}
                       onClick={() => onTaskClick(task.id)}
                     />
                   ))}
@@ -269,7 +264,6 @@ export function TaskCalendar({
                         <p className="text-sm font-medium text-text-primary">{task.title}</p>
                         <p className="text-2xs text-text-muted mt-0.5 capitalize">
                           {STATUS_LABELS[task.status] || task.status.replace(/_/g, ' ')}
-                          {showProject && task.project_name ? ` · ${task.project_name}` : ''}
                         </p>
                       </button>
                     </li>

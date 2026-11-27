@@ -299,7 +299,7 @@ export function WeeklyReportCard({
       <div className="border-t border-dark-border" />
 
       <TaskSection
-        title="Current Week's Tasks"
+        title="Weekly Tasks"
         emptyLabel="No tasks yet"
         items={currentWeekTasks}
         onRevise={onRevise}

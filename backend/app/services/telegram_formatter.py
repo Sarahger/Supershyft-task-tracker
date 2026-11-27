@@ -318,7 +318,7 @@ def format_weekly_update(title: str, payload: dict) -> str:
     for item in completions[:8]:
         lines.append(f"• {escape(item.get('title') or '?')}")
     lines.append("")
-    lines.append("<b>Current week</b>")
+    lines.append("<b>Weekly tasks</b>")
     current_week = report.get("current_week_tasks") or report.get("commitments") or []
     if not current_week:
         lines.append("None recorded")

@@ -1,7 +1,7 @@
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.core.constants import UserStatus
 from app.core.dependencies import get_current_user, require_manager
@@ -171,7 +171,6 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
         tasks = (
             db.query(Task)
             .join(TaskAssignee)
-            .options(joinedload(Task.project))
             .filter(TaskAssignee.user_id == user.id, Task.is_archived == False)
             .order_by(Task.updated_at.desc())
             .all()
@@ -216,7 +215,6 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
                     "title": t.title,
                     "status": t.status,
                     "priority": t.priority,
-                    "project_name": t.project.name if t.project else None,
                     "due_date": t.due_date,
                     "start_date": t.start_date,
                     "end_date": t.end_date,

@@ -21,7 +21,6 @@ function stopRowActivation(e: React.SyntheticEvent) {
 interface TaskDatabaseProps {
   tasks: Task[];
   onTaskClick: (id: number) => void;
-  showProject?: boolean;
   sortField?: SortField;
   sortDir?: SortDir;
   onSort?: (field: SortField) => void;
@@ -151,7 +150,6 @@ function RowIndicators({ task }: { task: Task }) {
 export function TaskDatabase({
   tasks,
   onTaskClick,
-  showProject = false,
   sortField,
   sortDir,
   onSort,
@@ -346,9 +344,6 @@ export function TaskDatabase({
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-text-primary truncate">{task.title}</p>
-                          {showProject && task.project_name && (
-                            <p className="text-2xs text-text-muted truncate mt-0.5">{task.project_name}</p>
-                          )}
                         </div>
                       </div>
                     )}

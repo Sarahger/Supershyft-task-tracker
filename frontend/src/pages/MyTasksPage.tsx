@@ -57,7 +57,6 @@ function TaskList({
       editable={!!onStatusChange}
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
-      showProject
     />
   );
 }

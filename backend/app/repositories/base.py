@@ -14,7 +14,6 @@ from app.models import (
     Comment,
     Department,
     Notification,
-    Project,
     Tag,
     Task,
     TaskAssignee,
@@ -111,7 +110,6 @@ class TaskRepository(BaseRepository):
                 joinedload(Task.departments),
                 joinedload(Task.tags),
                 joinedload(Task.task_type),
-                joinedload(Task.project),
                 joinedload(Task.client),
                 joinedload(Task.reviewer),
                 joinedload(Task.creator),
@@ -140,7 +138,6 @@ class TaskRepository(BaseRepository):
             .options(
                 joinedload(Task.assignees).joinedload(TaskAssignee.user),
                 joinedload(Task.tags),
-                joinedload(Task.project),
                 joinedload(Task.task_type),
                 joinedload(Task.deleted_by),
             )
@@ -159,8 +156,6 @@ class TaskRepository(BaseRepository):
                 query = query.filter(Task.status == status)
         if priority := filters.get("priority"):
             query = query.filter(Task.priority == priority)
-        if project_id := filters.get("project_id"):
-            query = query.filter(Task.project_id == project_id)
         if client_id := filters.get("client_id"):
             query = query.filter(Task.client_id == client_id)
         if assignee_id := filters.get("assignee_id"):
@@ -287,27 +282,6 @@ class TaskRepository(BaseRepository):
         return query.count()
 
 
-class ProjectRepository(BaseRepository):
-    def get_by_id(self, project_id: int) -> Project | None:
-        return self.db.query(Project).filter(Project.id == project_id).first()
-
-    def get_all(self, skip: int = 0, limit: int = 100) -> tuple[list[Project], int]:
-        query = self.db.query(Project).filter(Project.is_archived == False)
-        total = query.count()
-        return query.offset(skip).limit(limit).all(), total
-
-    def create(self, project: Project) -> Project:
-        self.db.add(project)
-        self.db.commit()
-        self.db.refresh(project)
-        return project
-
-    def update(self, project: Project) -> Project:
-        self.db.commit()
-        self.db.refresh(project)
-        return project
-
-
 class DepartmentRepository(BaseRepository):
     def get_by_id(self, dept_id: int) -> Department | None:
         return self.db.query(Department).filter(Department.id == dept_id).first()
@@ -395,7 +369,6 @@ class SearchRepository(BaseRepository):
     def search(self, query_str: str, limit: int = 10) -> dict:
         term = f"%{query_str}%"
         tasks = self.db.query(Task).filter(Task.title.ilike(term), Task.is_archived == False).limit(limit).all()
-        projects = self.db.query(Project).filter(Project.name.ilike(term), Project.is_archived == False).limit(limit).all()
         users = (
             self.db.query(User)
             .filter(
@@ -407,4 +380,4 @@ class SearchRepository(BaseRepository):
         )
         clients = self.db.query(Client).filter(Client.name.ilike(term), Client.is_archived == False).limit(limit).all()
         tags = self.db.query(Tag).filter(Tag.name.ilike(term)).limit(limit).all()
-        return {"tasks": tasks, "projects": projects, "users": users, "clients": clients, "tags": tags}
+        return {"tasks": tasks, "users": users, "clients": clients, "tags": tags}

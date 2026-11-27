@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import announcements, attendance, auth, clients, cron, custom_fields, daily_updates, dashboard, departments, meetings, projects, reports, tasks, telegram, users, weekly_updates, work_vault
+from app.api import announcements, attendance, auth, clients, cron, custom_fields, daily_updates, dashboard, departments, meetings, reports, tasks, telegram, users, weekly_updates, work_vault
 from app.core.config import settings
 from app.db.base import Base
 from app.db.database import engine
@@ -77,7 +77,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(departments.router, prefix="/api")
-app.include_router(projects.router, prefix="/api")
 app.include_router(clients.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(custom_fields.router, prefix="/api")

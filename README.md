@@ -1,6 +1,6 @@
 # Supershyft Task Tracker
 
-An internal task platform where **tasks are the product**. Everything else—projects, reports, analytics—exists to support getting work done.
+An internal task platform where **tasks are the product**. Reports and the rest of the workspace exist to support getting work done.
 
 Built for startup teams (~15–100 employees) with full review workflows, dependencies, multi-assignee support, and role-based access.
 
@@ -56,7 +56,6 @@ Set `AUTO_SEED=true` in `backend/.env` (SQLite only) to load sample users. This 
 |-------|---------|
 | `/` | Task Workspace — full database with table/kanban views |
 | `/my-tasks` | Personal tasks grouped by urgency |
-| `/projects` | Project containers with embedded task databases |
 | `/reports` | Analytics for managers (health, trends, exports) |
 | `/weekly-updates` | Person-wise weekly reports, commitments, and deadline history |
 

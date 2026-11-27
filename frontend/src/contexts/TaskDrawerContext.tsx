@@ -2,24 +2,17 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-
-export type OpenCreateOptions = {
-  projectId?: number;
-};
 
 interface TaskDrawerContextType {
   selectedTaskId: number | null;
   openTask: (id: number) => void;
   closeTask: () => void;
   isCreateOpen: boolean;
-  createDefaultProjectId: number | null;
-  openCreate: (options?: OpenCreateOptions) => void;
+  openCreate: () => void;
   closeCreate: () => void;
 }
 
@@ -49,17 +42,12 @@ function patchParams(
 
 export function TaskDrawerProvider({ children }: { children: ReactNode }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [createDefaultProjectId, setCreateDefaultProjectId] = useState<number | null>(null);
 
   const selectedTaskId = useMemo(
     () => parsePositiveInt(searchParams.get('task')),
     [searchParams],
   );
   const isCreateOpen = searchParams.get('create') === '1';
-
-  useEffect(() => {
-    if (!isCreateOpen) setCreateDefaultProjectId(null);
-  }, [isCreateOpen]);
 
   const openTask = useCallback(
     (id: number) => {
@@ -92,8 +80,7 @@ export function TaskDrawerProvider({ children }: { children: ReactNode }) {
   }, [setSearchParams]);
 
   const openCreate = useCallback(
-    (options?: OpenCreateOptions) => {
-      setCreateDefaultProjectId(options?.projectId ?? null);
+    () => {
       patchParams(
         setSearchParams,
         (next) => {
@@ -108,7 +95,6 @@ export function TaskDrawerProvider({ children }: { children: ReactNode }) {
   );
 
   const closeCreate = useCallback(() => {
-    setCreateDefaultProjectId(null);
     patchParams(
       setSearchParams,
       (next) => {
@@ -126,7 +112,6 @@ export function TaskDrawerProvider({ children }: { children: ReactNode }) {
       openTask,
       closeTask,
       isCreateOpen,
-      createDefaultProjectId,
       openCreate,
       closeCreate,
     }),
@@ -135,7 +120,6 @@ export function TaskDrawerProvider({ children }: { children: ReactNode }) {
       openTask,
       closeTask,
       isCreateOpen,
-      createDefaultProjectId,
       openCreate,
       closeCreate,
     ],

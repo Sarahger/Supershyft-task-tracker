@@ -1,0 +1,388 @@
+import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
+import { useState, useEffect, useMemo, lazy, Suspense, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { tasksApi, usersApi, departmentsApi } from '../../services/endpoints';
+import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
+import { useIsMobile } from '../../hooks/useMediaQuery';
+import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
+import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility } from './TaskDatabase';
+import { TaskToolbar, SavedFiltersBar } from './TaskToolbar';
+import { MobileTaskToolbar } from './MobileTaskToolbar';
+import { MobileTasksView } from './MobileTasksView';
+import { CompletedTasksList } from './CompletedTasksList';
+import { groupTasksByDueSections } from './TaskCard';
+import { FloatingActionButton } from '../layout/FloatingActionButton';
+import { EmptyState } from '../ui/Skeleton';
+import { DeleteTaskModal } from './DeleteTaskModal';
+import { toast } from '../ui/Toast';
+import { useDeleteTaskMutation } from '../../hooks/useDeleteTaskMutation';
+import { useAuth } from '../../contexts/AuthContext';
+import { canDeleteTasks } from '../../lib/roles';
+import clsx from 'clsx';
+import api from '../../services/api';
+const KanbanBoard = lazy(() => import('./KanbanBoard').then((m) => ({ default: m.KanbanBoard })));
+const TaskCalendar = lazy(() => import('./TaskCalendar').then((m) => ({ default: m.TaskCalendar })));
+const TaskWeekView = lazy(() => import('./TaskWeekView').then((m) => ({ default: m.TaskWeekView })));
+const TaskCalendarSkeleton = lazy(() => import('./TaskCalendar').then((m) => ({ default: m.TaskCalendarSkeleton })));
+const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ default: m.TaskWeekViewSkeleton })));
+const REFERENCE_STALE_MS = 5 * 60 * 1000;
+function groupTasks(tasks, groupBy) {
+    if (groupBy === 'none')
+        return [{ label: '', tasks }];
+    if (groupBy === 'status')
+        return groupTasksByDueSections(tasks);
+    const map = new Map();
+    for (const t of tasks) {
+        const key = groupBy === 'priority' ? t.priority : 'Other';
+        if (!map.has(key))
+            map.set(key, []);
+        map.get(key).push(t);
+    }
+    return Array.from(map.entries()).map(([label, tasks]) => ({ label, tasks }));
+}
+export function TasksWorkspace({ title, subtitle, queryKey, fetchTasks, listFilters, showViewSelector = true, defaultView = 'table', fullWidth = false, showQuickFilters = false, }) {
+    const { openTask, openCreate, closeTask, selectedTaskId } = useTaskDrawer();
+    const { user } = useAuth();
+    const qc = useQueryClient();
+    const isMobile = useIsMobile();
+    const { normalizeView, hasOptionalViews } = useTaskViewPreferences();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const handleOpenCreate = useCallback(() => {
+        openCreate();
+    }, [openCreate]);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [priorityFilter, setPriorityFilter] = useState('');
+    const [assigneeFilter, setAssigneeFilter] = useState(() => searchParams.get('assignee') ?? '');
+    const [deptTab, setDeptTab] = useState('all');
+    const [sortField, setSortField] = useState('updated_at');
+    const [sortDir, setSortDir] = useState('desc');
+    const [groupBy, setGroupBy] = useState('status');
+    const [viewMode, setViewMode] = useState(() => normalizeView(defaultView));
+    const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
+    const [calendarWeek, setCalendarWeek] = useState(() => new Date());
+    const [page, setPage] = useState(1);
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [focusedIndex, setFocusedIndex] = useState(-1);
+    const [deleteTarget, setDeleteTarget] = useState(null);
+    const { columns, setColumns } = useColumnVisibility();
+    useEffect(() => {
+        const fromUrl = searchParams.get('assignee') ?? '';
+        setAssigneeFilter((prev) => (prev === fromUrl ? prev : fromUrl));
+        if (fromUrl)
+            setPage(1);
+    }, [searchParams]);
+    const updateAssigneeFilter = useCallback((v) => {
+        setAssigneeFilter(v);
+        setPage(1);
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            if (v)
+                next.set('assignee', v);
+            else
+                next.delete('assignee');
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
+    const deleteMutation = useDeleteTaskMutation((taskId) => {
+        setDeleteTarget(null);
+        if (selectedTaskId === taskId)
+            closeTask();
+        qc.invalidateQueries({ queryKey });
+    });
+    useEffect(() => {
+        setViewMode((current) => normalizeView(current));
+    }, [normalizeView]);
+    const handleViewModeChange = (mode) => {
+        setViewMode(normalizeView(mode));
+    };
+    const showViews = showViewSelector && hasOptionalViews;
+    const allowDelete = canDeleteTasks(user);
+    const requestDeleteTask = (task) => {
+        setDeleteTarget({ id: task.id, title: task.title });
+    };
+    const calendarWindow = useMemo(() => {
+        const monthStart = startOfMonth(calendarMonth);
+        const monthEnd = endOfMonth(calendarMonth);
+        return {
+            due_after: startOfWeek(monthStart, { weekStartsOn: 1 }).toISOString(),
+            due_before: endOfWeek(monthEnd, { weekStartsOn: 1 }).toISOString(),
+        };
+    }, [calendarMonth]);
+    const weekWindow = useMemo(() => {
+        const weekStart = startOfWeek(calendarWeek, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(calendarWeek, { weekStartsOn: 1 });
+        return {
+            due_after: weekStart.toISOString(),
+            due_before: weekEnd.toISOString(),
+        };
+    }, [calendarWeek]);
+    const isDeletedView = deptTab === 'archived' && showQuickFilters;
+    const selectedDepartmentId = typeof deptTab === 'number' ? deptTab : undefined;
+    const sharedListFilters = useMemo(() => ({
+        search: search || undefined,
+        status: statusFilter || undefined,
+        priority: priorityFilter || undefined,
+        assignee_id: assigneeFilter ? Number(assigneeFilter) : undefined,
+        department_id: selectedDepartmentId,
+        archived: isDeletedView ? true : undefined,
+    }), [search, statusFilter, priorityFilter, assigneeFilter, selectedDepartmentId, isDeletedView]);
+    const filters = useMemo(() => {
+        if (isDeletedView) {
+            return {
+                ...sharedListFilters,
+                page: 1,
+                page_size: 500,
+                sort_by: 'deleted_at',
+                sort_order: 'desc',
+            };
+        }
+        if (viewMode === 'calendar') {
+            return {
+                ...sharedListFilters,
+                page: 1,
+                page_size: 500,
+                has_due_date: true,
+                due_after: calendarWindow.due_after,
+                due_before: calendarWindow.due_before,
+                sort_by: 'due_date',
+                sort_order: 'asc',
+            };
+        }
+        if (viewMode === 'weekly') {
+            return {
+                ...sharedListFilters,
+                page: 1,
+                page_size: 500,
+                has_due_date: true,
+                due_after: weekWindow.due_after,
+                due_before: weekWindow.due_before,
+                sort_by: 'due_date',
+                sort_order: 'asc',
+            };
+        }
+        // Load the full active task set so mobile groups / kanban aren't
+        // capped at the first page of 50 newest tasks.
+        return {
+            ...sharedListFilters,
+            page: 1,
+            page_size: 500,
+            sort_by: sortField,
+            sort_order: sortDir,
+        };
+    }, [sharedListFilters, isDeletedView, viewMode, calendarWindow, weekWindow, page, sortField, sortDir]);
+    const { data, isLoading, isError, error, refetch } = useQuery({
+        queryKey: [...queryKey, filters, listFilters],
+        placeholderData: keepPreviousData,
+        queryFn: async () => {
+            if (queryKey[0] === 'my-tasks' && fetchTasks) {
+                const tasks = await fetchTasks();
+                let filtered = tasks;
+                if (search)
+                    filtered = filtered.filter((t) => t.title.toLowerCase().includes(search.toLowerCase()));
+                if (statusFilter)
+                    filtered = filtered.filter((t) => t.status === statusFilter);
+                if (priorityFilter)
+                    filtered = filtered.filter((t) => t.priority === priorityFilter);
+                if (assigneeFilter) {
+                    const uid = Number(assigneeFilter);
+                    filtered = filtered.filter((t) => t.assignees?.some((a) => a.user_id === uid));
+                }
+                return { items: filtered, total: filtered.length, total_pages: 1, page: 1 };
+            }
+            const res = await tasksApi.list({ ...filters, ...listFilters });
+            const first = res.data.data;
+            const pageSize = Number(filters.page_size) || 50;
+            // Load all pages so completed month groups and other views aren't truncated.
+            if (!first.total_pages || first.total_pages <= 1) {
+                return first;
+            }
+            const items = [...first.items];
+            for (let p = 2; p <= first.total_pages; p += 1) {
+                const next = await tasksApi.list({
+                    ...filters,
+                    ...listFilters,
+                    page: p,
+                    page_size: pageSize,
+                });
+                items.push(...next.data.data.items);
+            }
+            return {
+                ...first,
+                items,
+                page: 1,
+                page_size: items.length,
+                total_pages: 1,
+            };
+        },
+    });
+    const { data: undatedCalendarTasks } = useQuery({
+        queryKey: [...queryKey, 'calendar-undated', sharedListFilters, listFilters],
+        queryFn: () => tasksApi.list({
+            ...sharedListFilters,
+            ...listFilters,
+            page: 1,
+            page_size: 100,
+            has_due_date: false,
+            sort_by: 'updated_at',
+            sort_order: 'desc',
+        }).then((r) => r.data.data.items),
+        enabled: (viewMode === 'calendar' || viewMode === 'weekly') && queryKey[0] !== 'my-tasks',
+        staleTime: REFERENCE_STALE_MS,
+    });
+    const { data: usersList } = useQuery({
+        queryKey: ['users-list'],
+        queryFn: () => usersApi.list({ page_size: 100 }).then((r) => r.data.data.items),
+        staleTime: REFERENCE_STALE_MS,
+    });
+    const { data: departments = [] } = useQuery({
+        queryKey: ['departments'],
+        queryFn: () => departmentsApi.list().then((r) => r.data.data),
+        enabled: showQuickFilters,
+        staleTime: REFERENCE_STALE_MS,
+    });
+    const { data: savedFilters } = useQuery({
+        queryKey: ['saved-filters'],
+        queryFn: () => api.get('/saved-filters').then((r) => r.data.data),
+        retry: false,
+        staleTime: REFERENCE_STALE_MS,
+    });
+    const bulkMutation = useMutation({
+        mutationFn: async ({ ids, status }) => {
+            await Promise.all(ids.map((id) => tasksApi.updateStatus(id, status)));
+        },
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey });
+            qc.invalidateQueries({ queryKey: ['weekly-updates'] });
+            setSelectedIds(new Set());
+            toast.success('Tasks updated');
+        },
+    });
+    const tasks = data?.items || [];
+    const displayTasks = tasks;
+    const showViewsEffective = showViews && !isDeletedView;
+    const groups = groupTasks(displayTasks, groupBy);
+    const statusMutation = useMutation({
+        mutationFn: ({ id, status }) => tasksApi.updateStatus(id, status),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey });
+            qc.invalidateQueries({ queryKey: ['weekly-updates'] });
+            toast.success('Status updated');
+        },
+        onError: () => toast.error('Failed to update status'),
+    });
+    const priorityMutation = useMutation({
+        mutationFn: ({ id, priority }) => tasksApi.update(id, { priority }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey });
+            toast.success('Priority updated');
+        },
+        onError: () => toast.error('Failed to update priority'),
+    });
+    // Clear keyboard row focus when the visible list changes
+    useEffect(() => {
+        setFocusedIndex(-1);
+    }, [displayTasks, groupBy, viewMode, page]);
+    // Keyboard navigation — only after arrow keys, not from mouse hover
+    useEffect(() => {
+        if (viewMode !== 'table' || groupBy !== 'none' || isMobile)
+            return;
+        const handler = (e) => {
+            if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'SELECT')
+                return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setFocusedIndex((i) => {
+                    if (!displayTasks.length)
+                        return -1;
+                    return i < 0 ? 0 : Math.min(i + 1, displayTasks.length - 1);
+                });
+            }
+            else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setFocusedIndex((i) => {
+                    if (!displayTasks.length || i < 0)
+                        return -1;
+                    return i <= 0 ? -1 : i - 1;
+                });
+            }
+            else if (e.key === 'Enter' && focusedIndex >= 0 && displayTasks[focusedIndex]) {
+                openTask(displayTasks[focusedIndex].id);
+            }
+            else if (e.key === ' ' && focusedIndex >= 0 && displayTasks[focusedIndex]) {
+                e.preventDefault();
+                setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    const id = displayTasks[focusedIndex].id;
+                    if (next.has(id))
+                        next.delete(id);
+                    else
+                        next.add(id);
+                    return next;
+                });
+            }
+            else if (e.key === 'Escape') {
+                setFocusedIndex(-1);
+            }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [displayTasks, focusedIndex, openTask, viewMode, groupBy, isMobile]);
+    const applySavedFilter = (json) => {
+        try {
+            const f = JSON.parse(json);
+            if (f.status)
+                setStatusFilter(f.status);
+            if (f.priority)
+                setPriorityFilter(f.priority);
+            if (f.assignee_id)
+                updateAssigneeFilter(String(f.assignee_id));
+            if (f.search)
+                setSearch(f.search);
+            setPage(1);
+        }
+        catch { /* ignore */ }
+    };
+    const deptTabOptions = useMemo(() => {
+        const HIDDEN_DEPT_TABS = new Set(['software development', 'hr']);
+        const depts = [...departments]
+            .filter((d) => !HIDDEN_DEPT_TABS.has(d.name.trim().toLowerCase()))
+            .sort((a, b) => a.name.localeCompare(b.name));
+        const options = [
+            { id: 'all', label: 'All' },
+            ...depts.map((d) => ({ id: String(d.id), label: d.name })),
+            { id: 'archived', label: 'Completed' },
+        ];
+        return options;
+    }, [departments]);
+    const selectDeptTab = (id) => {
+        setPage(1);
+        if (id === 'all' || id === 'archived') {
+            setDeptTab(id);
+            return;
+        }
+        const n = Number(id);
+        if (Number.isFinite(n) && n > 0)
+            setDeptTab(n);
+    };
+    return (_jsxs("div", { className: clsx('flex flex-col min-h-0 pb-8', fullWidth ? 'w-full max-w-none' : 'max-w-workspace mx-auto', isMobile && 'pb-24'), children: [_jsx("div", { className: clsx('mb-5', isMobile && 'mb-3'), children: title && (_jsxs(_Fragment, { children: [_jsx("h1", { className: clsx('font-semibold text-text-primary tracking-tight', isMobile ? 'text-lg' : 'text-xl'), children: title }), subtitle && !isMobile && _jsx("p", { className: "text-sm text-text-muted mt-0.5", children: subtitle })] })) }), showQuickFilters && !isMobile && (_jsx("div", { className: "flex items-center gap-1.5 mb-4 overflow-x-auto flex-nowrap pb-0.5 -mx-1 px-1", children: deptTabOptions.map((opt) => {
+                    const active = String(deptTab) === opt.id;
+                    return (_jsx("button", { type: "button", onClick: () => selectDeptTab(opt.id), className: clsx('px-2.5 py-1 rounded-md text-sm transition-colors duration-hover shrink-0 whitespace-nowrap', active
+                            ? 'bg-surface-highlight text-text-primary'
+                            : 'text-text-muted hover:bg-dark-hover hover:text-text-secondary'), children: opt.label }, opt.id));
+                }) })), isMobile && (_jsx(MobileTaskToolbar, { search: search, onSearchChange: (v) => { setSearch(v); setPage(1); }, statusFilter: statusFilter, onStatusFilterChange: (v) => { setStatusFilter(v); setPage(1); }, priorityFilter: priorityFilter, onPriorityFilterChange: (v) => { setPriorityFilter(v); setPage(1); }, assigneeFilter: assigneeFilter, onAssigneeFilterChange: updateAssigneeFilter, assigneeOptions: usersList ?? [], sortField: sortField, sortDir: sortDir, onSortFieldChange: (v) => setSortField(v), onSortDirToggle: () => setSortDir((d) => d === 'asc' ? 'desc' : 'asc'), viewMode: viewMode, onViewModeChange: handleViewModeChange, showViewSelector: showViewsEffective, quickFilter: String(deptTab), onQuickFilterChange: selectDeptTab, quickFilterOptions: deptTabOptions, showQuickFilters: showQuickFilters })), _jsx("div", { className: "max-md:hidden", children: _jsx(TaskToolbar, { search: search, onSearchChange: (v) => { setSearch(v); setPage(1); }, statusFilter: statusFilter, onStatusFilterChange: (v) => { setStatusFilter(v); setPage(1); }, priorityFilter: priorityFilter, onPriorityFilterChange: (v) => { setPriorityFilter(v); setPage(1); }, assigneeFilter: assigneeFilter, onAssigneeFilterChange: updateAssigneeFilter, assigneeOptions: usersList ?? [], sortField: sortField, sortDir: sortDir, onSortFieldChange: (v) => setSortField(v), onSortDirToggle: () => setSortDir((d) => d === 'asc' ? 'desc' : 'asc'), viewMode: viewMode, onViewModeChange: handleViewModeChange, onNewTask: isDeletedView ? undefined : handleOpenCreate, totalCount: data?.total, selectedCount: selectedIds.size, onBulkStatusChange: (status) => bulkMutation.mutate({ ids: Array.from(selectedIds), status }), onClearSelection: () => setSelectedIds(new Set()), showViewSelector: showViewsEffective }) }), savedFilters?.length > 0 && !isMobile && !isDeletedView && (_jsx(SavedFiltersBar, { filters: savedFilters, onApply: applySavedFilter })), isLoading ? (_jsxs("div", { className: "space-y-3", children: [_jsx("p", { className: "text-sm text-text-muted max-md:hidden", children: "Loading tasks\u2026" }), isMobile ? (_jsx(MobileTasksView, { tasks: [], onTaskClick: () => { }, onCreateTask: handleOpenCreate, isLoading: true })) : viewMode === 'calendar' ? (_jsx(Suspense, { fallback: _jsx(TaskDatabaseSkeleton, {}), children: _jsx(TaskCalendarSkeleton, {}) })) : viewMode === 'weekly' ? (_jsx(Suspense, { fallback: _jsx(TaskDatabaseSkeleton, {}), children: _jsx(TaskWeekViewSkeleton, {}) })) : (_jsx(TaskDatabaseSkeleton, {}))] })) : isError ? (_jsx(EmptyState, { title: "Could not load tasks", description: !error?.response
+                    ? 'The backend is not reachable. Start it with: cd backend && .\\venv\\Scripts\\uvicorn app.main:app --reload --port 8000'
+                    : 'Something went wrong loading tasks. Check that you are signed in and the API is running.', action: _jsx("button", { onClick: () => refetch(), className: "toolbar-btn mt-2 border border-dark-border", children: "Retry" }) })) : isDeletedView ? (_jsx(CompletedTasksList, { tasks: displayTasks, onTaskClick: openTask })) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' && !isMobile ? (_jsx(EmptyState, { title: "No tasks", description: "Create a task or adjust your filters." })) : viewMode === 'kanban' ? (_jsx("div", { className: clsx(isMobile && 'overflow-x-auto -mx-4 px-4'), children: _jsx(Suspense, { fallback: _jsx(TaskDatabaseSkeleton, {}), children: _jsx(KanbanBoard, { tasks: displayTasks, queryKey: queryKey }) }) })) : viewMode === 'calendar' ? (_jsx(Suspense, { fallback: _jsx(TaskDatabaseSkeleton, {}), children: _jsx(TaskCalendar, { tasks: displayTasks, undatedTasks: undatedCalendarTasks ?? [], currentMonth: calendarMonth, onMonthChange: setCalendarMonth, onTaskClick: openTask }) })) : viewMode === 'weekly' ? (_jsx(Suspense, { fallback: _jsx(TaskDatabaseSkeleton, {}), children: _jsx(TaskWeekView, { tasks: displayTasks, undatedTasks: undatedCalendarTasks ?? [], currentWeek: calendarWeek, onWeekChange: setCalendarWeek, onTaskClick: openTask }) })) : isMobile ? (_jsx(MobileTasksView, { tasks: displayTasks, onTaskClick: openTask, onCreateTask: handleOpenCreate, isLoading: isLoading, groupBy: groupBy })) : (_jsxs("div", { className: "space-y-6", children: [groups.map((group) => (_jsxs("div", { children: [group.label && (_jsx("h3", { className: "text-xs font-medium text-text-muted uppercase tracking-wider mb-2 px-1 capitalize", children: group.label.replace(/_/g, ' ') })), _jsx(TaskDatabase, { tasks: group.tasks, onTaskClick: openTask, columns: columns, onColumnsChange: setColumns, sortField: sortField, sortDir: sortDir, onSort: (field) => {
+                                    if (sortField === field)
+                                        setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+                                    else {
+                                        setSortField(field);
+                                        setSortDir('asc');
+                                    }
+                                }, selectedIds: selectedIds, onSelectionChange: setSelectedIds, focusedIndex: groupBy === 'none' ? focusedIndex : -1, editable: true, onStatusChange: (id, status) => statusMutation.mutate({ id, status }), onPriorityChange: (id, priority) => priorityMutation.mutate({ id, priority }), onDeleteTask: allowDelete && !isDeletedView ? requestDeleteTask : undefined })] }, group.label || 'all'))), data && data.total_pages > 1 && (_jsxs("div", { className: "flex items-center justify-center gap-3 pt-4 text-sm text-text-muted", children: [_jsx("button", { disabled: page <= 1, onClick: () => setPage(page - 1), className: "toolbar-btn disabled:opacity-30", children: "Previous" }), _jsxs("span", { children: [page, " / ", data.total_pages] }), _jsx("button", { disabled: page >= data.total_pages, onClick: () => setPage(page + 1), className: "toolbar-btn disabled:opacity-30", children: "Next" })] }))] })), isMobile && !isDeletedView && _jsx(FloatingActionButton, { onClick: handleOpenCreate }), allowDelete && (_jsx(DeleteTaskModal, { isOpen: deleteTarget != null, taskTitle: deleteTarget?.title, onClose: () => setDeleteTarget(null), onConfirm: (reason) => {
+                    if (deleteTarget)
+                        deleteMutation.mutate({ id: deleteTarget.id, reason });
+                }, isPending: deleteMutation.isPending }))] }));
+}

@@ -7,7 +7,6 @@ export default function AllTasksPage() {
       title="All tasks"
       queryKey={['tasks']}
       fetchTasks={() => tasksApi.list({ page_size: 200 }).then((r) => r.data.data.items)}
-      showProject
       showViewSelector
     />
   );

@@ -322,3 +322,33 @@ def run_lightweight_migrations(engine) -> None:
             logger.info("Ensured uq_employee_evaluation_period_range index")
         except Exception:
             logger.debug("Could not create evaluation range unique index", exc_info=True)
+
+    _clear_project_data(engine)
+
+
+def _clear_project_data(engine) -> None:
+    """Unlink tasks and other records from projects, then delete project rows."""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+
+    def has_column(table: str, column: str) -> bool:
+        if table not in tables:
+            return False
+        return column in {c["name"] for c in inspector.get_columns(table)}
+
+    statements: list[str] = []
+    for table in ("tasks", "milestones", "activity_logs", "work_vault_resources"):
+        if has_column(table, "project_id"):
+            statements.append(f"UPDATE {table} SET project_id = NULL WHERE project_id IS NOT NULL")
+    if "projects" in tables:
+        statements.append("DELETE FROM projects")
+    if not statements:
+        return
+
+    cleared = 0
+    with engine.begin() as conn:
+        for sql in statements:
+            result = conn.execute(text(sql))
+            cleared += result.rowcount or 0
+    if cleared:
+        logger.info("Removed project links from %s rows", cleared)

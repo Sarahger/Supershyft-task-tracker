@@ -95,8 +95,6 @@ export function PasteDailyTasksModal({ isOpen, onClose, onBackToQuick, initialTe
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
       qc.invalidateQueries({ queryKey: ['my-tasks'] });
-      qc.invalidateQueries({ queryKey: ['project-tasks'] });
-      qc.invalidateQueries({ queryKey: ['project-my-tasks'] });
       qc.invalidateQueries({ queryKey: ['dashboard'] });
       qc.invalidateQueries({ queryKey: ['weekly-updates'] });
       toast.success(

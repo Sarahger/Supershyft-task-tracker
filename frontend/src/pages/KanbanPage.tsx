@@ -7,7 +7,6 @@ export default function KanbanPage() {
       title="Board"
       queryKey={['tasks-kanban']}
       fetchTasks={() => tasksApi.list({ page_size: 200 }).then((r) => r.data.data.items)}
-      showProject
       defaultView="kanban"
     />
   );

@@ -8,9 +8,8 @@ from datetime import date, datetime, time, timedelta, timezone
 from app.core.company_holidays import is_working_day
 from app.utils.month_weeks import get_app_timezone
 
-# Weekly updates stay editable until 2:00 PM on the Monday after the reporting week.
-# Upcoming (future) weeks are writable early for planning; past weeks lock at that cutoff.
-# On Monday morning both last week and the new week can be editable until 2:00 PM.
+# Past weeks lock at 2:00 PM on the Monday after the reporting week (legacy cutoff).
+# Current product rule: only the current calendar week and all future weeks are editable.
 # This lock only gates writing; it does not change Monday-based week boundaries.
 EDIT_CUTOFF = time(14, 0)
 RESOLVED_STATUSES = frozenset({"completed", "cancelled"})
@@ -125,30 +124,22 @@ def period_unlocks_at(period_start: date) -> datetime:
 
 
 def is_report_editable(period_start: date, status: str, now: datetime | None = None) -> bool:
-    """True until Monday 2:00 PM after the reporting week.
-
-    Upcoming weeks are open early (empty drafts / planning). Past weeks stay
-    editable through the Monday-after cutoff, then lock.
-    """
+    """Current week and every future week are editable; past weeks are locked."""
     del status  # status does not gate the edit window
-    current = now_local(now)
-    return current < editable_until_for(period_start)
+    return period_start >= current_week_start(now)
 
 
 def writable_period_start(now: datetime | None = None) -> date:
-    """Calendar week currently in progress (opens Monday 00:00).
+    """Calendar week currently in progress (Monday 00:00).
 
-    Last week's report stays separately editable until Monday 2:00 PM via
-    ``is_report_editable`` / ``editable_until_for``. Upcoming weeks may also be
-    editable for planning, but this remains the in-progress week.
+    This is the earliest editable week. All later weeks are also editable.
     """
     return current_week_start(now)
 
 
 def report_edit_block_reason(period_start: date, now: datetime | None = None) -> str | None:
-    current = now_local(now)
-    if current >= editable_until_for(period_start):
-        return "This weekly update can only be edited until 2:00 PM on the following Monday"
+    if period_start < current_week_start(now):
+        return "Only the current week and future weeks can be edited"
     return None
 
 

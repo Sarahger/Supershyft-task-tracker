@@ -1,5 +1,5 @@
 import api from './api';
-import type { Announcement, AnnouncementAttachment, AnnouncementWeek, APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, Project, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory, WorkVaultFacets, WorkVaultPersonFolder, WorkVaultResource, WorkVaultTitleFolder } from '../types';
+import type { Announcement, AnnouncementAttachment, AnnouncementWeek, APIResponse, DashboardData, NotificationPreferences, PaginatedResponse, SearchResults, Task, TaskAttachment, TaskDeadlineRevision, TaskReportData, TelegramLinkCode, TelegramStatus, User, UserProfile, WeeklyLeaveContext, WeeklyOverview, WeeklyReport, WeeklySuggestions, WeeklyUserHistory, WorkVaultFacets, WorkVaultPersonFolder, WorkVaultResource, WorkVaultTitleFolder } from '../types';
 
 export const authApi = {
   requestOtp: (email: string) =>
@@ -79,15 +79,6 @@ export const tasksApi = {
     ),
   removeDependency: (taskId: number, dependencyId: number) =>
     api.delete(`/tasks/${taskId}/dependencies/${dependencyId}`),
-};
-
-export const projectsApi = {
-  list: (params?: Record<string, unknown>) =>
-    api.get<APIResponse<PaginatedResponse<Project>>>('/projects', { params }),
-  get: (id: number) => api.get<APIResponse<Project>>(`/projects/${id}`),
-  create: (data: Partial<Project>) => api.post<APIResponse<Project>>('/projects', data),
-  update: (id: number, data: Partial<Project>) => api.put<APIResponse<Project>>(`/projects/${id}`, data),
-  remove: (id: number) => api.delete<APIResponse<null>>(`/projects/${id}`),
 };
 
 export const usersApi = {

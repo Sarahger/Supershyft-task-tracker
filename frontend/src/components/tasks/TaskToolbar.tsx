@@ -1,16 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  Search, Filter, ArrowUpDown, Layers, LayoutList, Plus, Columns3,
-  ChevronDown, X, Bookmark, CalendarDays, CalendarRange,
+  Search, Filter, ArrowUpDown, LayoutList, Plus, Columns3,
+  X, Bookmark, CalendarDays, CalendarRange,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { SELECTABLE_STATUS_OPTIONS } from '../../types';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
-import type { ColumnId } from './TaskDatabase';
 import { Button } from '../ui/Button';
 
 export type ViewMode = 'table' | 'kanban' | 'calendar' | 'weekly';
-export type GroupBy = 'none' | 'status' | 'priority' | 'project';
+export type GroupBy = 'none' | 'status' | 'priority';
 
 const VIEW_BUTTONS: { mode: ViewMode; icon: typeof LayoutList; title: string }[] = [
   { mode: 'table', icon: LayoutList, title: 'List' },
@@ -39,14 +38,10 @@ interface TaskToolbarProps {
   sortDir: 'asc' | 'desc';
   onSortFieldChange: (v: string) => void;
   onSortDirToggle: () => void;
-  groupBy: GroupBy;
-  onGroupByChange: (v: GroupBy) => void;
   viewMode: ViewMode;
   onViewModeChange: (v: ViewMode) => void;
   onNewTask?: () => void;
   totalCount?: number;
-  visibleColumns?: { id: ColumnId; label: string; visible: boolean }[];
-  onToggleColumn?: (id: ColumnId) => void;
   selectedCount?: number;
   onBulkStatusChange?: (status: string) => void;
   onClearSelection?: () => void;
@@ -67,14 +62,10 @@ export function TaskToolbar({
   sortDir,
   onSortFieldChange,
   onSortDirToggle,
-  groupBy,
-  onGroupByChange,
   viewMode,
   onViewModeChange,
   onNewTask,
   totalCount,
-  visibleColumns,
-  onToggleColumn,
   selectedCount = 0,
   onBulkStatusChange,
   onClearSelection,
@@ -83,17 +74,13 @@ export function TaskToolbar({
   const { enabledViewModes } = useTaskViewPreferences();
   const [showFilter, setShowFilter] = useState(false);
   const [showSort, setShowSort] = useState(false);
-  const [showGroup, setShowGroup] = useState(false);
-  const [showColumns, setShowColumns] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
-  const anyMenuOpen = showFilter || showSort || showGroup || showColumns;
+  const anyMenuOpen = showFilter || showSort;
 
   const closeMenus = () => {
     setShowFilter(false);
     setShowSort(false);
-    setShowGroup(false);
-    setShowColumns(false);
   };
 
   useEffect(() => {
@@ -175,7 +162,7 @@ export function TaskToolbar({
           )}
         </div>
 
-        {/* Filters, sort, group, columns + view switcher */}
+        {/* Filters, sort + view switcher */}
         {anyMenuOpen && (
           <div
             className="fixed inset-0 z-20"
@@ -191,7 +178,7 @@ export function TaskToolbar({
           {/* Filter */}
           <div className="relative shrink-0">
             <button
-              onClick={() => { setShowFilter(!showFilter); setShowSort(false); setShowGroup(false); setShowColumns(false); }}
+              onClick={() => { setShowFilter(!showFilter); setShowSort(false); }}
               className={clsx('toolbar-btn', activeFilters > 0 && 'text-text-primary bg-dark-hover')}
               title="Filter"
             >
@@ -236,7 +223,7 @@ export function TaskToolbar({
           {/* Sort */}
           <div className="relative shrink-0">
             <button
-              onClick={() => { setShowSort(!showSort); setShowFilter(false); setShowGroup(false); setShowColumns(false); }}
+              onClick={() => { setShowSort(!showSort); setShowFilter(false); }}
               className="toolbar-btn"
               title="Sort"
             >
@@ -268,63 +255,6 @@ export function TaskToolbar({
               </div>
             )}
           </div>
-
-          {/* Group */}
-          <div className="relative shrink-0">
-            <button
-              onClick={() => { setShowGroup(!showGroup); setShowFilter(false); setShowSort(false); setShowColumns(false); }}
-              className="toolbar-btn"
-              title="Group"
-            >
-              <Layers className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Group</span>
-              {groupBy !== 'none' && <span className="text-2xs hidden sm:inline">· {groupBy}</span>}
-            </button>
-            {showGroup && (
-              <div className="absolute top-full left-0 mt-1 w-40 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
-                {(['none', 'status', 'priority', 'project'] as GroupBy[]).map((g) => (
-                  <button
-                    key={g}
-                    onClick={() => { onGroupByChange(g); setShowGroup(false); }}
-                    className={clsx('w-full text-left px-2 py-1.5 text-sm rounded hover:bg-dark-hover capitalize', groupBy === g && 'bg-dark-hover text-text-primary')}
-                  >
-                    {g === 'none' ? 'None' : g}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Columns */}
-          {visibleColumns && onToggleColumn && (
-            <div className="relative shrink-0">
-              <button
-                onClick={() => { setShowColumns(!showColumns); setShowFilter(false); setShowSort(false); setShowGroup(false); }}
-                className="toolbar-btn"
-                title="Columns"
-              >
-                <Columns3 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Columns</span>
-              </button>
-              {showColumns && (
-                <div className="absolute top-full left-0 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-xl dropdown-panel border border-dark-border p-2 z-30">
-                  {visibleColumns
-                    .filter((c) => c.id !== 'indicators' && c.id !== 'assignees' && c.id !== 'priority' && c.id !== 'actual_hours' && c.id !== 'start_date' && c.id !== 'end_date')
-                    .map((col) => (
-                    <label key={col.id} className="flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-dark-hover rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={col.visible}
-                        onChange={() => onToggleColumn(col.id)}
-                        className="rounded border-dark-border"
-                      />
-                      {col.label}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
           </div>
 
           {/* View selector — always visible on the right */}

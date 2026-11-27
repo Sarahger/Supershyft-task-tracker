@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
-from app.models import ActivityLog, Project, Task, User
+from app.models import ActivityLog, Task, User
 from app.repositories.base import NotificationRepository, TaskRepository
 from app.schemas.common import APIResponse
 from app.schemas.misc import NotificationPreferencesUpdate, ReportFilter
@@ -144,8 +144,6 @@ def get_dashboard(db: Session = Depends(get_db), current_user: User = Depends(ge
 
     recent_tasks = my_tasks_query.order_by(Task.updated_at.desc()).limit(10).all()
 
-    projects = db.query(Project).filter(Project.is_archived == False).limit(6).all()
-
     status_distribution = {}
     for status in ["to_do", "in_progress", "blocked", "in_review", "completed"]:
         status_distribution[status] = db.query(Task).filter(Task.status == status, Task.is_archived == False).count()
@@ -180,15 +178,6 @@ def get_dashboard(db: Session = Depends(get_db), current_user: User = Depends(ge
                 }
                 for a in recent_activity
             ],
-            "projects": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "health": p.health,
-                    "status": p.status,
-                }
-                for p in projects
-            ],
             "status_distribution": status_distribution,
             "priority_distribution": priority_distribution,
             "role": current_user.role,
@@ -210,8 +199,6 @@ def task_report(filters: ReportFilter, db: Session = Depends(get_db), current_us
         )
         .filter(Task.is_archived == False)
     )
-    if filters.project_id:
-        query = query.filter(Task.project_id == filters.project_id)
     if filters.start_date:
         query = query.filter(Task.created_at >= filters.start_date)
     if filters.end_date:
@@ -316,8 +303,6 @@ def export_csv(filters: ReportFilter, db: Session = Depends(get_db), current_use
         .options(joinedload(Task.assignees).joinedload(TaskAssignee.user))
         .filter(Task.is_archived == False)
     )
-    if filters.project_id:
-        query = query.filter(Task.project_id == filters.project_id)
     if filters.user_id:
         from app.models import TaskAssignee
         query = query.join(TaskAssignee).filter(TaskAssignee.user_id == filters.user_id)

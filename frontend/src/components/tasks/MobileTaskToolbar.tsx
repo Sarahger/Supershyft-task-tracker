@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import {
-  Search, SlidersHorizontal, ArrowUpDown, Layers, LayoutList, Columns3,
+  Search, SlidersHorizontal, ArrowUpDown, LayoutList, Columns3,
   CalendarDays, CalendarRange,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { SELECTABLE_STATUS_OPTIONS } from '../../types';
 import { useTaskViewPreferences } from '../../contexts/TaskViewPreferencesContext';
 import { BottomSheet } from '../ui/BottomSheet';
-import type { GroupBy, ViewMode } from './TaskToolbar';
+import type { ViewMode } from './TaskToolbar';
 
 interface AssigneeOption {
   id: number;
@@ -29,8 +29,6 @@ interface MobileTaskToolbarProps {
   sortDir: 'asc' | 'desc';
   onSortFieldChange: (v: string) => void;
   onSortDirToggle: () => void;
-  groupBy: GroupBy;
-  onGroupByChange: (v: GroupBy) => void;
   viewMode: ViewMode;
   onViewModeChange: (v: ViewMode) => void;
   showViewSelector?: boolean;
@@ -69,8 +67,6 @@ export function MobileTaskToolbar({
   sortDir,
   onSortFieldChange,
   onSortDirToggle,
-  groupBy,
-  onGroupByChange,
   viewMode,
   onViewModeChange,
   showViewSelector = true,
@@ -201,31 +197,6 @@ export function MobileTaskToolbar({
             >
               {sortDir === 'asc' ? '↑ Ascending' : '↓ Descending'}
             </button>
-          </div>
-        </section>
-
-        {/* Group */}
-        <section className="mb-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Layers className="h-4 w-4 text-text-muted" />
-            <h3 className="text-xs font-medium uppercase tracking-wider text-text-muted">Group by</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {(['none', 'status', 'priority', 'project'] as GroupBy[]).map((g) => (
-              <button
-                key={g}
-                type="button"
-                onClick={() => onGroupByChange(g)}
-                className={clsx(
-                  'px-3 py-3 rounded-xl text-sm capitalize min-h-[44px] border transition-colors',
-                  groupBy === g
-                    ? 'border-accent-primary bg-accent-primary/10 text-text-primary font-medium'
-                    : 'border-dark-border bg-surface-subtle text-text-secondary hover:bg-dark-hover',
-                )}
-              >
-                {g === 'none' ? 'None' : g}
-              </button>
-            ))}
           </div>
         </section>
 

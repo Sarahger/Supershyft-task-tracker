@@ -16,7 +16,7 @@ from app.core.constants import (
     UserRole,
 )
 from app.core.datetime_utils import utcnow
-from app.models import Project, User, WorkVaultFolder, WorkVaultResource, user_departments
+from app.models import User, WorkVaultFolder, WorkVaultResource, user_departments
 from app.utils.month_weeks import get_app_timezone
 from app.repositories.base import user_to_brief_dict
 
@@ -153,7 +153,6 @@ class WorkVaultService:
             self.db.query(WorkVaultResource)
             .options(
                 joinedload(WorkVaultResource.uploader),
-                joinedload(WorkVaultResource.project),
                 joinedload(WorkVaultResource.folder),
             )
             .join(User, WorkVaultResource.uploaded_by_id == User.id)
@@ -167,7 +166,6 @@ class WorkVaultService:
         category: str | None = None,
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
-        project_id: int | None = None,
         folder_id: int | None = None,
         created_from: str | None = None,
         created_to: str | None = None,
@@ -196,8 +194,6 @@ class WorkVaultService:
             query = query.filter(WorkVaultResource.file_kind == file_kind)
         if uploaded_by_id:
             query = query.filter(WorkVaultResource.uploaded_by_id == uploaded_by_id)
-        if project_id:
-            query = query.filter(WorkVaultResource.project_id == project_id)
         if folder_id is not None:
             if folder_id == 0:
                 query = query.filter(WorkVaultResource.folder_id.is_(None))
@@ -227,8 +223,6 @@ class WorkVaultService:
             "description": resource.description,
             "category": resource.category,
             "tags": tags_to_list(resource.tags),
-            "project_id": resource.project_id,
-            "project_name": resource.project.name if resource.project else None,
             "resource_type": resource.resource_type,
             "file_kind": resource.file_kind,
             "filename": resource.filename,
@@ -253,7 +247,6 @@ class WorkVaultService:
         category: str | None = None,
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
-        project_id: int | None = None,
         folder_id: int | None = None,
         created_from: str | None = None,
         created_to: str | None = None,
@@ -267,7 +260,6 @@ class WorkVaultService:
             category=category,
             file_kind=file_kind,
             uploaded_by_id=uploaded_by_id,
-            project_id=project_id,
             folder_id=folder_id,
             created_from=created_from,
             created_to=created_to,
@@ -290,7 +282,6 @@ class WorkVaultService:
         category: str | None = None,
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
-        project_id: int | None = None,
         folder_id: int | None = None,
         created_from: str | None = None,
         created_to: str | None = None,
@@ -301,7 +292,6 @@ class WorkVaultService:
             category=category,
             file_kind=file_kind,
             uploaded_by_id=uploaded_by_id,
-            project_id=project_id,
             folder_id=folder_id,
             created_from=created_from,
             created_to=created_to,
@@ -398,7 +388,6 @@ class WorkVaultService:
         category: str | None = None,
         file_kind: str | None = None,
         uploaded_by_id: int | None = None,
-        project_id: int | None = None,
         created_from: str | None = None,
         created_to: str | None = None,
     ) -> dict:
@@ -408,7 +397,6 @@ class WorkVaultService:
             category=category,
             file_kind=file_kind,
             uploaded_by_id=uploaded_by_id,
-            project_id=project_id,
             created_from=created_from,
             created_to=created_to,
         )
@@ -465,7 +453,6 @@ class WorkVaultService:
             self.db.query(WorkVaultResource)
             .options(
                 joinedload(WorkVaultResource.uploader),
-                joinedload(WorkVaultResource.project),
                 joinedload(WorkVaultResource.folder),
             )
             .filter(WorkVaultResource.id == resource_id)
@@ -704,14 +691,6 @@ class WorkVaultService:
             return (url or "").strip()[:300]
         raise HTTPException(status_code=400, detail="Title is required")
 
-    def _require_project(self, project_id: int | None) -> int | None:
-        if project_id is None:
-            return None
-        project = self.db.query(Project).filter(Project.id == project_id, Project.is_archived == False).first()  # noqa: E712
-        if not project:
-            raise HTTPException(status_code=400, detail="Project not found")
-        return project_id
-
     def create(
         self,
         user: User,
@@ -720,7 +699,6 @@ class WorkVaultService:
         description: str | None,
         category: str,
         tags: list[str] | str | None = None,
-        project_id: int | None = None,
         url: str | None = None,
         http_method: str | None = None,
         folder_id: int | None = None,
@@ -785,7 +763,7 @@ class WorkVaultService:
                 description=description_value,
                 category=category_value,
                 tags=parse_tags(tags),
-                project_id=self._require_project(project_id),
+                project_id=None,
                 folder_id=resolved_folder_id,
                 resource_type=resource_type,
                 file_kind="link",
@@ -799,7 +777,7 @@ class WorkVaultService:
                 description=description_value,
                 category=category_value,
                 tags=parse_tags(tags),
-                project_id=self._require_project(project_id),
+                project_id=None,
                 folder_id=resolved_folder_id,
                 resource_type="file",
                 file_kind=infer_file_kind("file", safe_name, mime_type),
@@ -830,10 +808,7 @@ class WorkVaultService:
             resource.category = validate_category(str(data["category"]))
         if "tags" in data:
             resource.tags = parse_tags(data["tags"])
-        if data.get("clear_project"):
-            resource.project_id = None
-        elif "project_id" in data:
-            resource.project_id = self._require_project(data["project_id"])
+        resource.project_id = None
         if "http_method" in data and data["http_method"] is not None:
             if resource.file_kind != "api" and resource.category != WORK_VAULT_API_CATEGORY:
                 raise HTTPException(status_code=400, detail="Only API Integration resources can set a method")

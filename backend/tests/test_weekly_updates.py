@@ -114,18 +114,31 @@ def test_period_math_friday_and_late_submit():
     assert this_end == working_week_end(next_monday)
 
 
-def test_weekly_edit_window_ends_monday_2pm():
-    monday = date(2026, 10, 26)
-    until = editable_until_for(monday)
+def test_weekly_edit_window_current_and_future_only():
+    previous = date(2026, 10, 26)
+    current = date(2026, 11, 2)
+    upcoming = date(2026, 11, 9)
     zone = get_app_timezone()
+    sunday_night = datetime(2026, 11, 1, 23, 59, tzinfo=zone)
+    monday_morning = datetime(2026, 11, 2, 10, 0, tzinfo=zone)
+
+    # Legacy cutoff helper still reports Monday 2PM after the week.
+    until = editable_until_for(previous)
     assert until.date() == date(2026, 11, 2)
     assert until.hour == 14
-    assert until.minute == 0
-    assert is_report_editable(monday, "submitted", datetime(2026, 11, 2, 13, 59, tzinfo=zone))
-    assert not is_report_editable(monday, "draft", datetime(2026, 11, 2, 14, 0, tzinfo=zone))
-    # Edit lock does not change how the calendar week is calculated.
-    assert current_week_start(datetime(2026, 11, 2, 10, 0, tzinfo=zone)) == date(2026, 11, 2)
-    assert current_week_start(datetime(2026, 11, 2, 15, 0, tzinfo=zone)) == date(2026, 11, 2)
+
+    # Before Monday: previous is still the current week; future weeks are open too.
+    assert is_report_editable(previous, "submitted", sunday_night)
+    assert is_report_editable(current, "draft", sunday_night)
+    assert is_report_editable(upcoming, "draft", sunday_night)
+    assert writable_period_start(sunday_night) == previous
+
+    # From Monday 00:00: only current + future weeks stay editable.
+    assert not is_report_editable(previous, "submitted", monday_morning)
+    assert is_report_editable(current, "draft", monday_morning)
+    assert is_report_editable(upcoming, "draft", monday_morning)
+    assert writable_period_start(monday_morning) == current
+    assert current_week_start(monday_morning) == current
 
 
 def test_overdue_starts_after_due_calendar_day():
@@ -137,37 +150,6 @@ def test_overdue_starts_after_due_calendar_day():
     assert is_due_date_overdue(due, status="in_progress", now=during_due_day) is False
     assert is_due_date_overdue(due, status="in_progress", now=next_midnight) is True
     assert is_due_date_overdue(due, status="completed", now=next_midnight) is False
-
-
-def test_new_week_opens_monday_midnight_while_previous_stays_editable():
-    previous = date(2026, 10, 26)
-    current = date(2026, 11, 2)
-    upcoming = date(2026, 11, 9)
-    zone = get_app_timezone()
-    sunday_night = datetime(2026, 11, 1, 23, 59, tzinfo=zone)
-    monday_midnight = datetime(2026, 11, 2, 0, 0, tzinfo=zone)
-    before_cutoff = datetime(2026, 11, 2, 13, 59, tzinfo=zone)
-    at_cutoff = datetime(2026, 11, 2, 14, 0, tzinfo=zone)
-
-    # Before Monday: previous stays editable; upcoming weeks are also open for planning.
-    assert is_report_editable(previous, "submitted", sunday_night)
-    assert is_report_editable(current, "draft", sunday_night)
-    assert is_report_editable(upcoming, "draft", sunday_night)
-    assert writable_period_start(sunday_night) == previous
-
-    # Monday 00:00–14:00: both weeks are editable; writable points at the new week.
-    assert is_report_editable(previous, "submitted", monday_midnight)
-    assert is_report_editable(current, "draft", monday_midnight)
-    assert writable_period_start(monday_midnight) == current
-    assert is_report_editable(previous, "submitted", before_cutoff)
-    assert is_report_editable(current, "draft", before_cutoff)
-    assert writable_period_start(before_cutoff) == current
-
-    # After Monday 2:00 PM: previous locks; current remains the writable week.
-    assert not is_report_editable(previous, "submitted", at_cutoff)
-    assert is_report_editable(current, "draft", at_cutoff)
-    assert is_report_editable(upcoming, "draft", at_cutoff)
-    assert writable_period_start(at_cutoff) == current
 
 
 def test_resolve_period_requires_monday():
@@ -413,10 +395,11 @@ def test_current_and_previous_week_both_writable_on_monday_morning(client, users
         assert data["period_start"] == previous.isoformat()
         assert data["editable"] is True
     elif is_report_editable(current, "draft"):
-        # Past Monday 2PM: previous is locked, current remains writable.
+        # Previous week is locked once the new week starts; current remains writable.
         locked = client.put("/api/weekly-updates", json=previous_payload, headers=auth_header(emp))
         assert locked.status_code == 403
-        assert "2:00 PM" in locked.json()["detail"] or "Monday" in locked.json()["detail"]
+        detail = locked.json()["detail"]
+        assert "current week" in detail.lower() or "future" in detail.lower()
 
 
 def test_suggestions_only_include_this_weeks_completed_tasks(client, users, db_session):

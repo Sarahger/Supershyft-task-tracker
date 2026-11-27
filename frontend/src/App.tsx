@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -24,8 +24,6 @@ const MyTasksPage = lazy(() => import('./pages/MyTasksPage'));
 const WeeklyUpdatesPage = lazy(() => import('./pages/WeeklyUpdatesPage'));
 const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage'));
 const WorkVaultPage = lazy(() => import('./pages/WorkVaultPage'));
-const ProjectsPage = lazy(() => import('./pages/ProjectsPage'));
-const ProjectDetailPage = lazy(() => import('./pages/ProjectDetailPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
@@ -62,12 +60,10 @@ function ProtectedLayout() {
   const { isAuthenticated, isLoading } = useAuth();
   const { selectedTaskId, closeTask, isCreateOpen, closeCreate, openCreate } = useTaskDrawer();
   const { selectedUserId, closeUser } = useUserDrawer();
-  const location = useLocation();
 
   useEffect(() => {
     const openNewTask = () => {
-      const projectMatch = location.pathname.match(/^\/projects\/(\d+)/);
-      openCreate(projectMatch ? { projectId: Number(projectMatch[1]) } : undefined);
+      openCreate();
     };
 
     const handler = (e: KeyboardEvent) => {
@@ -95,7 +91,7 @@ function ProtectedLayout() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [openCreate, location.pathname]);
+  }, [openCreate]);
 
   if (isLoading) {
     return (
@@ -171,22 +167,8 @@ export default function App() {
                   <Route path="tasks" element={<Navigate to="/" replace />} />
                   <Route path="kanban" element={<Navigate to="/" replace />} />
                   <Route path="dashboard" element={<DashboardRedirect />} />
-                  <Route
-                    path="projects"
-                    element={
-                      <Suspense fallback={<PageLoader />}>
-                        <ProjectsPage />
-                      </Suspense>
-                    }
-                  />
-                  <Route
-                    path="projects/:id"
-                    element={
-                      <Suspense fallback={<PageLoader />}>
-                        <ProjectDetailPage />
-                      </Suspense>
-                    }
-                  />
+                  <Route path="projects" element={<Navigate to="/" replace />} />
+                  <Route path="projects/:id" element={<Navigate to="/" replace />} />
                   <Route
                     path="meetings"
                     element={

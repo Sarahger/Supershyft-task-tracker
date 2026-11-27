@@ -88,7 +88,6 @@ class TaskBase(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     due_date: datetime | None = None
-    project_id: int | None = None
     client_id: int | None = None
     sprint_id: int | None = None
     milestone_id: int | None = None
@@ -117,7 +116,6 @@ class TaskUpdate(BaseModel):
     start_date: datetime | None = None
     end_date: datetime | None = None
     due_date: datetime | None = None
-    project_id: int | None = None
     client_id: int | None = None
     sprint_id: int | None = None
     milestone_id: int | None = None
@@ -159,8 +157,6 @@ class TaskListResponse(BaseModel):
     status: str
     priority: str
     due_date: datetime | None = None
-    project_id: int | None = None
-    project_name: str | None = None
     review_required: bool
     testing_required: bool
     assignees: list[dict] = []
@@ -193,7 +189,6 @@ class TaskDetailResponse(TaskBase):
     departments: list[dict] = []
     tags: list[dict] = []
     task_type: dict | None = None
-    project: dict | None = None
     client: dict | None = None
     reviewer: dict | None = None
     creator: dict | None = None
