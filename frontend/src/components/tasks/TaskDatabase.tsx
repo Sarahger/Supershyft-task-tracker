@@ -50,12 +50,20 @@ export interface ColumnDef {
 const HIDDEN_COLUMN_IDS = new Set<ColumnId>(['assignees', 'priority', 'actual_hours', 'start_date', 'end_date']);
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
-  { id: 'title', label: 'Task name', width: 360, minWidth: 220, visible: true, sortable: true },
+  { id: 'title', label: 'Task name', width: 50, minWidth: 220, visible: true, sortable: true },
   { id: 'due_date', label: 'Due date', width: 100, minWidth: 80, visible: true, sortable: true },
   { id: 'estimated_hours', label: 'Time required', width: 100, minWidth: 80, visible: true },
   { id: 'status', label: 'Status', width: 96, minWidth: 80, visible: true, sortable: true },
-  { id: 'indicators', label: '', width: 160, minWidth: 120, visible: true },
+  { id: 'indicators', label: '', width: 120, minWidth: 80, visible: true },
 ];
+
+/** Title uses % of table width; other columns share the remaining half via flex. */
+function columnStyle(col: ColumnDef): React.CSSProperties {
+  if (col.id === 'title') {
+    return { width: `${col.width}%`, minWidth: col.minWidth, flexShrink: 0 };
+  }
+  return { flex: `1 1 ${col.width}px`, minWidth: col.minWidth };
+}
 
 /** Soft priority tint behind the task name cell. */
 const TITLE_PRIORITY_BG: Record<string, string> = {
@@ -210,14 +218,18 @@ export function TaskDatabase({
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!resizing) return;
     const delta = e.clientX - resizing.startX;
+    const tableWidth = tableRef.current?.offsetWidth ?? 0;
     setColumns((cols) =>
-      cols.map((c) =>
-        c.id === resizing.colId
-          ? { ...c, width: Math.max(c.minWidth, resizing.startWidth + delta) }
-          : c
-      )
+      cols.map((c) => {
+        if (c.id !== resizing.colId) return c;
+        if (c.id === 'title' && tableWidth > 0) {
+          const nextPct = resizing.startWidth + (delta / tableWidth) * 100;
+          return { ...c, width: Math.max(20, Math.min(70, Math.round(nextPct))) };
+        }
+        return { ...c, width: Math.max(c.minWidth, resizing.startWidth + delta) };
+      })
     );
-  }, [resizing]);
+  }, [resizing, setColumns]);
 
   const handleResizeEnd = useCallback(() => setResizing(null), []);
 
@@ -232,7 +244,8 @@ export function TaskDatabase({
     }
   }, [resizing, handleResizeMove, handleResizeEnd]);
 
-  const totalWidth = visibleColumns.reduce((s, c) => s + c.width, 0) + 40 + (onDeleteTask ? 44 : 0);
+  const minTableWidth =
+    visibleColumns.reduce((s, c) => s + c.minWidth, 0) + 40 + (onDeleteTask ? 44 : 0);
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
@@ -242,9 +255,9 @@ export function TaskDatabase({
   return (
     <div ref={tableRef} className="task-table relative rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
-        <div style={{ minWidth: totalWidth }}>
+        <div style={{ width: '100%', minWidth: minTableWidth }}>
           {/* Header */}
-          <div className="task-table-header flex items-stretch sticky top-0 z-10">
+          <div className="task-table-header flex items-stretch sticky top-0 z-10 w-full">
             <div className="db-header-cell w-10 shrink-0 flex items-center justify-center">
               <input
                 type="checkbox"
@@ -256,8 +269,11 @@ export function TaskDatabase({
             {visibleColumns.map((col) => (
               <div
                 key={col.id}
-                className="db-header-cell relative flex items-center gap-1"
-                style={{ width: col.width }}
+                className={clsx(
+                  'db-header-cell relative flex items-center gap-1',
+                  col.id !== 'title' && 'min-w-0',
+                )}
+                style={columnStyle(col)}
               >
                 {col.sortable && onSort ? (
                   <button
@@ -296,7 +312,7 @@ export function TaskDatabase({
                 onClick={() => onTaskClick(task.id)}
                 onContextMenu={(e) => handleContextMenu(e, task.id)}
                 className={clsx(
-                  'db-row group',
+                  'db-row group w-full',
                   isSelected && 'db-row-selected',
                   isFocused && 'db-row-focused'
                 )}
@@ -314,12 +330,13 @@ export function TaskDatabase({
                     key={col.id}
                     className={clsx(
                       'db-cell overflow-hidden',
+                      col.id !== 'title' && 'min-w-0',
                       col.id === 'title' && [
                         'rounded-md my-0.5',
                         TITLE_PRIORITY_BG[task.priority],
                       ],
                     )}
-                    style={{ width: col.width }}
+                    style={columnStyle(col)}
                     title={
                       col.id === 'title'
                         ? `Priority: ${PRIORITY_LABELS[task.priority] || task.priority}`
