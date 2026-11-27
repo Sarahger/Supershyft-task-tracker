@@ -2,7 +2,7 @@ import { format, parseISO, startOfDay } from 'date-fns';
 import clsx from 'clsx';
 import type { AttendanceStatus, AttendanceWeek } from '../../types';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
-import { isAttendanceEditableDay, statusLabel } from './attendanceUtils';
+import { isAttendanceHrEditableDay, statusLabel } from './attendanceUtils';
 import { Avatar } from '../ui/Avatar';
 
 interface Props {
@@ -84,7 +84,7 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, onMarkCell 
                   </td>
                   {days.map((cell) => {
                     const day = startOfDay(parseISO(cell.date));
-                    const editable = isAttendanceEditableDay(day);
+                    const editable = isAttendanceHrEditableDay(day);
                     return (
                       <td key={cell.date} className="px-1.5 py-2 text-center">
                         <button

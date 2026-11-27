@@ -12,7 +12,7 @@ import { AttendanceMarkModal } from './AttendanceMarkModal';
 import { AttendanceSummaryCard } from './AttendanceSummaryCard';
 import {
   formatRecordedTime,
-  isAttendanceEditableDay,
+  isAttendanceHrEditableDay,
   statusLabel,
 } from './attendanceUtils';
 import type { AttendanceRecord, AttendanceStatus } from '../../types';
@@ -78,7 +78,7 @@ export function AttendanceEmployeeDrawer({ userId, onClose }: Props) {
 
   const openEditor = (day: Date, record: AttendanceRecord | null) => {
     setSelected({ day, record });
-    if (!isAttendanceEditableDay(day)) {
+    if (!isAttendanceHrEditableDay(day)) {
       return;
     }
     setMarkTarget({ day, record });
@@ -141,7 +141,7 @@ export function AttendanceEmployeeDrawer({ userId, onClose }: Props) {
                       </p>
                     )}
                   </div>
-                  {isAttendanceEditableDay(selected.day) && (
+                  {isAttendanceHrEditableDay(selected.day) && (
                     <Button
                       size="sm"
                       variant="secondary"

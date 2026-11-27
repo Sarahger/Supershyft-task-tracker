@@ -228,10 +228,6 @@ export function WeeklyUpdatesPanel() {
               </div>
               <div className="space-y-3">
                 <div>
-                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed Tasks</p>
-                  <p className="text-sm text-text-muted mt-1">No tasks yet</p>
-                </div>
-                <div>
                   <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Weekly Tasks</p>
                   {liveCurrentWeek.length === 0 ? (
                     <p className="text-sm text-text-muted mt-1">No tasks yet</p>
@@ -251,6 +247,10 @@ export function WeeklyUpdatesPanel() {
                       })}
                     </ol>
                   )}
+                </div>
+                <div>
+                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed Tasks</p>
+                  <p className="text-sm text-text-muted mt-1">No tasks yet</p>
                 </div>
               </div>
             </div>

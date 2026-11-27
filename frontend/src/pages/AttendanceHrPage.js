@@ -13,7 +13,7 @@ import { AttendanceHrWeekTable } from '../components/attendance/AttendanceHrWeek
 import { AttendanceEmployeeDrawer } from '../components/attendance/AttendanceEmployeeDrawer';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
-import { isAttendanceEditableDay } from '../components/attendance/attendanceUtils';
+import { isAttendanceHrEditableDay } from '../components/attendance/attendanceUtils';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { toast } from '../components/ui/Toast';
@@ -62,8 +62,8 @@ export default function AttendanceHrPage() {
         },
     });
     const openMark = (target) => {
-        if (!isAttendanceEditableDay(target.day)) {
-            toast.info('You can only mark or edit today and yesterday.');
+        if (!isAttendanceHrEditableDay(target.day)) {
+            toast.info('Future dates are not available.');
             return;
         }
         setMarkTarget(target);
@@ -106,7 +106,7 @@ export default function AttendanceHrPage() {
         : '';
     const dayLabel = format(selectedDay, 'EEE, MMM d');
     const weekLabel = `${format(weekStart, 'MMM d')} – ${format(addDays(weekStart, 5), 'MMM d')}`;
-    return (_jsxs("div", { className: "w-full pb-12", "data-testid": "attendance-hr-page", children: [_jsx(PageHeader, { title: "Attendance \u2014 HR", subtitle: "Daily and weekly organization overview. Mark or edit today and yesterday for anyone.", onMobileBack: () => navigate('/attendance'), action: _jsxs(Button, { variant: "secondary", loading: exporting, onClick: handleExport, "data-testid": "export-csv", className: "gap-1.5", children: [_jsx(Download, { className: "h-3.5 w-3.5" }), _jsx("span", { className: "hidden sm:inline", children: "Export CSV" })] }) }), _jsx(AttendanceHrStats, { stats: data?.stats, loading: isLoading, activeKey: statKey, onSelect: setStatKey }), _jsx("div", { className: "sticky top-0 z-20 mt-6 mb-4 py-3 bg-dark-bg border-b border-dark-border", children: _jsxs("div", { className: "flex flex-wrap items-center justify-between gap-3", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("p", { className: "text-xs font-medium text-text-secondary", children: view === 'day' ? 'Day' : 'Week' }), _jsx("p", { className: "text-sm font-semibold text-text-primary truncate", "data-testid": "hr-selected-day", children: view === 'day' ? dayLabel : weekLabel })] }), _jsxs("div", { className: "flex items-center gap-2 shrink-0", children: [_jsxs("div", { className: "flex rounded-lg border border-dark-border overflow-hidden bg-dark-card", children: [_jsx("button", { type: "button", onClick: () => setView('day'), "data-testid": "hr-view-day", className: clsx('px-3 py-2 text-xs font-medium min-h-[36px] transition-colors duration-hover', view === 'day'
+    return (_jsxs("div", { className: "w-full pb-12", "data-testid": "attendance-hr-page", children: [_jsx(PageHeader, { title: "Attendance \u2014 HR", subtitle: "Daily and weekly organization overview. Mark or edit attendance for anyone on any past day.", onMobileBack: () => navigate('/attendance'), action: _jsxs(Button, { variant: "secondary", loading: exporting, onClick: handleExport, "data-testid": "export-csv", className: "gap-1.5", children: [_jsx(Download, { className: "h-3.5 w-3.5" }), _jsx("span", { className: "hidden sm:inline", children: "Export CSV" })] }) }), _jsx(AttendanceHrStats, { stats: data?.stats, loading: isLoading, activeKey: statKey, onSelect: setStatKey }), _jsx("div", { className: "sticky top-0 z-20 mt-6 mb-4 py-3 bg-dark-bg border-b border-dark-border", children: _jsxs("div", { className: "flex flex-wrap items-center justify-between gap-3", children: [_jsxs("div", { className: "min-w-0", children: [_jsx("p", { className: "text-xs font-medium text-text-secondary", children: view === 'day' ? 'Day' : 'Week' }), _jsx("p", { className: "text-sm font-semibold text-text-primary truncate", "data-testid": "hr-selected-day", children: view === 'day' ? dayLabel : weekLabel })] }), _jsxs("div", { className: "flex items-center gap-2 shrink-0", children: [_jsxs("div", { className: "flex rounded-lg border border-dark-border overflow-hidden bg-dark-card", children: [_jsx("button", { type: "button", onClick: () => setView('day'), "data-testid": "hr-view-day", className: clsx('px-3 py-2 text-xs font-medium min-h-[36px] transition-colors duration-hover', view === 'day'
                                                 ? 'bg-surface-highlight text-text-primary'
                                                 : 'text-text-muted hover:text-text-secondary'), children: "Day" }), _jsx("button", { type: "button", onClick: () => setView('week'), "data-testid": "hr-view-week", className: clsx('px-3 py-2 text-xs font-medium min-h-[36px] transition-colors duration-hover', view === 'week'
                                                 ? 'bg-surface-highlight text-text-primary'

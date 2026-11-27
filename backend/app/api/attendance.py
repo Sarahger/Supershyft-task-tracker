@@ -37,9 +37,10 @@ def mark_attendance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    is_manager = current_user.role in _MANAGER_ROLES
     target_user = current_user
     if body.user_id is not None and body.user_id != current_user.id:
-        if current_user.role not in _MANAGER_ROLES:
+        if not is_manager:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         target_user = db.query(User).filter(User.id == body.user_id).first()
         if not target_user or target_user.status == UserStatus.INACTIVE.value:
@@ -49,6 +50,7 @@ def mark_attendance(
         target_user,
         body.status,
         attendance_date=body.attendance_date,
+        unrestricted=is_manager,
     )
     return APIResponse(data=AttendanceRecordResponse(**data), message="Attendance saved")
 

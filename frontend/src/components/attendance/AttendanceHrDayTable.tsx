@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import type { AttendanceDayRow, AttendanceStatus } from '../../types';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
-import { formatRecordedTime, isAttendanceEditableDay, statusLabel } from './attendanceUtils';
+import { formatRecordedTime, isAttendanceHrEditableDay, statusLabel } from './attendanceUtils';
 import { EmptyState } from '../ui/Skeleton';
 import { Avatar } from '../ui/Avatar';
 import { parseISO, startOfDay } from 'date-fns';
@@ -26,7 +26,7 @@ export function AttendanceHrDayTable({
   onSelectUser,
   onMarkUser,
 }: Props) {
-  const dayEditable = isAttendanceEditableDay(selectedDay);
+  const dayEditable = isAttendanceHrEditableDay(selectedDay);
 
   if (loading) {
     return (

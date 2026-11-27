@@ -168,6 +168,8 @@ class AttendanceService:
         user: User,
         status: str,
         attendance_date: date | None = None,
+        *,
+        unrestricted: bool = False,
     ) -> dict:
         if status not in VALID_STATUSES:
             raise HTTPException(status_code=400, detail="Invalid attendance status")
@@ -176,7 +178,8 @@ class AttendanceService:
         target = attendance_date or today
         if target > today:
             raise HTTPException(status_code=400, detail="Future dates are not allowed")
-        if target < earliest_editable_date(today):
+        # Employees: today + yesterday only. Managers/admins: any past or current day.
+        if not unrestricted and target < earliest_editable_date(today):
             raise HTTPException(
                 status_code=400,
                 detail="Attendance can only be marked or edited for today and yesterday",
@@ -191,12 +194,15 @@ class AttendanceService:
             .filter(Attendance.user_id == user.id, Attendance.attendance_date == target)
             .first()
         )
+        # Managers may edit any past day; reflect that in the response flag.
+        editable = True if unrestricted else None
+
         if existing:
             _apply_status(existing)
             self.db.commit()
             self.db.refresh(existing)
             existing.user = user
-            return _format_record(existing, include_user=True)
+            return _format_record(existing, include_user=True, editable=editable)
 
         record = Attendance(
             user_id=user.id,
@@ -220,10 +226,10 @@ class AttendanceService:
             self.db.commit()
             self.db.refresh(existing)
             existing.user = user
-            return _format_record(existing, include_user=True)
+            return _format_record(existing, include_user=True, editable=editable)
         self.db.refresh(record)
         record.user = user
-        return _format_record(record, include_user=True)
+        return _format_record(record, include_user=True, editable=editable)
 
     def mark_today(self, user: User, status: str) -> dict:
         return self.upsert(user, status, attendance_date=None)

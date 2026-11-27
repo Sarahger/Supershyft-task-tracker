@@ -20,6 +20,7 @@ const DUE_TAIL_RE =
 const SLASH_DUE_RE = /(?:^|[\s\-–—:(])\/([a-zA-Z0-9._-]+)/gi;
 const HASH_TIME_RE =
   /#\s*(\d+(?:\.\d+)?)\s*(days?|d|hrs?|hours?|h|mins?|minutes?|m)\b/gi;
+const COMPLETED_MARK_RE = /\*\s*completed\b/gi;
 
 export interface ParsedWeeklyPlanItem {
   title: string;
@@ -30,6 +31,9 @@ export interface ParsedWeeklyPlanItem {
   rawLine: string;
   missingDueDate: boolean;
   missingEffort: boolean;
+  /** Line included `*completed` — treat as already done (completion date = today). */
+  alreadyCompleted: boolean;
+  completionDate: string | null;
 }
 
 export interface ParsedWeeklyPlan {
@@ -145,6 +149,14 @@ function tidyTitle(text: string): string {
   return text.replace(/[\s\-–—:(]+$/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function stripCompletedMark(text: string): { title: string; alreadyCompleted: boolean } {
+  COMPLETED_MARK_RE.lastIndex = 0;
+  const alreadyCompleted = COMPLETED_MARK_RE.test(text);
+  COMPLETED_MARK_RE.lastIndex = 0;
+  if (!alreadyCompleted) return { title: text, alreadyCompleted: false };
+  return { title: tidyTitle(text.replace(COMPLETED_MARK_RE, ' ')), alreadyCompleted: true };
+}
+
 function stripSlashDue(
   text: string,
   planningMonday: Date,
@@ -201,11 +213,13 @@ export function parseWeeklyPlanList(
     if (!body) continue;
     if (!numbered && rawItems.length > 0 && body.length < 4) continue;
 
-    const slashDue = stripSlashDue(body, planningMonday, now);
-    const hashTime = stripHashTime(slashDue.title || body);
-    const dueParsed = stripDue(hashTime.title || slashDue.title || body);
-    const estimate = parseWeeklyEstimate(dueParsed.title || hashTime.title || body);
-    const title = estimate.title || dueParsed.title || hashTime.title || slashDue.title || body;
+    const completedMark = stripCompletedMark(body);
+    const workBody = completedMark.title || body;
+    const slashDue = stripSlashDue(workBody, planningMonday, now);
+    const hashTime = stripHashTime(slashDue.title || workBody);
+    const dueParsed = stripDue(hashTime.title || slashDue.title || workBody);
+    const estimate = parseWeeklyEstimate(dueParsed.title || hashTime.title || workBody);
+    const title = estimate.title || dueParsed.title || hashTime.title || slashDue.title || workBody;
     const dueDate = slashDue.dueDate || dueParsed.dueDate;
     const estimatedHours = hashTime.hours ?? estimate.hours;
     const timeLabel = hashTime.label ?? estimate.label;
@@ -216,10 +230,13 @@ export function parseWeeklyPlanList(
       && estimatedHours == null
       && !estimate.isRemainingTime
       && !dueDate
+      && !completedMark.alreadyCompleted
     ) {
       continue;
     }
 
+    const alreadyCompleted = completedMark.alreadyCompleted;
+    const completionDate = alreadyCompleted ? format(now, 'yyyy-MM-dd') : null;
     rawItems.push({
       title,
       estimatedHours,
@@ -227,8 +244,10 @@ export function parseWeeklyPlanList(
       dueDate,
       isRemainingTime: estimate.isRemainingTime,
       rawLine,
-      missingDueDate: !dueDate,
+      missingDueDate: alreadyCompleted ? false : !dueDate,
       missingEffort: estimatedHours == null && !estimate.isRemainingTime,
+      alreadyCompleted,
+      completionDate,
     });
   }
 

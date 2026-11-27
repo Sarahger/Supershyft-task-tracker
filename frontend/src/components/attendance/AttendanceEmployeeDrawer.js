@@ -11,7 +11,7 @@ import { toast } from '../ui/Toast';
 import { AttendanceCalendar } from './AttendanceCalendar';
 import { AttendanceMarkModal } from './AttendanceMarkModal';
 import { AttendanceSummaryCard } from './AttendanceSummaryCard';
-import { formatRecordedTime, isAttendanceEditableDay, statusLabel, } from './attendanceUtils';
+import { formatRecordedTime, isAttendanceHrEditableDay, statusLabel, } from './attendanceUtils';
 function toIsoDate(d) {
     return format(d, 'yyyy-MM-dd');
 }
@@ -55,7 +55,7 @@ export function AttendanceEmployeeDrawer({ userId, onClose }) {
     });
     const openEditor = (day, record) => {
         setSelected({ day, record });
-        if (!isAttendanceEditableDay(day)) {
+        if (!isAttendanceHrEditableDay(day)) {
             return;
         }
         setMarkTarget({ day, record });
@@ -63,7 +63,7 @@ export function AttendanceEmployeeDrawer({ userId, onClose }) {
     return (_jsxs(_Fragment, { children: [_jsx(Drawer, { isOpen: userId != null, onClose: onClose, children: _jsx("div", { className: "px-6 pt-14 pb-8 space-y-6", "data-testid": "attendance-employee-drawer", children: isLoading || !data ? (_jsxs("div", { className: "space-y-3", children: [_jsx(Skeleton, { className: "h-12 w-48" }), _jsx(Skeleton, { className: "h-72 w-full" })] })) : (_jsxs(_Fragment, { children: [_jsxs("header", { className: "flex items-start gap-3", children: [_jsx(Avatar, { name: `${data.user.first_name} ${data.user.last_name}`, src: data.user.profile_picture, size: "lg" }), _jsxs("div", { className: "min-w-0", children: [_jsxs("h2", { className: "text-lg font-semibold text-text-primary truncate", children: [data.user.first_name, " ", data.user.last_name] }), _jsx("p", { className: "text-sm text-text-muted truncate", children: (data.user.departments || []).join(', ') || 'No department' }), _jsxs("p", { className: "text-xs text-text-muted capitalize mt-0.5", children: [data.user.role || '—', data.user.job_title ? ` · ${data.user.job_title}` : ''] })] })] }), _jsx(AttendanceCalendar, { month: month, records: data.records, selected: selected?.day, onMonthChange: (m) => {
                                     setMonth(m);
                                     setSelected(null);
-                                }, onSelect: (day, record) => openEditor(day, record) }), selected && (_jsxs("div", { className: "card p-4 text-sm bg-surface-subtle space-y-3", children: [_jsxs("div", { children: [_jsx("p", { className: "font-medium text-text-primary", children: format(selected.day, 'EEEE, MMM d, yyyy') }), _jsx("p", { className: "text-text-secondary mt-1", children: statusLabel(selected.record?.status) }), selected.record?.recorded_at && (_jsxs("p", { className: "text-text-muted text-xs mt-0.5", children: ["Recorded at ", formatRecordedTime(selected.record.recorded_at)] }))] }), isAttendanceEditableDay(selected.day) && (_jsx(Button, { size: "sm", variant: "secondary", className: "w-full", onClick: () => setMarkTarget({ day: selected.day, record: selected.record }), "data-testid": "drawer-mark-attendance", children: selected.record
+                                }, onSelect: (day, record) => openEditor(day, record) }), selected && (_jsxs("div", { className: "card p-4 text-sm bg-surface-subtle space-y-3", children: [_jsxs("div", { children: [_jsx("p", { className: "font-medium text-text-primary", children: format(selected.day, 'EEEE, MMM d, yyyy') }), _jsx("p", { className: "text-text-secondary mt-1", children: statusLabel(selected.record?.status) }), selected.record?.recorded_at && (_jsxs("p", { className: "text-text-muted text-xs mt-0.5", children: ["Recorded at ", formatRecordedTime(selected.record.recorded_at)] }))] }), isAttendanceHrEditableDay(selected.day) && (_jsx(Button, { size: "sm", variant: "secondary", className: "w-full", onClick: () => setMarkTarget({ day: selected.day, record: selected.record }), "data-testid": "drawer-mark-attendance", children: selected.record
                                             ? isToday(selected.day)
                                                 ? 'Edit attendance'
                                                 : 'Edit this day'

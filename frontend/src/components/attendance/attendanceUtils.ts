@@ -74,12 +74,17 @@ export function formatRecordedTime(iso: string | null | undefined): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-/** Mark/edit allowed only for today and yesterday (local calendar days). */
+/** Self-service: mark/edit allowed only for today and yesterday (local calendar days). */
 export function isAttendanceEditableDay(day: Date, now = new Date()): boolean {
   const start = startOfDay(now).getTime();
   const target = startOfDay(day).getTime();
   const dayMs = 24 * 60 * 60 * 1000;
   return target <= start && target >= start - dayMs;
+}
+
+/** Managers/HR: mark/edit any past or current day (never future). */
+export function isAttendanceHrEditableDay(day: Date, now = new Date()): boolean {
+  return startOfDay(day).getTime() <= startOfDay(now).getTime();
 }
 
 export const MARK_OPTIONS: {

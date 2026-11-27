@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { format, parseISO, startOfDay } from 'date-fns';
 import clsx from 'clsx';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
-import { isAttendanceEditableDay, statusLabel } from './attendanceUtils';
+import { isAttendanceHrEditableDay, statusLabel } from './attendanceUtils';
 import { Avatar } from '../ui/Avatar';
 /** Monday–Saturday only (indices 0–5 of Mon-based week). */
 const WORK_DAY_COUNT = 6;
@@ -27,7 +27,7 @@ export function AttendanceHrWeekTable({ week, loading, onSelectUser, onMarkCell 
                                 const days = row.days.slice(0, WORK_DAY_COUNT);
                                 return (_jsxs("tr", { className: "border-b border-dark-border/50 hover:bg-dark-hover cursor-pointer transition-colors duration-hover last:border-0", onClick: () => onSelectUser(row.user.id), children: [_jsx("td", { className: "sticky left-0 z-10 bg-dark-card px-3 py-2", children: _jsxs("div", { className: "flex items-center gap-2 min-w-0", children: [_jsx(Avatar, { name: name, src: row.user.profile_picture, size: "sm" }), _jsx("span", { className: "truncate text-text-primary text-xs font-medium", children: name })] }) }), days.map((cell) => {
                                             const day = startOfDay(parseISO(cell.date));
-                                            const editable = isAttendanceEditableDay(day);
+                                            const editable = isAttendanceHrEditableDay(day);
                                             return (_jsx("td", { className: "px-1.5 py-2 text-center", children: _jsx("button", { type: "button", disabled: !editable || !onMarkCell, "data-testid": `hr-week-mark-${row.user.id}-${cell.date}`, title: editable
                                                         ? cell.status
                                                             ? `${statusLabel(cell.status)} — click to edit`

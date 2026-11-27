@@ -12,7 +12,7 @@ import { AttendanceHrWeekTable } from '../components/attendance/AttendanceHrWeek
 import { AttendanceEmployeeDrawer } from '../components/attendance/AttendanceEmployeeDrawer';
 import { AttendanceCalendar } from '../components/attendance/AttendanceCalendar';
 import { AttendanceMarkModal } from '../components/attendance/AttendanceMarkModal';
-import { isAttendanceEditableDay } from '../components/attendance/attendanceUtils';
+import { isAttendanceHrEditableDay } from '../components/attendance/attendanceUtils';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { toast } from '../components/ui/Toast';
@@ -85,8 +85,8 @@ export default function AttendanceHrPage() {
   });
 
   const openMark = (target: MarkTarget) => {
-    if (!isAttendanceEditableDay(target.day)) {
-      toast.info('You can only mark or edit today and yesterday.');
+    if (!isAttendanceHrEditableDay(target.day)) {
+      toast.info('Future dates are not available.');
       return;
     }
     setMarkTarget(target);
@@ -135,7 +135,7 @@ export default function AttendanceHrPage() {
     <div className="w-full pb-12" data-testid="attendance-hr-page">
       <PageHeader
         title="Attendance — HR"
-        subtitle="Daily and weekly organization overview. Mark or edit today and yesterday for anyone."
+        subtitle="Daily and weekly organization overview. Mark or edit attendance for anyone on any past day."
         onMobileBack={() => navigate('/attendance')}
         action={
           <Button

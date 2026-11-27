@@ -1,12 +1,12 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import clsx from 'clsx';
 import { AttendanceStatusDot } from './AttendanceStatusDot';
-import { formatRecordedTime, isAttendanceEditableDay, statusLabel } from './attendanceUtils';
+import { formatRecordedTime, isAttendanceHrEditableDay, statusLabel } from './attendanceUtils';
 import { EmptyState } from '../ui/Skeleton';
 import { Avatar } from '../ui/Avatar';
 import { parseISO, startOfDay } from 'date-fns';
 export function AttendanceHrDayTable({ rows, loading, selectedDay, onSelectUser, onMarkUser, }) {
-    const dayEditable = isAttendanceEditableDay(selectedDay);
+    const dayEditable = isAttendanceHrEditableDay(selectedDay);
     if (loading) {
         return (_jsx("div", { className: "task-table animate-pulse", "data-testid": "hr-attendance-table", children: Array.from({ length: 6 }).map((_, i) => (_jsx("div", { className: "h-11 border-b border-dark-border bg-dark-muted/40" }, i))) }));
     }

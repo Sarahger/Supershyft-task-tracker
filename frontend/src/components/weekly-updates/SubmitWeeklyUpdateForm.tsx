@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -11,7 +10,6 @@ import { extractMentionedUserIds, type MentionUser } from '../../lib/mentions';
 import {
   formatDueNoonForApi,
   formatHoursLabel,
-  parseWeeklyDoneList,
   parseWeeklyPlanList,
   toDateInput,
 } from '../../lib/weeklyPlanParse';
@@ -41,6 +39,17 @@ interface CommitmentDraft {
   original_due_date?: string | null;
 }
 
+type CompletedRow = {
+  key: string;
+  task_id?: number | null;
+  title: string;
+  completion_date?: string | null;
+  estimated_hours?: number | null;
+  source: 'suggested' | 'manual';
+  is_delayed?: boolean;
+  is_carried_forward?: boolean;
+};
+
 function newKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -68,13 +77,10 @@ export function SubmitWeeklyUpdateForm({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
-  const [doneText, setDoneText] = useState('1. ');
   const [currentPlanText, setCurrentPlanText] = useState('1. ');
   const [dueDates, setDueDates] = useState<Record<string, string>>({});
   const [revisionReasons, setRevisionReasons] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
-  const [completionDates, setCompletionDates] = useState<Record<number, string>>({});
 
   const { data: suggestions } = useQuery({
     queryKey: ['weekly-updates', 'suggestions', periodStart],
@@ -120,27 +126,6 @@ export function SubmitWeeklyUpdateForm({
     if (initialized) return;
     if (suggestions === undefined || carry === undefined) return;
 
-    const selected = new Set<number>();
-    const completedOn: Record<number, string> = {};
-    const doneLines: string[] = [];
-    (existing?.completions ?? []).forEach((item, i) => {
-      if (item.task_id) {
-        selected.add(item.task_id);
-        if (item.completion_date) completedOn[item.task_id] = item.completion_date;
-      } else if (item.title) {
-        doneLines.push(`${i + 1}. ${item.title}`);
-      }
-    });
-    (suggestions.items ?? []).forEach((item) => {
-      if (item.task_id && item.included !== false) {
-        selected.add(item.task_id);
-        if (item.completion_date) completedOn[item.task_id] = item.completion_date;
-      }
-    });
-    setSelectedTaskIds(selected);
-    setCompletionDates(completedOn);
-    setDoneText(doneLines.join('\n') || '1. ');
-
     // Restore typed current-week commitments that are not already in the live bucket.
     const planLines: string[] = [];
     const dates: Record<string, string> = {};
@@ -172,32 +157,42 @@ export function SubmitWeeklyUpdateForm({
     setInitialized(true);
   }, [initialized, suggestions, carry, existing]);
 
-  const completedTasks = useMemo(() => {
-    const byId = new Map<number, {
-      id: number;
-      title: string;
-      completion_date?: string | null;
-      estimated_hours?: number | null;
-      source: 'suggested' | 'manual';
-      is_delayed?: boolean;
-      is_carried_forward?: boolean;
-    }>();
+  const completedTasks = useMemo((): CompletedRow[] => {
+    const rows: CompletedRow[] = [];
+    const seenIds = new Set<number>();
     for (const item of existing?.completions ?? []) {
-      if (!item.task_id) continue;
-      byId.set(item.task_id, {
-        id: item.task_id,
-        title: item.title,
-        completion_date: item.completion_date,
-        estimated_hours: item.estimated_hours,
-        source: item.source === 'manual' ? 'manual' : 'suggested',
-        is_delayed: item.is_delayed,
-        is_carried_forward: item.is_carried_forward,
-      });
+      if (item.task_id) {
+        if (seenIds.has(item.task_id)) continue;
+        seenIds.add(item.task_id);
+        rows.push({
+          key: `done-${item.task_id}`,
+          task_id: item.task_id,
+          title: item.title,
+          completion_date: item.completion_date,
+          estimated_hours: item.estimated_hours,
+          source: item.source === 'manual' ? 'manual' : 'suggested',
+          is_delayed: item.is_delayed,
+          is_carried_forward: item.is_carried_forward,
+        });
+      } else if (item.title) {
+        rows.push({
+          key: `manual-${item.title}-${rows.length}`,
+          task_id: null,
+          title: item.title,
+          completion_date: item.completion_date,
+          estimated_hours: item.estimated_hours,
+          source: 'manual',
+          is_delayed: item.is_delayed,
+          is_carried_forward: item.is_carried_forward,
+        });
+      }
     }
     for (const item of suggestions?.items ?? []) {
-      if (!item.task_id || byId.has(item.task_id)) continue;
-      byId.set(item.task_id, {
-        id: item.task_id,
+      if (!item.task_id || seenIds.has(item.task_id)) continue;
+      seenIds.add(item.task_id);
+      rows.push({
+        key: `done-${item.task_id}`,
+        task_id: item.task_id,
         title: item.title,
         completion_date: item.completion_date,
         estimated_hours: item.estimated_hours,
@@ -206,70 +201,101 @@ export function SubmitWeeklyUpdateForm({
         is_carried_forward: item.is_carried_forward,
       });
     }
-    return [...byId.values()];
+    return rows;
   }, [existing, suggestions]);
 
-  const parsedDone = useMemo(() => parseWeeklyDoneList(doneText, { periodStart }), [doneText, periodStart]);
   const parsedCurrentPlan = useMemo(
     () => parseWeeklyPlanList(currentPlanText, { periodStart, weekScope: 'current' }),
     [currentPlanText, periodStart],
   );
-
-  const togglePill = (taskId: number) => {
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(taskId)) next.delete(taskId);
-      else next.add(taskId);
-      return next;
-    });
-  };
+  const openPlanItems = useMemo(
+    () => parsedCurrentPlan.items.filter((item) => !item.alreadyCompleted),
+    [parsedCurrentPlan],
+  );
+  const completedPlanItems = useMemo(
+    () => parsedCurrentPlan.items.filter((item) => item.alreadyCompleted),
+    [parsedCurrentPlan],
+  );
+  const completedViaPlanIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const item of completedPlanItems) {
+      const titleKey = item.title.trim().toLowerCase();
+      const weekMatch = currentWeekTasks.find((t) => t.title.trim().toLowerCase() === titleKey);
+      if (weekMatch?.task_id) {
+        ids.add(weekMatch.task_id);
+        continue;
+      }
+      const trackerMatch = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === titleKey);
+      if (trackerMatch?.id) ids.add(trackerMatch.id);
+    }
+    return ids;
+  }, [completedPlanItems, currentWeekTasks, myTasks]);
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const today = format(new Date(), 'yyyy-MM-dd');
       const completions: CompletionDraft[] = [];
       const seen = new Set<number>();
+
+      // View-only completed list — always include everything already shown.
       for (const task of completedTasks) {
-        if (seen.has(task.id)) continue;
-        seen.add(task.id);
+        if (task.task_id) {
+          if (seen.has(task.task_id)) continue;
+          seen.add(task.task_id);
+        }
         completions.push({
-          key: `done-${task.id}`,
-          task_id: task.id,
+          key: task.key,
+          task_id: task.task_id ?? null,
           title: task.title,
-          completion_date: completionDates[task.id] || task.completion_date || format(new Date(), 'yyyy-MM-dd'),
+          completion_date: task.completion_date || today,
+          estimated_hours: task.estimated_hours,
           source: task.source,
-          included: selectedTaskIds.has(task.id),
+          included: true,
         });
       }
-      for (const item of parsedDone) {
+
+      // Weekly-task lines marked *completed → completed list with today's date.
+      for (const item of completedPlanItems) {
         if (!item.title.trim()) continue;
-        const match = completedTasks.find((t) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
-        if (match && seen.has(match.id)) continue;
-        if (!match) {
+        const titleKey = item.title.trim().toLowerCase();
+        const weekMatch = currentWeekTasks.find((t) => t.title.trim().toLowerCase() === titleKey);
+        const trackerMatch = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === titleKey);
+        const existingMatch = completedTasks.find((t) => t.title.trim().toLowerCase() === titleKey);
+        const matchId = weekMatch?.task_id ?? trackerMatch?.id ?? existingMatch?.task_id ?? null;
+
+        if (matchId && seen.has(matchId)) continue;
+
+        if (!matchId) {
           if (item.missingEffort || item.estimatedHours == null) {
             throw new Error(`Add time taken for “${item.title}”, e.g. #3h`);
           }
-          if (item.missingDate || !item.completionDate) {
-            throw new Error(`Add the completed day for “${item.title}”, e.g. /thursday`);
-          }
         }
+
+        const hours =
+          item.estimatedHours
+          ?? weekMatch?.estimated_hours
+          ?? trackerMatch?.estimated_hours
+          ?? existingMatch?.estimated_hours
+          ?? null;
+
         completions.push({
           key: newKey(),
-          task_id: match?.id ?? null,
-          title: match && !seen.has(match.id) ? match.title : item.title,
-          description: item.description,
-          completion_date: item.completionDate || format(new Date(), 'yyyy-MM-dd'),
-          estimated_hours: item.estimatedHours,
-          source: match ? 'suggested' : 'manual',
+          task_id: matchId,
+          title: weekMatch?.title ?? trackerMatch?.title ?? item.title,
+          completion_date: item.completionDate || today,
+          estimated_hours: hours,
+          source: matchId ? 'suggested' : 'manual',
           included: true,
         });
-        if (match) seen.add(match.id);
+        if (matchId) seen.add(matchId);
       }
 
       const trackerDraft = (
         item: WeeklyCommitment,
         kind: 'carried_forward' | 'existing',
         prefix: 'cf' | 'cw',
-      ): CommitmentDraft => {
+      ): CommitmentDraft | null => {
+        if (item.task_id && completedViaPlanIds.has(item.task_id)) return null;
         const key = `${prefix}-${item.task_id}`;
         const currentDue = toDateInput(item.due_date);
         const nextDue = dueDates[key] || currentDue;
@@ -291,6 +317,7 @@ export function SubmitWeeklyUpdateForm({
       ): CommitmentDraft | null => {
         const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         if (match && structuredTaskIds.has(match.id)) return null;
+        if (match && completedViaPlanIds.has(match.id)) return null;
         if (structuredTitles.has(item.title.trim().toLowerCase())) return null;
         const key = `cw-new:${item.title.trim().toLowerCase()}`;
         const nextDue = dueDates[key] || item.dueDate || '';
@@ -310,10 +337,10 @@ export function SubmitWeeklyUpdateForm({
       const plan: CommitmentDraft[] = [
         ...carried.map((item) => trackerDraft(item, 'carried_forward', 'cf')),
         ...dueCurrentWeek.map((item) => trackerDraft(item, 'existing', 'cw')),
-        ...parsedCurrentPlan.items
+        ...openPlanItems
           .map((item) => typedDraft(item))
           .filter((item): item is CommitmentDraft => item != null),
-      ];
+      ].filter((item): item is CommitmentDraft => item != null);
 
       for (const item of plan) {
         if (!item.title.trim()) continue;
@@ -337,7 +364,7 @@ export function SubmitWeeklyUpdateForm({
         }
       }
 
-      const mentionSource = [doneText, currentPlanText, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
+      const mentionSource = [currentPlanText, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
 
       return weeklyUpdatesApi.upsert({
         period_start: periodStart,
@@ -385,6 +412,9 @@ export function SubmitWeeklyUpdateForm({
     },
   });
 
+  const visibleCarried = carried.filter((item) => !(item.task_id && completedViaPlanIds.has(item.task_id)));
+  const visibleDueCurrent = dueCurrentWeek.filter((item) => !(item.task_id && completedViaPlanIds.has(item.task_id)));
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
@@ -403,103 +433,16 @@ export function SubmitWeeklyUpdateForm({
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-medium text-text-primary">Completed Tasks</h3>
-          <p className="text-xs text-text-muted mt-0.5">
-            Tasks marked complete this week are already included. Uncheck anything to leave out, or add extra work below as New app screens #3hr /thursday. Press Enter for the next item — numbers are added for you.
-          </p>
-        </div>
-        {completedTasks.length > 0 ? (
-          <ol className="space-y-1">
-            {completedTasks.map((task, i) => {
-              const selected = selectedTaskIds.has(task.id);
-              const timeLabel = task.estimated_hours != null ? formatHoursLabel(task.estimated_hours) : null;
-              const doneLabel = task.completion_date
-                ? format(parseISO(task.completion_date), 'd MMM')
-                : null;
-              const delayed = Boolean(task.is_delayed || task.is_carried_forward);
-              return (
-                <li key={task.id} className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1.5 accent-accent-primary"
-                    checked={selected}
-                    onChange={() => togglePill(task.id)}
-                    aria-label={`Include ${task.title}`}
-                  />
-                  <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
-                  <div className="min-w-0 flex-1 flex items-start justify-between gap-4">
-                    <p className={clsx(
-                      'text-[15px] leading-relaxed',
-                      selected ? 'text-text-primary' : 'text-text-muted line-through',
-                    )}>
-                      {task.title}
-                    </p>
-                    {timeLabel || doneLabel ? (
-                      <p className="shrink-0 text-xs tabular-nums pt-1 text-right text-text-muted">
-                        {timeLabel}
-                        {timeLabel && doneLabel ? ' · ' : null}
-                        {doneLabel ? (
-                          <>
-                            <span className={delayed ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}
-                          </>
-                        ) : null}
-                      </p>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p className="text-sm text-text-muted">No tasks yet</p>
-        )}
-        <DailyUpdateEditor
-          value={doneText}
-          onChange={setDoneText}
-          users={mentionUsers}
-          showExtras={false}
-          numberedList
-          placeholder={'New app screens #3hr /thursday'}
-        />
-        {parsedDone.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-text-secondary">
-              {parsedDone.length} extra item{parsedDone.length === 1 ? '' : 's'} will be added as completed tracker tasks.
-            </p>
-            {parsedDone.map((item) => (
-              <div key={item.rawLine} className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm text-text-primary">{item.title}</p>
-                  {item.missingEffort && (
-                    <p className="text-2xs text-accent-danger">Add time taken, e.g. #3h or #3hr</p>
-                  )}
-                  {item.missingDate && (
-                    <p className="text-2xs text-accent-danger">Add the completed day, e.g. /thursday</p>
-                  )}
-                </div>
-                <p className="shrink-0 text-xs tabular-nums text-text-muted pt-0.5">
-                  {[item.timeLabel, item.completionDate ? format(parseISO(item.completionDate), 'd MMM') : null]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div>
           <h3 className="text-sm font-medium text-text-primary">Weekly Tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Incomplete tasks due this working week, including carried-forward work. Add new ones below — they are saved in the Task Tracker. For later weeks, open that week and write there. Yellow means carried forward from an earlier week.
+            Incomplete tasks due this working week, including carried-forward work. Add new ones below — they are saved in the Task Tracker. Add <span className="text-text-secondary">*completed</span> on a line to move it to Completed Tasks (uses today&apos;s date). Yellow means carried forward from an earlier week.
           </p>
         </div>
         <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
-          {carried.length === 0 && dueCurrentWeek.length === 0 ? (
+          {visibleCarried.length === 0 && visibleDueCurrent.length === 0 ? (
             <p className="text-sm text-text-muted">No tasks yet</p>
           ) : null}
-          {carried.length > 0 && (
+          {visibleCarried.length > 0 && (
             <div className="flex items-baseline justify-between gap-3">
               <p className="text-xs font-medium text-amber-400">Carried forward</p>
               <p className="text-2xs text-text-muted">
@@ -507,7 +450,7 @@ export function SubmitWeeklyUpdateForm({
               </p>
             </div>
           )}
-          {carried.map((item) => {
+          {visibleCarried.map((item) => {
             const key = `cf-${item.task_id}`;
             const currentDue = toDateInput(item.due_date);
             const nextDue = dueDates[key] || currentDue;
@@ -541,10 +484,10 @@ export function SubmitWeeklyUpdateForm({
               </div>
             );
           })}
-          {dueCurrentWeek.length > 0 && (
+          {visibleDueCurrent.length > 0 && (
             <p className="text-xs font-medium text-text-secondary pt-1">Due this week</p>
           )}
-          {dueCurrentWeek.map((item) => {
+          {visibleDueCurrent.map((item) => {
             const key = `cw-${item.task_id}`;
             const currentDue = toDateInput(item.due_date);
             const nextDue = dueDates[key] || currentDue;
@@ -588,12 +531,34 @@ export function SubmitWeeklyUpdateForm({
           users={mentionUsers}
           showExtras={false}
           numberedList
-          placeholder={'Finish onboarding flow /friday #3h\nReview with @Name /thursday #1h'}
+          placeholder={'Finish onboarding flow /friday #3h\nShip docs #2h *completed'}
         />
-        {parsedCurrentPlan.items.length > 0 && (
+        {completedPlanItems.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-text-secondary">
+              {completedPlanItems.length} item{completedPlanItems.length === 1 ? '' : 's'} marked *completed — will move to Completed Tasks with today&apos;s date.
+            </p>
+            {completedPlanItems.map((item) => (
+              <div key={item.rawLine} className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-text-primary">{item.title}</p>
+                  {item.missingEffort && (
+                    <p className="text-2xs text-accent-danger">Add time taken, e.g. #3h or #3hr</p>
+                  )}
+                </div>
+                <p className="shrink-0 text-xs tabular-nums text-text-muted pt-0.5">
+                  {[item.timeLabel, item.completionDate ? format(parseISO(item.completionDate), 'd MMM') : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {openPlanItems.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-text-secondary">Review due dates</p>
-            {parsedCurrentPlan.items.map((item) => {
+            {openPlanItems.map((item) => {
               const key = `cw-new:${item.title.trim().toLowerCase()}`;
               const due = dueDates[key] || item.dueDate || '';
               const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
@@ -633,6 +598,49 @@ export function SubmitWeeklyUpdateForm({
               );
             })}
           </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-medium text-text-primary">Completed Tasks</h3>
+          <p className="text-xs text-text-muted mt-0.5">
+            Tasks completed this week (view only). Mark new completions in Weekly Tasks with <span className="text-text-secondary">*completed</span>.
+          </p>
+        </div>
+        {completedTasks.length > 0 ? (
+          <ol className="space-y-1">
+            {completedTasks.map((task, i) => {
+              const timeLabel = task.estimated_hours != null ? formatHoursLabel(task.estimated_hours) : null;
+              const doneLabel = task.completion_date
+                ? format(parseISO(task.completion_date), 'd MMM')
+                : null;
+              const delayed = Boolean(task.is_delayed || task.is_carried_forward);
+              return (
+                <li key={task.key} className="flex items-start gap-2">
+                  <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
+                  <div className="min-w-0 flex-1 flex items-start justify-between gap-4">
+                    <p className="text-[15px] leading-relaxed text-text-primary">
+                      {task.title}
+                    </p>
+                    {timeLabel || doneLabel ? (
+                      <p className="shrink-0 text-xs tabular-nums pt-1 text-right text-text-muted">
+                        {timeLabel}
+                        {timeLabel && doneLabel ? ' · ' : null}
+                        {doneLabel ? (
+                          <>
+                            <span className={delayed ? 'text-amber-400' : undefined}>Completed</span> {doneLabel}
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="text-sm text-text-muted">No tasks yet</p>
         )}
       </section>
 

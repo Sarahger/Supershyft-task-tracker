@@ -279,6 +279,16 @@ export function WeeklyReportCard({
         </div>
       )}
 
+      <TaskSection
+        title="Weekly Tasks"
+        emptyLabel="No tasks yet"
+        items={currentWeekTasks}
+        onRevise={onRevise}
+        freezeCarriedForward={freezeCarriedForward}
+      />
+
+      <div className="border-t border-dark-border" />
+
       <section className="space-y-1.5">
         <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Completed Tasks</p>
         {report.completions.length === 0 ? (
@@ -295,16 +305,6 @@ export function WeeklyReportCard({
           </ol>
         )}
       </section>
-
-      <div className="border-t border-dark-border" />
-
-      <TaskSection
-        title="Weekly Tasks"
-        emptyLabel="No tasks yet"
-        items={currentWeekTasks}
-        onRevise={onRevise}
-        freezeCarriedForward={freezeCarriedForward}
-      />
 
       {thisWeekLeave.length > 0 && (
         <footer className="text-xs text-text-muted space-y-0.5">

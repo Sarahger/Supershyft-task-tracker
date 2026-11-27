@@ -213,6 +213,35 @@ def test_manager_can_mark_for_other_user(client, users):
     assert r2.json()["data"]["status"] == "LEAVE"
 
 
+def test_manager_can_mark_any_past_date_for_employee(client, users):
+    from datetime import timedelta
+
+    from app.services.attendance_service import today_local
+
+    mgr = auth_header(users["manager"])
+    target_id = users["employee"].id
+    older = (today_local() - timedelta(days=14)).isoformat()
+    r = client.post(
+        "/api/attendance",
+        json={"status": "WFO", "user_id": target_id, "attendance_date": older},
+        headers=mgr,
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["user_id"] == target_id
+    assert r.json()["data"]["attendance_date"] == older
+    assert r.json()["data"]["status"] == "WFO"
+    assert r.json()["data"]["editable"] is True
+
+    # Correct during monthly analysis
+    r2 = client.post(
+        "/api/attendance",
+        json={"status": "LEAVE", "user_id": target_id, "attendance_date": older},
+        headers=mgr,
+    )
+    assert r2.status_code == 200
+    assert r2.json()["data"]["status"] == "LEAVE"
+
+
 def test_manager_cannot_mark_inactive_user(client, users, db_session):
     inactive = users["other"]
     inactive.status = "inactive"
