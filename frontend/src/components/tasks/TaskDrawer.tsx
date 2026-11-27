@@ -403,32 +403,68 @@ export function TaskDrawer({ taskId, onClose }: TaskDrawerProps) {
           <div className="px-8 py-7 max-w-none">
             <div className="pr-10 mb-6">
               <h1 className="text-2xl font-semibold text-text-primary leading-snug tracking-tight">{task.title}</h1>
-              <span className="inline-flex items-center mt-3 px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
-                Archived
-              </span>
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <StatusBadge status={task.status || 'completed'} />
+                {task.priority && <PriorityBadge priority={task.priority} />}
+                <span className="text-sm text-text-secondary">
+                  Time required {formatTimeTakenHours(task.estimated_hours) ?? '—'}
+                </span>
+                {task.due_date && (
+                  <span className="text-sm text-text-secondary">
+                    Due {format(new Date(task.due_date), 'MMM d, yyyy')}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="space-y-5">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Reason</p>
-                <p className="text-sm text-text-primary leading-relaxed">
-                  {task.deletion_reason || 'No reason provided'}
-                </p>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-2">Assignees</p>
+                {task.assignees?.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {task.assignees.map((a) => (
+                      <div key={a.id} className="flex items-center gap-2">
+                        {a.user && (
+                          <Avatar name={`${a.user.first_name} ${a.user.last_name}`} size="sm" />
+                        )}
+                        <span className="text-sm text-text-primary">
+                          {a.user
+                            ? `${a.user.first_name} ${a.user.last_name}`
+                            : 'Unknown'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-text-muted">Unassigned</p>
+                )}
               </div>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Archived by</p>
-                <p className="text-sm text-text-primary">
-                  {task.deleted_by
-                    ? `${task.deleted_by.first_name} ${task.deleted_by.last_name}`
-                    : task.deletion_reason?.toLowerCase().startsWith('auto-archived')
-                      ? 'System'
-                      : 'Unknown'}
-                </p>
-              </div>
-              {task.deleted_at && (
+              {task.due_date && (
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Archived on</p>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Due date</p>
                   <p className="text-sm text-text-primary">
-                    {format(new Date(task.deleted_at), 'MMM d, yyyy · h:mm a')}
+                    {format(new Date(task.due_date), 'MMM d, yyyy')}
+                  </p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Time</p>
+                <p className="text-sm text-text-primary">
+                  {formatTimeTakenHours(task.estimated_hours) ?? '—'}
+                </p>
+              </div>
+              {task.completed_at && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Completed on</p>
+                  <p className="text-sm text-text-primary">
+                    {format(new Date(task.completed_at), 'MMM d, yyyy · h:mm a')}
+                  </p>
+                </div>
+              )}
+              {task.description && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-text-muted mb-1.5">Description</p>
+                  <p className="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">
+                    {task.description}
                   </p>
                 </div>
               )}

@@ -482,8 +482,10 @@ class WeeklyUpdateService:
     ) -> dict:
         """Split open tasks into Current Week vs Next Week by due date.
 
-        After the last working day ends, Current Week empties and its pending
-        tasks move into Next Week (still the same weekly update until Monday 2PM).
+        Incomplete work due before/in this week stays in Current Week (marked
+        carried forward when the due date slipped). After the last working day,
+        those unfinished tasks remain visible here as carried forward — Next
+        Week planning now lives on that week's own open update.
         """
         period = self._period(period_start)
         cur_start, cur_end = week_date_bounds(period.period_start)
@@ -510,17 +512,18 @@ class WeeklyUpdateService:
             before_current = due < cur_start
             in_current = cur_start <= due <= cur_end
             in_next = next_start <= due <= next_end
-            carried = before_current
 
             if week_ended:
+                # Week is over: unfinished this-week work stays visible as CF on
+                # Current Week until Monday 2PM lock / the next week's update.
                 if before_current or in_current:
-                    next_week.append(_annotate(view, carried=True))
+                    current_week.append(_annotate(view, carried=True))
                 elif in_next:
                     next_week.append(_annotate(view, carried=False))
                 return
 
             if before_current or in_current:
-                current_week.append(_annotate(view, carried=carried))
+                current_week.append(_annotate(view, carried=before_current))
             elif in_next:
                 next_week.append(_annotate(view, carried=False))
 
@@ -557,7 +560,6 @@ class WeeklyUpdateService:
             _place(task, self._task_commitment_view(task, carried=carried))
 
         carried_in_current = [t for t in current_week if t.get("is_carried_forward")]
-        carried_in_next = [t for t in next_week if t.get("is_carried_forward")]
         return {
             "period_start": period.period_start.isoformat(),
             "period_end": period.period_end.isoformat(),
@@ -566,8 +568,8 @@ class WeeklyUpdateService:
             "working_week_ended": week_ended,
             "current_week_tasks": current_week,
             "next_week_tasks": next_week,
-            # Legacy aliases: items = carried; due_this_week = on-schedule next-week plans.
-            "items": carried_in_next if week_ended else carried_in_current,
+            # Legacy aliases: items = carried forward; due_this_week = next-week plans.
+            "items": carried_in_current,
             "due_this_week": [t for t in next_week if not t.get("is_carried_forward")],
         }
 
@@ -751,6 +753,12 @@ class WeeklyUpdateService:
         writable = writable_period_start()
         # Always provision the writable week so employees with zero tasks still see an update.
         self.ensure_writable_report(user)
+        # Upcoming (and other still-editable) focused weeks get an empty draft too,
+        # so navigating ahead shows an open weekly update even with nothing filled in.
+        if period.period_start != writable and is_auto_sync_open(period.period_start):
+            focused = self._ensure_editable_report(user.id, period.period_start)
+            if focused is not None:
+                self.db.commit()
         # Finalize the previous week if it just locked and still needs a snapshot.
         prev = previous_period_start(writable)
         prev_report = self._report_for(user.id, prev)
@@ -847,8 +855,6 @@ class WeeklyUpdateService:
         if start != monday_of(start):
             raise HTTPException(status_code=400, detail="period_start must be a Monday")
         today = today_local()
-        if start > today:
-            raise HTTPException(status_code=400, detail="Cannot submit a weekly update for a week that has not started")
 
         period_end = period_end_for_submit(start, today)
         plan_start, plan_end = planning_window(start)

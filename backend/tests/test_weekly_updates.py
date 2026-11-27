@@ -142,15 +142,17 @@ def test_overdue_starts_after_due_calendar_day():
 def test_new_week_opens_monday_midnight_while_previous_stays_editable():
     previous = date(2026, 10, 26)
     current = date(2026, 11, 2)
+    upcoming = date(2026, 11, 9)
     zone = get_app_timezone()
     sunday_night = datetime(2026, 11, 1, 23, 59, tzinfo=zone)
     monday_midnight = datetime(2026, 11, 2, 0, 0, tzinfo=zone)
     before_cutoff = datetime(2026, 11, 2, 13, 59, tzinfo=zone)
     at_cutoff = datetime(2026, 11, 2, 14, 0, tzinfo=zone)
 
-    # Before Monday: only the previous week is writable.
+    # Before Monday: previous stays editable; upcoming weeks are also open for planning.
     assert is_report_editable(previous, "submitted", sunday_night)
-    assert not is_report_editable(current, "draft", sunday_night)
+    assert is_report_editable(current, "draft", sunday_night)
+    assert is_report_editable(upcoming, "draft", sunday_night)
     assert writable_period_start(sunday_night) == previous
 
     # Monday 00:00–14:00: both weeks are editable; writable points at the new week.
@@ -164,6 +166,7 @@ def test_new_week_opens_monday_midnight_while_previous_stays_editable():
     # After Monday 2:00 PM: previous locks; current remains the writable week.
     assert not is_report_editable(previous, "submitted", at_cutoff)
     assert is_report_editable(current, "draft", at_cutoff)
+    assert is_report_editable(upcoming, "draft", at_cutoff)
     assert writable_period_start(at_cutoff) == current
 
 
@@ -641,9 +644,9 @@ def test_due_today_is_not_overdue_or_carried(client, users, db_session):
     current_week = data.get("current_week_tasks") or []
     assert all(row["task_id"] != task.id for row in items)
     assert all(row["task_id"] != task.id for row in due_next)
+    # After the working week ends, unfinished this-week work stays in Current Week as CF.
     if data.get("working_week_ended"):
-        next_week = data.get("next_week_tasks") or []
-        assert any(row["task_id"] == task.id for row in next_week)
+        assert any(row["task_id"] == task.id and row["is_carried_forward"] is True for row in current_week)
     else:
         assert any(row["task_id"] == task.id and row["is_carried_forward"] is False for row in current_week)
 
@@ -919,6 +922,46 @@ def test_empty_employee_gets_auto_weekly_update(client, users, db_session):
     assert db_session.query(WeeklyReport).filter(
         WeeklyReport.user_id == emp.id, WeeklyReport.period_start == date.fromisoformat(writable)
     ).count() == 1
+
+
+def test_upcoming_week_gets_open_empty_draft(client, users, db_session):
+    emp = users["employee"]
+    upcoming = writable_period_start() + timedelta(days=7)
+    history = client.get(
+        f"/api/weekly-updates/users/{emp.id}",
+        params={"week_start": upcoming.isoformat()},
+        headers=auth_header(emp),
+    )
+    assert history.status_code == 200, history.text
+    body = history.json()["data"]
+    match = next((r for r in body["reports"] if r["period_start"] == upcoming.isoformat()), None)
+    assert match is not None
+    assert match["editable"] is True
+    assert match["completions"] == []
+    assert match["current_week_tasks"] == [] or isinstance(match["current_week_tasks"], list)
+    assert match["next_week_tasks"] == [] or isinstance(match["next_week_tasks"], list)
+
+    # Can submit a plan for the upcoming week even before it starts.
+    due = (upcoming + timedelta(days=2)).isoformat() + "T12:00:00+05:30"
+    res = client.put(
+        "/api/weekly-updates",
+        json={
+            "period_start": upcoming.isoformat(),
+            "completions": [],
+            "commitments": [
+                {
+                    "title": "Plan ahead task",
+                    "due_date": due,
+                    "estimated_hours": 2,
+                    "commitment_type": "new",
+                }
+            ],
+        },
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["data"]["period_start"] == upcoming.isoformat()
+    assert res.json()["data"]["editable"] is True
 
 
 def test_current_week_and_next_week_buckets_by_due_date(client, users, db_session):

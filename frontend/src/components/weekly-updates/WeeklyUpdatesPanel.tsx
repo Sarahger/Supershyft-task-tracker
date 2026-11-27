@@ -92,8 +92,9 @@ export function WeeklyUpdatesPanel() {
   const isOwn = selectedUserId === user?.id;
   const writablePeriod = history?.writable_period_start ?? history?.current_period_start ?? weekStart;
   const selectedReport = history?.reports.find((r) => r.period_start === weekStart) ?? null;
+  // Current and upcoming weeks are open for writing (including empty drafts).
   const canWriteSelected = isOwn && Boolean(
-    selectedReport?.editable || (!selectedReport && weekStart === writablePeriod),
+    selectedReport?.editable || (!selectedReport && weekStart >= writablePeriod),
   );
   const canWrite = canWriteSelected;
   const writeWeekEndIso =
@@ -104,10 +105,8 @@ export function WeeklyUpdatesPanel() {
         : format(addDays(parseISO(weekStart), 6), 'yyyy-MM-dd');
   const writeWeekEnd = format(parseISO(writeWeekEndIso), 'MMMM d, yyyy');
   const weekLabel = `${format(parseISO(weekStart), 'MMMM d')} – ${writeWeekEnd}`;
-  const waitingForWeekToStart = isOwn && weekStart > writablePeriod;
   const liveCurrentWeek = history?.current_week_tasks ?? history?.outstanding ?? [];
-  const liveNextWeek = history?.next_week_tasks ?? history?.due_this_week ?? [];
-  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport && !waitingForWeekToStart;
+  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport;
   const showSelectedCard = Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
 
   const jumpToWeek = (mondayIso: string) => {
@@ -151,7 +150,7 @@ export function WeeklyUpdatesPanel() {
       <header className="shrink-0">
         <h1 className="text-xl font-semibold text-text-primary">Weekly Updates</h1>
         <p className="text-sm text-text-muted mt-0.5">
-          Share last week and next week. Use @name to tag someone.
+          Share completed work and this week&apos;s tasks. Use @name to tag someone. Plan future weeks on those weeks.
         </p>
       </header>
 
@@ -215,21 +214,6 @@ export function WeeklyUpdatesPanel() {
         </aside>
 
         <section className="min-h-[280px] min-w-0 space-y-4 md:overflow-y-auto">
-          {waitingForWeekToStart && !writing && (
-            <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 flex items-center justify-between gap-3">
-              <p className="text-sm text-text-secondary">
-                This week&apos;s update opens at 12:00 AM Monday. Last week&apos;s update stays editable until 2:00 PM Monday.
-              </p>
-              <button
-                type="button"
-                onClick={() => jumpToWeek(writablePeriod)}
-                className="shrink-0 text-sm text-accent-primary hover:underline"
-              >
-                Open current week
-              </button>
-            </div>
-          )}
-
           {showUnwrittenCard && (
             <div className="rounded-2xl border border-dark-border bg-dark-card px-5 py-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
@@ -271,21 +255,6 @@ export function WeeklyUpdatesPanel() {
                     </ol>
                   )}
                 </div>
-                <div>
-                  <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">Next Week&apos;s Tasks</p>
-                  {liveNextWeek.length === 0 ? (
-                    <p className="text-sm text-text-muted mt-1">No tasks yet</p>
-                  ) : (
-                    <ol className="space-y-1 mt-1">
-                      {liveNextWeek.map((item, i) => (
-                        <li key={item.task_id ?? `${item.title}-n-${i}`} className="flex items-start gap-2">
-                          <span className="text-text-muted select-none shrink-0 w-4 text-right text-sm pt-0.5">{i + 1}.</span>
-                          <p className="text-sm text-text-primary">{item.title}</p>
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
               </div>
             </div>
           )}
@@ -308,9 +277,7 @@ export function WeeklyUpdatesPanel() {
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5">
               <p className="text-sm text-text-muted">
                 {isOwn
-                  ? waitingForWeekToStart
-                    ? "This week's update opens at 12:00 AM Monday."
-                    : 'No weekly update for this week yet.'
+                  ? 'No weekly update for this week yet.'
                   : `${selected?.first_name ?? 'This person'} has no weekly update for this week.`}
               </p>
             </div>
@@ -323,7 +290,6 @@ export function WeeklyUpdatesPanel() {
             const overlayWritableLive =
               report.period_start === writablePeriod || report.is_current;
             const currentIds = new Set((report.current_week_tasks ?? []).map((c) => c.task_id).filter(Boolean));
-            const nextIds = new Set((report.next_week_tasks ?? report.commitments).map((c) => c.task_id).filter(Boolean));
             const merged = overlayWritableLive
               ? {
                   ...report,
@@ -331,18 +297,12 @@ export function WeeklyUpdatesPanel() {
                     ...liveCurrentWeek.filter((c) => c.task_id && !currentIds.has(c.task_id)),
                     ...(report.current_week_tasks ?? []),
                   ],
-                  next_week_tasks: [
-                    ...liveNextWeek.filter((c) => c.task_id && !nextIds.has(c.task_id)),
-                    ...(report.next_week_tasks ?? report.commitments),
-                  ],
                 }
               : {
                   ...report,
                   current_week_tasks: report.current_week_tasks ?? [],
-                  next_week_tasks: report.next_week_tasks ?? report.commitments,
                 };
-            const openCount =
-              (merged.current_week_tasks?.length ?? 0) + (merged.next_week_tasks?.length ?? 0);
+            const openCount = merged.current_week_tasks?.length ?? 0;
             return (
               <WeeklyReportCard
                 key={report.id}

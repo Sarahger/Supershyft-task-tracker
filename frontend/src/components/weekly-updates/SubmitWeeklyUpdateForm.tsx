@@ -60,14 +60,17 @@ export function SubmitWeeklyUpdateForm({
   onClose,
 }: {
   periodStart: string;
-  existing?: { completions: WeeklyCompletion[]; commitments: WeeklyCommitment[] };
+  existing?: {
+    completions: WeeklyCompletion[];
+    commitments: WeeklyCommitment[];
+    current_week_tasks?: WeeklyCommitment[];
+  };
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<number>>(new Set());
   const [doneText, setDoneText] = useState('1. ');
   const [currentPlanText, setCurrentPlanText] = useState('1. ');
-  const [planText, setPlanText] = useState('1. ');
   const [dueDates, setDueDates] = useState<Record<string, string>>({});
   const [revisionReasons, setRevisionReasons] = useState<Record<string, string>>({});
   const [initialized, setInitialized] = useState(false);
@@ -100,19 +103,17 @@ export function SubmitWeeklyUpdateForm({
     ...(carry?.items ?? []),
     ...((carry?.working_week_ended ? [] : carry?.due_this_week) ?? []),
   ];
-  const nextWeekTasks = carry?.next_week_tasks ?? (carry?.due_this_week ?? []);
   const carried = currentWeekTasks.filter(
     (item) => item.is_carried_forward || item.commitment_type === 'carried_forward',
   );
   const dueCurrentWeek = currentWeekTasks.filter(
     (item) => !(item.is_carried_forward || item.commitment_type === 'carried_forward'),
   );
-  const dueThisWeek = nextWeekTasks;
   const structuredTaskIds = new Set(
-    [...currentWeekTasks, ...nextWeekTasks].map((item) => item.task_id).filter((id): id is number => id != null),
+    currentWeekTasks.map((item) => item.task_id).filter((id): id is number => id != null),
   );
   const structuredTitles = new Set(
-    [...currentWeekTasks, ...nextWeekTasks].map((item) => item.title.trim().toLowerCase()),
+    currentWeekTasks.map((item) => item.title.trim().toLowerCase()),
   );
 
   useEffect(() => {
@@ -140,17 +141,21 @@ export function SubmitWeeklyUpdateForm({
     setCompletionDates(completedOn);
     setDoneText(doneLines.join('\n') || '1. ');
 
+    // Restore typed current-week commitments that are not already in the live bucket.
     const planLines: string[] = [];
     const dates: Record<string, string> = {};
+    const liveCurrent = carry?.current_week_tasks ?? [
+      ...(carry?.items ?? []),
+      ...((carry?.working_week_ended ? [] : carry?.due_this_week) ?? []),
+    ];
     const skipIds = new Set(
-      [...(carry?.items ?? []), ...(carry?.due_this_week ?? [])]
-        .map((item) => item.task_id)
-        .filter((id): id is number => id != null),
+      liveCurrent.map((item) => item.task_id).filter((id): id is number => id != null),
     );
     const skipTitles = new Set(
-      [...(carry?.items ?? []), ...(carry?.due_this_week ?? [])].map((item) => item.title.trim().toLowerCase()),
+      liveCurrent.map((item) => item.title.trim().toLowerCase()),
     );
-    (existing?.commitments ?? [])
+    // Prefer current_week_tasks — on editable reports `commitments` still mirrors next-week rows.
+    (existing?.current_week_tasks ?? [])
       .filter((c) => {
         if (c.commitment_type === 'carried_forward') return false;
         if (c.task_id && skipIds.has(c.task_id)) return false;
@@ -160,9 +165,9 @@ export function SubmitWeeklyUpdateForm({
       .forEach((item, i) => {
         const hours = item.estimated_hours != null ? ` (${formatHoursLabel(item.estimated_hours)})` : '';
         planLines.push(`${i + 1}. ${item.title}${hours}`);
-        if (item.due_date) dates[item.title.trim().toLowerCase()] = toDateInput(item.due_date);
+        if (item.due_date) dates[`cw-new:${item.title.trim().toLowerCase()}`] = toDateInput(item.due_date);
       });
-    setPlanText(planLines.join('\n') || '1. ');
+    setCurrentPlanText(planLines.join('\n') || '1. ');
     setDueDates(dates);
     setInitialized(true);
   }, [initialized, suggestions, carry, existing]);
@@ -208,10 +213,6 @@ export function SubmitWeeklyUpdateForm({
   const parsedCurrentPlan = useMemo(
     () => parseWeeklyPlanList(currentPlanText, { periodStart, weekScope: 'current' }),
     [currentPlanText, periodStart],
-  );
-  const parsedPlan = useMemo(
-    () => parseWeeklyPlanList(planText, { periodStart, weekScope: 'next' }),
-    [planText, periodStart],
   );
 
   const togglePill = (taskId: number) => {
@@ -267,7 +268,7 @@ export function SubmitWeeklyUpdateForm({
       const trackerDraft = (
         item: WeeklyCommitment,
         kind: 'carried_forward' | 'existing',
-        prefix: 'cf' | 'cw' | 'nw',
+        prefix: 'cf' | 'cw',
       ): CommitmentDraft => {
         const key = `${prefix}-${item.task_id}`;
         const currentDue = toDateInput(item.due_date);
@@ -287,16 +288,15 @@ export function SubmitWeeklyUpdateForm({
       };
       const typedDraft = (
         item: { title: string; estimatedHours: number | null; dueDate: string | null },
-        keyPrefix: 'cw-new' | 'nw-new',
       ): CommitmentDraft | null => {
         const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         if (match && structuredTaskIds.has(match.id)) return null;
         if (structuredTitles.has(item.title.trim().toLowerCase())) return null;
-        const key = `${keyPrefix}:${item.title.trim().toLowerCase()}`;
+        const key = `cw-new:${item.title.trim().toLowerCase()}`;
         const nextDue = dueDates[key] || item.dueDate || '';
         const currentDue = match ? toDateInput(match.due_date) : '';
         return {
-          key: `${keyPrefix}-${item.title}`,
+          key: `cw-new-${item.title}`,
           task_id: match?.id ?? null,
           title: item.title,
           description: '',
@@ -310,12 +310,8 @@ export function SubmitWeeklyUpdateForm({
       const plan: CommitmentDraft[] = [
         ...carried.map((item) => trackerDraft(item, 'carried_forward', 'cf')),
         ...dueCurrentWeek.map((item) => trackerDraft(item, 'existing', 'cw')),
-        ...dueThisWeek.map((item) => trackerDraft(item, 'existing', 'nw')),
         ...parsedCurrentPlan.items
-          .map((item) => typedDraft(item, 'cw-new'))
-          .filter((item): item is CommitmentDraft => item != null),
-        ...parsedPlan.items
-          .map((item) => typedDraft(item, 'nw-new'))
+          .map((item) => typedDraft(item))
           .filter((item): item is CommitmentDraft => item != null),
       ];
 
@@ -327,14 +323,12 @@ export function SubmitWeeklyUpdateForm({
         const source = item.commitment_type === 'carried_forward'
           ? carried.find((c) => c.task_id === item.task_id)
           : dueCurrentWeek.find((c) => c.task_id === item.task_id)
-            ?? dueThisWeek.find((c) => c.task_id === item.task_id)
             ?? (myTasks ?? []).find((t: Task) => t.id === item.task_id)
             ?? existing?.commitments.find((c) => c.task_id === item.task_id || c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
         const previousDue = item.commitment_type === 'carried_forward'
           ? toDateInput(carried.find((c) => c.task_id === item.task_id)?.due_date)
           : toDateInput(
             dueCurrentWeek.find((c) => c.task_id === item.task_id)?.due_date
-              ?? dueThisWeek.find((c) => c.task_id === item.task_id)?.due_date
               ?? (myTasks ?? []).find((t: Task) => t.id === item.task_id)?.due_date
               ?? existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase())?.due_date,
           );
@@ -343,7 +337,7 @@ export function SubmitWeeklyUpdateForm({
         }
       }
 
-      const mentionSource = [doneText, currentPlanText, planText, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
+      const mentionSource = [doneText, currentPlanText, ...completions.map((c) => c.title), ...plan.map((c) => c.title)].join('\n');
 
       return weeklyUpdatesApi.upsert({
         period_start: periodStart,
@@ -498,7 +492,7 @@ export function SubmitWeeklyUpdateForm({
         <div>
           <h3 className="text-sm font-medium text-text-primary">Current Week&apos;s Tasks</h3>
           <p className="text-xs text-text-muted mt-0.5">
-            Incomplete tasks due this working week, including carried-forward work. Add new ones below — they are saved in the Task Tracker. Yellow means carried forward from an earlier week.
+            Incomplete tasks due this working week, including carried-forward work. Add new ones below — they are saved in the Task Tracker. For later weeks, open that week and write there. Yellow means carried forward from an earlier week.
           </p>
         </div>
         <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
@@ -601,110 +595,6 @@ export function SubmitWeeklyUpdateForm({
             <p className="text-xs font-medium text-text-secondary">Review due dates</p>
             {parsedCurrentPlan.items.map((item) => {
               const key = `cw-new:${item.title.trim().toLowerCase()}`;
-              const due = dueDates[key] || item.dueDate || '';
-              const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
-              const existingItem = existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase());
-              const currentDue = toDateInput(match?.due_date || existingItem?.due_date);
-              const dateChanged = Boolean((match || existingItem) && currentDue && due && due !== currentDue);
-              const locked = isDueDateLocked(match ?? existingItem);
-              const needsRevision = dateChanged && locked;
-              return (
-                <div key={key} className="space-y-2">
-                  <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-start">
-                    <div>
-                      <p className="text-sm text-text-primary">{item.title}</p>
-                      {item.missingEffort && (
-                        <p className="text-2xs text-accent-danger">Add time required in the list, e.g. #3h or (4hrs)</p>
-                      )}
-                    </div>
-                    <p className="text-xs text-text-muted pt-2">{item.timeLabel || formatHoursLabel(item.estimatedHours)}</p>
-                    <Input
-                      label={needsRevision ? 'Revised due date' : undefined}
-                      type="date"
-                      value={due}
-                      onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
-                      error={!due ? 'Required' : undefined}
-                    />
-                  </div>
-                  {needsRevision && (
-                    <Input
-                      label="Reason for changing"
-                      value={revisionReasons[key] || ''}
-                      onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
-                      placeholder="Why is the due date changing?"
-                      error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-sm font-medium text-text-primary">Next Week&apos;s Tasks</h3>
-          <p className="text-xs text-text-muted mt-0.5">
-            Plan ahead for the upcoming working week. Tasks you create here are saved in the Task Tracker. Press Enter to add more — numbers are added for you.
-          </p>
-        </div>
-        <div className="rounded-xl border border-dark-border px-3 py-2 space-y-2">
-          {dueThisWeek.length === 0 ? (
-            <p className="text-sm text-text-muted">No tasks yet</p>
-          ) : (
-            dueThisWeek.map((item) => {
-              const key = `nw-${item.task_id}`;
-              const currentDue = toDateInput(item.due_date);
-              const nextDue = dueDates[key] || currentDue;
-              const dateChanged = Boolean(nextDue && currentDue && nextDue !== currentDue);
-              const locked = isDueDateLocked(item);
-              const needsRevision = dateChanged && locked;
-              return (
-                <div key={`nw-${item.task_id ?? item.title}`} className="space-y-2">
-                  <div className="grid sm:grid-cols-[1fr_auto_140px] gap-2 items-center">
-                    <p className="text-sm text-text-primary">{item.title}</p>
-                    <p className="text-xs text-text-muted">
-                      {item.estimated_hours != null ? formatHoursLabel(item.estimated_hours) : 'Add time required'}
-                    </p>
-                    <Input
-                      label={needsRevision ? 'Revised due date' : undefined}
-                      type="date"
-                      value={nextDue}
-                      onChange={(e) => setDueDates((prev) => ({ ...prev, [key]: e.target.value }))}
-                      error={!nextDue ? 'Required' : undefined}
-                    />
-                  </div>
-                  {item.estimated_hours == null && (
-                    <p className="text-2xs text-accent-danger">Add time required on this task</p>
-                  )}
-                  {needsRevision && (
-                    <Input
-                      label="Reason for changing"
-                      value={revisionReasons[key] || ''}
-                      onChange={(e) => setRevisionReasons((prev) => ({ ...prev, [key]: e.target.value }))}
-                      placeholder="Why is the due date changing?"
-                      error={!revisionReasons[key]?.trim() ? 'Required when changing the due date' : undefined}
-                    />
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-        <DailyUpdateEditor
-          value={planText}
-          onChange={setPlanText}
-          users={mentionUsers}
-          showExtras={false}
-          numberedList
-          placeholder={'Custom Packages on Flutter /wednesday #2d\nReview with @Name /tuesday #1h'}
-        />
-        {parsedPlan.items.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-text-secondary">Review due dates</p>
-            {parsedPlan.items.map((item) => {
-              const key = `nw-new:${item.title.trim().toLowerCase()}`;
               const due = dueDates[key] || item.dueDate || '';
               const match = (myTasks ?? []).find((t: Task) => t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
               const existingItem = existing?.commitments.find((c) => c.title.trim().toLowerCase() === item.title.trim().toLowerCase());

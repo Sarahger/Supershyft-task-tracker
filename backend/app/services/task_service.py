@@ -435,9 +435,28 @@ class TaskService:
         )
 
     def task_to_deleted_list_dict(self, task: Task) -> dict:
+        """Archived task list payload — same core fields as active tasks for Completed UI."""
         return {
             "id": task.id,
             "title": task.title,
+            "status": task.status,
+            "priority": task.priority,
+            "due_date": task.due_date,
+            "project_id": task.project_id,
+            "project_name": task.project.name if task.project else None,
+            "estimated_hours": task.estimated_hours,
+            "assignees": [
+                {
+                    "id": a.id,
+                    "user_id": a.user_id,
+                    "is_completed": a.is_completed,
+                    "user": user_to_brief_dict(a.user),
+                }
+                for a in task.assignees
+            ],
+            "completed_at": task.completed_at,
+            "created_at": task.created_at,
+            "updated_at": task.updated_at,
             "is_archived": True,
             "deletion_reason": task.deletion_reason,
             "deleted_at": task.deleted_at,
@@ -447,8 +466,18 @@ class TaskService:
     def task_to_deleted_detail_dict(self, task: Task) -> dict:
         return {
             **self.task_to_deleted_list_dict(task),
-            "status": task.status,
-            "created_at": task.created_at,
+            "description": task.description,
+            "actual_hours": compute_time_taken_hours(task),
+            "assignees": [
+                {
+                    "id": a.id,
+                    "user_id": a.user_id,
+                    "is_completed": a.is_completed,
+                    "completed_at": a.completed_at,
+                    "user": user_to_dict(a.user),
+                }
+                for a in task.assignees
+            ],
         }
 
     def task_to_list_dict(self, task: Task, stats: dict | None = None) -> dict:

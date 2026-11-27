@@ -11,7 +11,7 @@ import { useDeleteTaskMutation } from '../hooks/useDeleteTaskMutation';
 import { TaskDatabase, TaskDatabaseSkeleton } from '../components/tasks/TaskDatabase';
 import { MobileTaskCard } from '../components/tasks/MobileTaskCard';
 import { DeleteTaskModal } from '../components/tasks/DeleteTaskModal';
-import { DeletedTasksList } from '../components/tasks/DeletedTasksList';
+import { CompletedTasksList } from '../components/tasks/CompletedTasksList';
 import { FloatingActionButton } from '../components/layout/FloatingActionButton';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/Skeleton';
@@ -117,7 +117,7 @@ export default function MyTasksPage() {
   const allowDelete = canDeleteTasks(user);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<{ id: number; title: string } | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
   const deleteMutation = useDeleteTaskMutation((taskId) => {
     setDeleteTarget(null);
     setSelectedIds((prev) => {
@@ -135,22 +135,29 @@ export default function MyTasksPage() {
   const { data: tasks, isLoading } = useQuery({
     queryKey: ['my-tasks'],
     queryFn: () => tasksApi.my().then((r) => r.data.data),
-    enabled: !showArchived,
+    enabled: !showCompleted,
   });
 
-  const { data: archivedTasks, isLoading: archivedLoading } = useQuery({
-    queryKey: ['my-tasks', 'archived', user?.id],
-    enabled: showArchived && !!user?.id,
+  const { data: completedTasks, isLoading: completedLoading } = useQuery({
+    queryKey: ['my-tasks', 'completed', user?.id],
+    enabled: showCompleted && !!user?.id,
     queryFn: async () => {
-      const res = await tasksApi.list({
+      const filters = {
         archived: true,
         assignee_id: user!.id,
         page: 1,
-        page_size: 200,
-        sort_by: 'deleted_at',
-        sort_order: 'desc',
-      });
-      return res.data.data.items;
+        page_size: 500,
+        sort_by: 'deleted_at' as const,
+        sort_order: 'desc' as const,
+      };
+      const first = (await tasksApi.list(filters)).data.data;
+      if (!first.total_pages || first.total_pages <= 1) return first.items;
+      const items = [...first.items];
+      for (let p = 2; p <= first.total_pages; p += 1) {
+        const next = await tasksApi.list({ ...filters, page: p });
+        items.push(...next.data.data.items);
+      }
+      return items;
     },
   });
 
@@ -181,7 +188,7 @@ export default function MyTasksPage() {
 
   const groups = useMemo(() => groupTasksByDue(tasks || []), [tasks]);
 
-  if ((!showArchived && isLoading) || (showArchived && archivedLoading)) {
+  if ((!showCompleted && isLoading) || (showCompleted && completedLoading)) {
     return <TaskDatabaseSkeleton />;
   }
 
@@ -201,12 +208,12 @@ export default function MyTasksPage() {
         <div>
           <h1 className="text-xl font-semibold text-text-primary">My Tasks</h1>
           <p className="text-sm text-text-muted mt-0.5">
-            {showArchived
-              ? `${archivedTasks?.length ?? 0} archived`
+            {showCompleted
+              ? `${completedTasks?.length ?? 0} completed`
               : `${openCount} open`}
           </p>
         </div>
-        {!showArchived && (
+        {!showCompleted && (
           <Button
             onClick={() => openCreate()}
             size="sm"
@@ -223,16 +230,16 @@ export default function MyTasksPage() {
         {(
           [
             { id: 'active', label: 'Active' },
-            { id: 'archived', label: 'Archived' },
+            { id: 'completed', label: 'Completed' },
           ] as const
         ).map((opt) => {
-          const active = showArchived ? opt.id === 'archived' : opt.id === 'active';
+          const active = showCompleted ? opt.id === 'completed' : opt.id === 'active';
           return (
             <button
               key={opt.id}
               type="button"
               onClick={() => {
-                setShowArchived(opt.id === 'archived');
+                setShowCompleted(opt.id === 'completed');
                 setSelectedIds(new Set());
               }}
               className={clsx(
@@ -248,8 +255,8 @@ export default function MyTasksPage() {
         })}
       </div>
 
-      {showArchived ? (
-        <DeletedTasksList tasks={archivedTasks || []} onTaskClick={openTask} />
+      {showCompleted ? (
+        <CompletedTasksList tasks={completedTasks || []} onTaskClick={openTask} />
       ) : (
         <>
           {selectedIds.size > 0 && (
@@ -313,7 +320,7 @@ export default function MyTasksPage() {
         </>
       )}
 
-      {isMobile && !showArchived && <FloatingActionButton onClick={() => openCreate()} />}
+      {isMobile && !showCompleted && <FloatingActionButton onClick={() => openCreate()} />}
 
       {allowDelete && (
       <DeleteTaskModal

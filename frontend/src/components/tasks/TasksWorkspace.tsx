@@ -10,7 +10,7 @@ import { TaskDatabase, TaskDatabaseSkeleton, useColumnVisibility, type SortField
 import { TaskToolbar, SavedFiltersBar, type GroupBy, type ViewMode } from './TaskToolbar';
 import { MobileTaskToolbar } from './MobileTaskToolbar';
 import { MobileTasksView } from './MobileTasksView';
-import { DeletedTasksList } from './DeletedTasksList';
+import { CompletedTasksList } from './CompletedTasksList';
 import { groupTasksByDueSections } from './TaskCard';
 import { FloatingActionButton } from '../layout/FloatingActionButton';
 import { EmptyState } from '../ui/Skeleton';
@@ -31,7 +31,7 @@ const TaskWeekViewSkeleton = lazy(() => import('./TaskWeekView').then((m) => ({ 
 
 const REFERENCE_STALE_MS = 5 * 60 * 1000;
 
-/** Top pills: all departments, a specific department, or archived. */
+/** Top pills: all departments, a specific department, or completed (archived backend). */
 export type DeptTab = 'all' | 'archived' | number;
 
 interface TasksWorkspaceProps {
@@ -174,8 +174,8 @@ export function TasksWorkspace({
     if (isDeletedView) {
       return {
         ...sharedListFilters,
-        page,
-        page_size: 50,
+        page: 1,
+        page_size: 500,
         sort_by: 'deleted_at',
         sort_order: 'desc',
       };
@@ -236,8 +236,8 @@ export function TasksWorkspace({
       const first = res.data.data;
       const pageSize = Number(filters.page_size) || 50;
 
-      // Paginated deleted view stays page-by-page; everything else loads all pages.
-      if (isDeletedView || !first.total_pages || first.total_pages <= 1) {
+      // Load all pages so completed month groups and other views aren't truncated.
+      if (!first.total_pages || first.total_pages <= 1) {
         return first;
       }
 
@@ -397,7 +397,7 @@ export function TasksWorkspace({
     const options: { id: string; label: string }[] = [
       { id: 'all', label: 'All' },
       ...depts.map((d) => ({ id: String(d.id), label: d.name })),
-      { id: 'archived', label: 'Archived' },
+      { id: 'archived', label: 'Completed' },
     ];
     return options;
   }, [departments]);
@@ -538,7 +538,7 @@ export function TasksWorkspace({
           }
         />
       ) : isDeletedView ? (
-        <DeletedTasksList tasks={displayTasks} onTaskClick={openTask} />
+        <CompletedTasksList tasks={displayTasks} onTaskClick={openTask} />
       ) : !displayTasks.length && viewMode !== 'calendar' && viewMode !== 'weekly' && !isMobile ? (
         <EmptyState title="No tasks" description="Create a task or adjust your filters." />
       ) : viewMode === 'kanban' ? (

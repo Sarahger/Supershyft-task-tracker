@@ -318,17 +318,11 @@ def format_weekly_update(title: str, payload: dict) -> str:
     for item in completions[:8]:
         lines.append(f"• {escape(item.get('title') or '?')}")
     lines.append("")
-    lines.append("<b>Next week</b>")
-    commitments = report.get("commitments") or []
-    if not commitments:
+    lines.append("<b>Current week</b>")
+    current_week = report.get("current_week_tasks") or report.get("commitments") or []
+    if not current_week:
         lines.append("None recorded")
-    for item in commitments[:8]:
+    for item in current_week[:8]:
         extra = " overdue" if item.get("is_overdue") else ""
         lines.append(f"• {escape(item.get('title') or '?')}{extra}")
-    outstanding = payload.get("outstanding") or []
-    if outstanding:
-        lines.append("")
-        lines.append("<b>Outstanding</b>")
-        for item in outstanding[:8]:
-            lines.append(f"• {escape(item.get('title') or '?')}")
     return clamp_message("\n".join(lines))

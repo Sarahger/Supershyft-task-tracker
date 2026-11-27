@@ -382,9 +382,9 @@ export function EvaluationsPanel({
                         <td className="px-4 py-3">
                           <p className="text-text-primary">{row.name}</p>
                           {(deptLine || leaveLine) && (
-                            <div className="mt-0.5 space-y-0.5 text-xs text-text-muted">
-                              {deptLine && <p>{deptLine}</p>}
-                              {leaveLine && <p>{leaveLine}</p>}
+                            <div className="mt-0.5 space-y-0.5 text-xs">
+                              {deptLine && <p className="text-text-muted">{deptLine}</p>}
+                              {leaveLine && <p className="text-amber-400">{leaveLine}</p>}
                             </div>
                           )}
                         </td>

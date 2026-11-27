@@ -2,12 +2,22 @@ import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { useTaskDrawer } from '../../contexts/TaskDrawerContext';
 import { isMentionPart, splitCommentMentions } from '../../lib/mentions';
-import { formatHoursLabel, toDateInput } from '../../lib/weeklyPlanParse';
+import { formatHoursLabel, mondayOf, toDateInput } from '../../lib/weeklyPlanParse';
 import { Avatar } from '../ui/Avatar';
 import type { WeeklyAuthor, WeeklyCommitment, WeeklyCompletion, WeeklyLeaveContext, WeeklyReport } from '../../types';
 
 function formatRange(start: string, end: string) {
   return `${format(parseISO(start), 'd MMM')} – ${format(parseISO(end), 'd MMM yyyy')}`;
+}
+
+function weekKindLabel(report: WeeklyReport) {
+  if (report.is_current) return 'Current week';
+  try {
+    const todayMonday = format(mondayOf(new Date()), 'yyyy-MM-dd');
+    return report.period_start > todayMonday ? 'Upcoming week' : 'Earlier week';
+  } catch {
+    return 'Earlier week';
+  }
 }
 
 function formatShortDate(value?: string | null) {
@@ -218,20 +228,12 @@ export function WeeklyReportCard({
   const person = author ?? report.author;
   const personName = person ? `${person.first_name} ${person.last_name}`.trim() : 'Weekly update';
   const thisWeekLeave = leaveSummary(report.leave);
-  const nextWeekLeave =
-    report.planning_start !== report.period_start ? leaveSummary(report.planning_leave) : [];
 
   const freezeCarriedForward = !report.editable;
   const currentWeekTasks = report.current_week_tasks ?? [];
-  const nextWeekTasks = report.next_week_tasks ?? report.commitments ?? [];
   const hasDelayed =
     report.completions.some((item) => item.is_delayed || item.is_carried_forward) ||
     currentWeekTasks.some((item) =>
-      freezeCarriedForward
-        ? item.commitment_type === 'carried_forward'
-        : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
-    ) ||
-    nextWeekTasks.some((item) =>
       freezeCarriedForward
         ? item.commitment_type === 'carried_forward'
         : Boolean(item.is_carried_forward || item.commitment_type === 'carried_forward'),
@@ -245,17 +247,12 @@ export function WeeklyReportCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-2xs font-medium uppercase tracking-[0.14em] text-text-muted">
-            {report.is_current ? 'Current week' : 'Earlier week'}
+            {weekKindLabel(report)}
             {!report.editable ? ' · Locked' : null}
           </p>
           <h3 className="text-base font-semibold text-text-primary mt-0.5">
             {formatRange(report.period_start, report.period_end)}
           </h3>
-          {(report.planning_start !== report.period_start || report.planning_end !== report.period_end) && (
-            <p className="text-xs text-text-muted mt-0.5">
-              Next week {formatRange(report.planning_start, report.planning_end)}
-            </p>
-          )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           {onEdit && (
@@ -309,20 +306,9 @@ export function WeeklyReportCard({
         freezeCarriedForward={freezeCarriedForward}
       />
 
-      <div className="border-t border-dark-border" />
-
-      <TaskSection
-        title="Next Week's Tasks"
-        emptyLabel="No tasks yet"
-        items={nextWeekTasks}
-        onRevise={onRevise}
-        freezeCarriedForward={freezeCarriedForward}
-      />
-
-      {(thisWeekLeave.length > 0 || nextWeekLeave.length > 0) && (
+      {thisWeekLeave.length > 0 && (
         <footer className="text-xs text-text-muted space-y-0.5">
-          {thisWeekLeave.length > 0 && <p>{thisWeekLeave.join(' · ')}</p>}
-          {nextWeekLeave.length > 0 && <p>Next week {nextWeekLeave.join(' · ')}</p>}
+          <p>{thisWeekLeave.join(' · ')}</p>
         </footer>
       )}
     </article>
