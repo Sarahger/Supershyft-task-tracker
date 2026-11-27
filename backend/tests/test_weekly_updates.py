@@ -13,6 +13,7 @@ from app.main import app
 from app.models import Attendance, Department, Task, TaskAssignee, User, WeeklyReport, WeeklyReportCommitment
 from app.utils.month_weeks import get_app_timezone
 from app.utils.week_periods import (
+    as_local_date,
     current_week_start,
     due_at_noon,
     editable_until_for,
@@ -470,6 +471,67 @@ def test_completing_task_adds_it_to_this_weeks_draft(client, users, db_session):
         assert reports[0]["completions"][0]["task_id"] == task.id
     else:
         assert all(row["period_start"] != monday.isoformat() for row in reports)
+
+
+def test_completing_undated_task_sets_due_date_to_completion_day(client, users, db_session):
+    emp = users["employee"]
+    task = Task(
+        title="No due yet",
+        status="in_progress",
+        priority="medium",
+        estimated_hours=1,
+        created_by_id=emp.id,
+        due_date=None,
+        original_due_date=None,
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    assert task.due_date is None
+
+    res = client.patch(
+        f"/api/tasks/{task.id}/status",
+        json={"status": "completed"},
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200, res.text
+    db_session.refresh(task)
+
+    assert task.status == "completed"
+    assert task.completed_at is not None
+    assert task.due_date is not None
+    assert as_local_date(task.due_date) == as_local_date(task.completed_at) == today_local()
+    assert task.original_due_date == task.due_date
+
+
+def test_completing_task_keeps_existing_due_date(client, users, db_session):
+    emp = users["employee"]
+    prior_due = due_at_noon(today_local() - timedelta(days=2))
+    task = Task(
+        title="Already dated",
+        status="in_progress",
+        priority="medium",
+        estimated_hours=1,
+        created_by_id=emp.id,
+        due_date=prior_due,
+        original_due_date=prior_due,
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    res = client.patch(
+        f"/api/tasks/{task.id}/status",
+        json={"status": "completed"},
+        headers=auth_header(emp),
+    )
+    assert res.status_code == 200, res.text
+    db_session.refresh(task)
+
+    assert task.status == "completed"
+    assert as_local_date(task.due_date) == as_local_date(prior_due)
 
 
 def test_history_backfills_this_weeks_completed_tasks(client, users, db_session):

@@ -1,6 +1,6 @@
 import { jsx, jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { addDays, format, parseISO } from "date-fns";
 import { departmentsApi, weeklyUpdatesApi } from "../../services/endpoints";
 import { useAuth } from "../../contexts/AuthContext";
@@ -41,18 +41,20 @@ function WeeklyUpdatesPanel() {
     if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) return [];
     return weeksInMonth(year, monthIndex);
   }, [selectedMonth]);
-  const params = {
-    week_start: weekStart,
-    ...departmentId !== "" ? { department_id: Number(departmentId) } : {}
-  };
+  const employeeParams = useMemo(
+    () => departmentId !== "" ? { department_id: Number(departmentId) } : {},
+    [departmentId]
+  );
   const { data: departments } = useQuery({
     queryKey: ["departments"],
     queryFn: () => departmentsApi.list().then((r) => r.data.data ?? []),
     staleTime: 5 * 60 * 1e3
   });
   const { data: employeesData, isLoading: employeesLoading } = useQuery({
-    queryKey: ["weekly-updates", "employees", params],
-    queryFn: () => weeklyUpdatesApi.employees(params).then((r) => r.data.data)
+    queryKey: ["weekly-updates", "employees", employeeParams],
+    queryFn: () => weeklyUpdatesApi.employees(employeeParams).then((r) => r.data.data),
+    staleTime: 2 * 60 * 1e3,
+    placeholderData: keepPreviousData
   });
   const employees = employeesData?.items ?? [];
   useEffect(() => {
@@ -61,10 +63,12 @@ function WeeklyUpdatesPanel() {
     const preferred = employees.find((e) => e.id === user?.id) ?? employees[0];
     setSelectedUserId(preferred.id);
   }, [employees, selectedUserId, user?.id]);
-  const { data: history, isLoading: historyLoading, isError: historyError } = useQuery({
+  const { data: historyData, isLoading: historyLoading, isFetching: historyFetching, isError: historyError } = useQuery({
     queryKey: ["weekly-updates", "user", selectedUserId, weekStart],
     queryFn: () => weeklyUpdatesApi.userHistory(selectedUserId, weekStart).then((r) => r.data.data),
-    enabled: selectedUserId != null
+    enabled: selectedUserId != null,
+    staleTime: 30 * 1e3,
+    placeholderData: keepPreviousData
   });
   useEffect(() => {
     if (!weekOptions.length) return;
@@ -73,6 +77,11 @@ function WeeklyUpdatesPanel() {
     const preferred = weekOptions.find((w) => w.monday === todayMonday)?.monday ?? weekOptions[0]?.monday;
     if (preferred) setWeekStart(preferred);
   }, [weekOptions, weekStart]);
+  const historyMatchesSelection = Boolean(
+    historyData && historyData.user?.id === selectedUserId && (historyData.focus_week === weekStart || historyData.current_period_start === weekStart || historyData.reports?.some((r) => r.period_start === weekStart))
+  );
+  const history = historyMatchesSelection ? historyData : void 0;
+  const showHistorySkeleton = selectedUserId != null && (historyLoading && !historyData || historyFetching && !historyMatchesSelection);
   const selected = employees.find((e) => e.id === selectedUserId);
   const isOwn = selectedUserId === user?.id;
   const writablePeriod = history?.writable_period_start ?? history?.current_period_start ?? weekStart;
@@ -82,8 +91,8 @@ function WeeklyUpdatesPanel() {
   const writeWeekEnd = format(parseISO(writeWeekEndIso), "MMMM d, yyyy");
   const weekLabel = `${format(parseISO(weekStart), "MMMM d")} \u2013 ${writeWeekEnd}`;
   const liveCurrentWeek = history?.current_week_tasks ?? history?.outstanding ?? [];
-  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport;
-  const showSelectedCard = Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
+  const showUnwrittenCard = !showHistorySkeleton && isOwn && canWrite && !writing && !selectedReport;
+  const showSelectedCard = !showHistorySkeleton && Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
   const jumpToWeek = (mondayIso) => {
     if (!mondayIso) return;
     const monday = isoMonday(parseISO(mondayIso));
@@ -162,7 +171,7 @@ function WeeklyUpdatesPanel() {
         ] }),
         /* @__PURE__ */ jsxs("div", { className: "rounded-2xl border border-dark-border bg-dark-card p-3 sm:p-4", children: [
           /* @__PURE__ */ jsx("p", { className: "text-2xs uppercase tracking-wider text-text-muted mb-2", children: "People" }),
-          employeesLoading ? /* @__PURE__ */ jsx(Skeleton, { className: "h-10 w-full" }) : /* @__PURE__ */ jsx(
+          employeesLoading && employees.length === 0 ? /* @__PURE__ */ jsx(Skeleton, { className: "h-10 w-full" }) : /* @__PURE__ */ jsx(
             EmployeeProfileStrip,
             {
               employees,
@@ -223,9 +232,9 @@ function WeeklyUpdatesPanel() {
             onClose: () => setWriting(false)
           }
         ) }),
-        historyLoading && /* @__PURE__ */ jsx(Skeleton, { className: "h-48 w-full" }),
+        showHistorySkeleton && /* @__PURE__ */ jsx(Skeleton, { className: "h-48 w-full" }),
         historyError && /* @__PURE__ */ jsx(EmptyState, { title: "Could not load weekly updates", description: "Try again in a moment." }),
-        !historyLoading && history && !showSelectedCard && !showUnwrittenCard && !writing && /* @__PURE__ */ jsx("div", { className: "rounded-2xl border border-dark-border bg-dark-card p-5", children: /* @__PURE__ */ jsx("p", { className: "text-sm text-text-muted", children: isOwn ? "No weekly update for this week yet." : `${selected?.first_name ?? "This person"} has no weekly update for this week.` }) }),
+        !showHistorySkeleton && history && !showSelectedCard && !showUnwrittenCard && !writing && /* @__PURE__ */ jsx("div", { className: "rounded-2xl border border-dark-border bg-dark-card p-5", children: /* @__PURE__ */ jsx("p", { className: "text-sm text-text-muted", children: isOwn ? "No weekly update for this week yet." : `${selected?.first_name ?? "This person"} has no weekly update for this week.` }) }),
         showSelectedCard && selectedReport && (() => {
           const report = selectedReport;
           const overlayWritableLive = report.period_start === writablePeriod || report.is_current;

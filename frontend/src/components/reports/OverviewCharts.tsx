@@ -1,29 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
-  Bar, BarChart, Cell, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { reportsApi } from '../../services/endpoints';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getChartTheme } from '../../lib/chartTheme';
-import { STATUS_LABELS } from '../../types';
-import type { ReportAnalytics, ReportAssigneeStats } from '../../types';
-
-const STATUS_COLORS: Record<string, string> = {
-  unassigned: '#94a3b8',
-  backlog: '#64748b',
-  to_do: '#60a5fa',
-  in_progress: '#fbbf24',
-  blocked: '#ef4444',
-  ready_for_review: '#a78bfa',
-  in_review: '#c084fc',
-  changes_requested: '#fb923c',
-  approved: '#34d399',
-  testing: '#22d3ee',
-  bugs_found: '#fb7185',
-  completed: '#10b981',
-  cancelled: '#71717a',
-};
+import { Avatar } from '../ui/Avatar';
+import type { ReportAnalytics, ReportAssigneeStats, ReportLeaveBalance } from '../../types';
 
 function periodLabel(start: string) {
   return format(parseISO(start), 'MMM yyyy');
@@ -49,6 +33,10 @@ function ChartCard({
 
 function EmptyChart({ text }: { text: string }) {
   return <p className="text-sm text-text-muted py-16 text-center">{text}</p>;
+}
+
+function formatLeaveDays(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 export function OverviewCharts({
@@ -94,7 +82,7 @@ export function OverviewCharts({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <PerformersChart data={data} chartTheme={chartTheme} onOpen={onOpenEvaluation} />
-      <StatusChart data={data} chartTheme={chartTheme} />
+      <AnnualLeavesCard rows={data.leave_balances ?? []} />
       <div className="lg:col-span-2">
         <PendingWorkChart people={people} chartTheme={chartTheme} />
       </div>
@@ -102,33 +90,62 @@ export function OverviewCharts({
   );
 }
 
-function StatusChart({
-  data,
-  chartTheme,
-}: {
-  data: ReportAnalytics;
-  chartTheme: ReturnType<typeof getChartTheme>;
-}) {
-  const rows = data.by_status.map((row) => ({
-    ...row,
-    name: STATUS_LABELS[row.status] || row.status.replace(/_/g, ' '),
-    fill: STATUS_COLORS[row.status] || '#71717a',
-  }));
+function AnnualLeavesCard({ rows }: { rows: ReportLeaveBalance[] }) {
+  const year = rows[0]?.year ?? new Date().getFullYear();
+  const through = rows[0]?.through
+    ? format(parseISO(rows[0].through), 'MMM d')
+    : null;
+
   return (
-    <ChartCard title="Tasks by Status" description="How many current tasks sit in each status.">
-      {rows.length === 0 ? <EmptyChart text="No tasks yet." /> : (
-        <ResponsiveContainer width="100%" height={Math.max(220, rows.length * 32)}>
-          <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 16 }}>
-            <XAxis type="number" allowDecimals={false} tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
-            <YAxis type="category" dataKey="name" width={110} tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={false} tickLine={false} />
-            <Tooltip contentStyle={chartTheme.tooltip} cursor={{ fill: chartTheme.cursor }} />
-            <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={14}>
+    <ChartCard
+      title="Annual leaves"
+      description={
+        through
+          ? `${year} allotment · taken through week ending ${through}`
+          : `${year} allotment · taken through the current week`
+      }
+    >
+      {rows.length === 0 ? (
+        <EmptyChart text="No people to show." />
+      ) : (
+        <div className="overflow-x-auto -mx-1">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-dark-border text-left">
+                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider">Person</th>
+                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Assigned</th>
+                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Taken</th>
+                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Pending</th>
+              </tr>
+            </thead>
+            <tbody>
               {rows.map((row) => (
-                <Cell key={row.status} fill={row.fill} />
+                <tr key={row.user_id} className="border-b border-dark-border last:border-0">
+                  <td className="px-2 py-2.5">
+                    <div className="flex items-center gap-2 min-w-[120px]">
+                      <Avatar name={row.name} size="sm" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-text-primary truncate">{row.name}</p>
+                        <p className="text-2xs text-text-muted truncate">
+                          {row.departments?.length ? row.departments.join(', ') : 'No department'}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2.5 text-center tabular-nums text-text-primary">
+                    {formatLeaveDays(row.assigned)}
+                  </td>
+                  <td className="px-2 py-2.5 text-center tabular-nums metric-amber-strong">
+                    {formatLeaveDays(row.taken)}
+                  </td>
+                  <td className="px-2 py-2.5 text-center tabular-nums metric-emerald-strong">
+                    {formatLeaveDays(row.pending)}
+                  </td>
+                </tr>
               ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+            </tbody>
+          </table>
+        </div>
       )}
     </ChartCard>
   );

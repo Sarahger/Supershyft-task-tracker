@@ -86,6 +86,7 @@ MANAGER_EDITABLE_FIELDS = {
     "status",
     "job_title",
     "phone",
+    "annual_leave_days",
     "department_ids",
     "manager_id",
 }
@@ -162,6 +163,7 @@ def _format_user(user: User, db: Session, include_stats: bool = False) -> dict:
         "job_title": user.job_title,
         "phone": user.phone,
         "profile_picture": user.profile_picture,
+        "annual_leave_days": getattr(user, "annual_leave_days", None) or 12,
         "manager_id": user.manager_id,
         "last_login": user.last_login,
         "created_at": user.created_at,

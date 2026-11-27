@@ -2,15 +2,29 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Department, EmployeeEvaluation, Task, User
-from app.utils.week_periods import as_local_date, monday_of
+from app.core.company_holidays import is_working_day
+from app.core.constants import AttendanceStatus
+from app.core.datetime_utils import as_utc, utcnow
+from app.models import Attendance, Department, EmployeeEvaluation, Task, TaskAssignee, User
+from app.utils.week_periods import as_local_date, is_due_date_overdue, monday_of
 
 CANCELLED = "cancelled"
 COMPLETED = "completed"
+DEFAULT_ANNUAL_LEAVE_DAYS = 12
+WORKLOAD_BUCKETS = (
+    "pending",
+    "in_progress",
+    "overdue",
+    "blocked",
+    "due_this_week",
+    "completed",
+    "in_review",
+    "cancelled",
+)
 
 
 def _month_end(day: date) -> date:
@@ -150,6 +164,144 @@ def _top_performers(db: Session, start: date, end: date, department_id: int | No
     return ranked
 
 
+def _leave_days_taken(status: str) -> float:
+    if status == AttendanceStatus.LEAVE.value:
+        return 1.0
+    if status == AttendanceStatus.HALF_DAY.value:
+        return 0.5
+    return 0.0
+
+
+def _leave_balances(db: Session, department_id: int | None = None) -> list[dict]:
+    """Per-person annual leave: assigned, taken through current week, remaining."""
+    today = date.today()
+    year_start = date(today.year, 1, 1)
+    week_end = monday_of(today) + timedelta(days=6)
+
+    users_query = (
+        db.query(User)
+        .options(joinedload(User.departments))
+        .filter(User.status.in_(["active", "on_leave"]))
+    )
+    users = users_query.all()
+    if department_id is not None:
+        users = [u for u in users if any(d.id == department_id for d in (u.departments or []))]
+
+    if not users:
+        return []
+
+    user_ids = [u.id for u in users]
+    rows = (
+        db.query(Attendance)
+        .filter(
+            Attendance.user_id.in_(user_ids),
+            Attendance.attendance_date >= year_start,
+            Attendance.attendance_date <= week_end,
+            Attendance.status.in_([AttendanceStatus.LEAVE.value, AttendanceStatus.HALF_DAY.value]),
+        )
+        .all()
+    )
+    taken_by_user: dict[int, float] = {uid: 0.0 for uid in user_ids}
+    for row in rows:
+        # Designated offs (Sundays, 2nd/4th Saturdays, public holidays) never consume leave balance.
+        if not is_working_day(row.attendance_date):
+            continue
+        taken_by_user[row.user_id] = taken_by_user.get(row.user_id, 0.0) + _leave_days_taken(row.status)
+
+    balances = []
+    for user in users:
+        assigned = int(getattr(user, "annual_leave_days", None) or DEFAULT_ANNUAL_LEAVE_DAYS)
+        taken = round(taken_by_user.get(user.id, 0.0), 1)
+        pending = round(max(0.0, assigned - taken), 1)
+        balances.append(
+            {
+                "user_id": user.id,
+                "name": user.full_name,
+                "departments": [d.name for d in (user.departments or [])],
+                "assigned": assigned,
+                "taken": taken,
+                "pending": pending,
+                "year": today.year,
+                "through": week_end.isoformat(),
+            }
+        )
+    balances.sort(key=lambda item: (-item["taken"], item["name"]))
+    return balances
+
+
+def _task_matches_bucket(task: Task, bucket: str, now: datetime, week_end: datetime) -> bool:
+    is_pending = task.status not in {COMPLETED, CANCELLED}
+    if bucket == "pending":
+        return is_pending
+    if bucket == "in_progress":
+        return task.status == "in_progress"
+    if bucket == "overdue":
+        return bool(is_pending and is_due_date_overdue(task.due_date, status=task.status))
+    if bucket == "blocked":
+        return task.status == "blocked"
+    if bucket == "due_this_week":
+        return bool(
+            task.due_date
+            and is_pending
+            and now <= as_utc(task.due_date) <= week_end
+        )
+    if bucket == "completed":
+        return task.status == COMPLETED
+    if bucket == "in_review":
+        return task.status == "in_review"
+    if bucket == "cancelled":
+        return task.status == CANCELLED
+    return False
+
+
+def workload_tasks(
+    db: Session,
+    user_id: int,
+    bucket: str,
+    department_id: int | None = None,
+) -> dict:
+    if bucket not in WORKLOAD_BUCKETS:
+        raise ValueError(f"Unknown workload bucket: {bucket}")
+
+    user = db.query(User).options(joinedload(User.departments)).filter(User.id == user_id).first()
+    if user is None:
+        return {"user_id": user_id, "name": "Unknown", "bucket": bucket, "tasks": []}
+
+    query = (
+        db.query(Task)
+        .join(TaskAssignee)
+        .options(joinedload(Task.assignees))
+        .filter(Task.is_archived.is_(False), TaskAssignee.user_id == user_id)
+    )
+    if department_id is not None:
+        query = query.filter(Task.departments.any(Department.id == department_id))
+    tasks = query.all()
+
+    now = utcnow()
+    week_end = now + timedelta(days=7)
+    matched = [task for task in tasks if _task_matches_bucket(task, bucket, now, week_end)]
+    matched.sort(
+        key=lambda task: (
+            as_utc(task.due_date) if task.due_date else datetime.max.replace(tzinfo=now.tzinfo),
+            task.title or "",
+        )
+    )
+    return {
+        "user_id": user.id,
+        "name": user.full_name,
+        "bucket": bucket,
+        "tasks": [
+            {
+                "id": task.id,
+                "title": task.title,
+                "status": task.status,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+            }
+            for task in matched
+        ],
+    }
+
+
 def build_analytics(
     db: Session,
     start: date,
@@ -164,5 +316,6 @@ def build_analytics(
         "end_date": end.isoformat(),
         "completion_trend": _completion_trend(tasks, start, end),
         "by_status": _status_counts(tasks),
+        "leave_balances": _leave_balances(db, department_id),
         "top_performers": _top_performers(db, start, end, department_id),
     }

@@ -221,7 +221,9 @@ def task_report(filters: ReportFilter, db: Session = Depends(get_db), current_us
         is_overdue = bool(is_pending and is_due_date_overdue(task.due_date, status=task.status))
         is_blocked = task.status == "blocked"
         is_in_progress = task.status == "in_progress"
+        is_in_review = task.status == "in_review"
         is_completed = task.status == "completed"
+        is_cancelled = task.status == "cancelled"
         due_this_week = bool(
             task.due_date
             and is_pending
@@ -245,7 +247,9 @@ def task_report(filters: ReportFilter, db: Session = Depends(get_db), current_us
                     "in_progress": 0,
                     "overdue": 0,
                     "blocked": 0,
+                    "in_review": 0,
                     "completed": 0,
+                    "cancelled": 0,
                     "due_this_week": 0,
                     "total_assigned": 0,
                 }
@@ -259,8 +263,12 @@ def task_report(filters: ReportFilter, db: Session = Depends(get_db), current_us
                 stats["overdue"] += 1
             if is_blocked:
                 stats["blocked"] += 1
+            if is_in_review:
+                stats["in_review"] += 1
             if is_completed:
                 stats["completed"] += 1
+            if is_cancelled:
+                stats["cancelled"] += 1
             if due_this_week:
                 stats["due_this_week"] += 1
 

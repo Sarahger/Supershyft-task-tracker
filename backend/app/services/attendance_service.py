@@ -120,8 +120,17 @@ PRESENT_STATUSES = {
 def _build_summary(records: list[Attendance], year: int, month: int, today: date) -> dict:
     wfo = sum(1 for r in records if r.status == AttendanceStatus.WFO.value)
     wfh = sum(1 for r in records if r.status == AttendanceStatus.WFH.value)
-    leave = sum(1 for r in records if r.status == AttendanceStatus.LEAVE.value)
-    half_day = sum(1 for r in records if r.status == AttendanceStatus.HALF_DAY.value)
+    # Leave tallies only count working days — Sundays / 2nd·4th Saturdays / holidays are not leave.
+    leave = sum(
+        1
+        for r in records
+        if r.status == AttendanceStatus.LEAVE.value and is_working_day(r.attendance_date)
+    )
+    half_day = sum(
+        1
+        for r in records
+        if r.status == AttendanceStatus.HALF_DAY.value and is_working_day(r.attendance_date)
+    )
     camp = sum(1 for r in records if r.status == AttendanceStatus.CAMP.value)
     # Present only on working days (marks on Sundays/holidays do not inflate %)
     present = sum(

@@ -78,6 +78,16 @@ def run_lightweight_migrations(engine) -> None:
             with engine.begin() as conn:
                 conn.execute(text(sql))
             logger.info("Added users.last_seen_work_vault_at column")
+        if "annual_leave_days" not in user_cols:
+            if dialect == "postgresql":
+                sql = "ALTER TABLE users ADD COLUMN IF NOT EXISTS annual_leave_days INTEGER NOT NULL DEFAULT 12"
+            elif dialect == "sqlite":
+                sql = "ALTER TABLE users ADD COLUMN annual_leave_days INTEGER NOT NULL DEFAULT 12"
+            else:
+                sql = "ALTER TABLE users ADD COLUMN annual_leave_days INTEGER NOT NULL DEFAULT 12"
+            with engine.begin() as conn:
+                conn.execute(text(sql))
+            logger.info("Added users.annual_leave_days column")
 
     if "tasks" in tables:
         task_cols = {c["name"] for c in inspector.get_columns("tasks")}

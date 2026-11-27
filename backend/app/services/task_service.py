@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.repositories.base import ActivityRepository, TaskRepository, user_to_brief_dict, user_to_dict
 from app.services.notification_service import NotificationService
+from app.utils.week_periods import as_local_date, due_at_noon, today_local
 
 
 DUE_DATE_EDIT_WINDOW = timedelta(hours=24)
@@ -57,11 +58,23 @@ def compute_time_taken_hours(task: Task, *, now: datetime | None = None) -> floa
     return round(max(0.0, (end - start).total_seconds() / 3600.0), 2)
 
 
+def fill_due_date_on_completion(task: Task, *, completed_at: datetime | None = None) -> None:
+    """If a task had no due date, use the completion day once it is marked completed."""
+    if task.due_date is not None:
+        return
+    moment = completed_at or task.completed_at or datetime.now(timezone.utc)
+    completion_day = as_local_date(moment) or today_local(moment)
+    task.due_date = due_at_noon(completion_day)
+    if task.original_due_date is None:
+        task.original_due_date = task.due_date
+
+
 def apply_status_timing(task: Task, effective_status: str) -> None:
     """
     Auto-set start/end only when empty so later manual edits are preserved.
     - In Progress → start_date = now (if unset)
-    - Completed → end_date = now (if unset), persist actual_hours
+    - Completed → end_date = now (if unset), persist actual_hours,
+      and fill due_date from the completion day when it was never set
     """
     now = datetime.now(timezone.utc)
     if effective_status == TaskStatus.IN_PROGRESS.value and task.start_date is None:
@@ -70,6 +83,7 @@ def apply_status_timing(task: Task, effective_status: str) -> None:
         if task.end_date is None:
             task.end_date = now
         task.actual_hours = compute_time_taken_hours(task, now=now)
+        fill_due_date_on_completion(task, completed_at=task.completed_at or now)
 
 
 class TaskService:
@@ -130,6 +144,7 @@ class TaskService:
                 NotificationType.TASK_ASSIGNED.value,
                 f"Assigned to: {task.title}",
                 f"You have been assigned to task '{task.title}'",
+                exclude_user_id=creator.id,
             )
 
         return self.repo.get_by_id(task.id)
@@ -141,6 +156,8 @@ class TaskService:
             for uid in new_ids - existing:
                 task.assignees.append(TaskAssignee(user_id=uid))
                 self.activity.log(updater.id, ActivityType.ASSIGNEE_ADDED.value, "Added assignee", task.id)
+                if uid == updater.id:
+                    continue
                 self.notifications.notify(
                     uid,
                     NotificationType.TASK_ASSIGNED.value,

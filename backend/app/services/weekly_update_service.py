@@ -19,7 +19,6 @@ from app.core.constants import (
 )
 from app.models import (
     Attendance,
-    DailyUpdate,
     Task,
     TaskAssignee,
     TaskDeadlineRevision,
@@ -152,7 +151,11 @@ class WeeklyUpdateService:
             elif is_weekend_off(cursor):
                 holidays.append({"date": cursor.isoformat(), "kind": "weekend", "label": "Weekend off"})
             status = by_day.get(cursor)
-            if status in (AttendanceStatus.LEAVE.value, AttendanceStatus.HALF_DAY.value):
+            # Only attendance leave on working days counts; offs are listed under holidays instead.
+            if (
+                is_working_day(cursor)
+                and status in (AttendanceStatus.LEAVE.value, AttendanceStatus.HALF_DAY.value)
+            ):
                 leave_days.append(
                     {
                         "date": cursor.isoformat(),
@@ -707,33 +710,39 @@ class WeeklyUpdateService:
 
     def employees(self, department_id: int | None = None, period_start: date | None = None) -> dict:
         period = self._period(period_start)
-        if period.period_start == writable_period_start():
-            self.ensure_all_writable_reports()
+        # Provisioning all drafts belongs to cron — never on this list endpoint.
         users = self._active_users(department_id)
         user_ids = [u.id for u in users]
         submitted_ids: set[int] = set()
         overdue_ids: set[int] = set()
         if user_ids:
-            reports = (
-                self.db.query(WeeklyReport)
+            submitted_ids = {
+                user_id
+                for (user_id,) in (
+                    self.db.query(WeeklyReport.user_id)
+                    .filter(
+                        WeeklyReport.period_start == period.period_start,
+                        WeeklyReport.user_id.in_(user_ids),
+                        WeeklyReport.status == WeeklyReportStatus.SUBMITTED.value,
+                    )
+                    .all()
+                )
+            }
+            # Open assigned tasks past their due day — avoids loading all-history commitments.
+            overdue_task_rows = (
+                self.db.query(TaskAssignee.user_id, Task.due_date, Task.status)
+                .join(Task, Task.id == TaskAssignee.task_id)
                 .filter(
-                    WeeklyReport.period_start == period.period_start,
-                    WeeklyReport.user_id.in_(user_ids),
-                    WeeklyReport.status == WeeklyReportStatus.SUBMITTED.value,
+                    TaskAssignee.user_id.in_(user_ids),
+                    Task.is_archived.is_(False),
+                    Task.status.notin_(tuple(RESOLVED_STATUSES)),
+                    Task.due_date.isnot(None),
                 )
                 .all()
             )
-            submitted_ids = {r.user_id for r in reports}
-            commitments = (
-                self.db.query(WeeklyReportCommitment)
-                .join(WeeklyReport, WeeklyReportCommitment.weekly_report_id == WeeklyReport.id)
-                .options(joinedload(WeeklyReportCommitment.task))
-                .filter(WeeklyReport.user_id.in_(user_ids), WeeklyReportCommitment.task_id.isnot(None))
-                .all()
-            )
-            for row in commitments:
-                if row.task and _is_overdue(row.task):
-                    overdue_ids.add(row.report.user_id)
+            for user_id, due_date, status in overdue_task_rows:
+                if is_due_date_overdue(due_date, status=status):
+                    overdue_ids.add(user_id)
 
         items = []
         for user in users:
@@ -759,7 +768,6 @@ class WeeklyUpdateService:
         if not user or user.status == UserStatus.INACTIVE.value:
             raise HTTPException(status_code=404, detail="User not found")
         period = self._period(week_start)
-        current = current_week_start()
         writable = writable_period_start()
         # Always provision the writable week so employees with zero tasks still see an update.
         self.ensure_writable_report(user)
@@ -769,18 +777,18 @@ class WeeklyUpdateService:
             focused = self._ensure_editable_report(user.id, period.period_start)
             if focused is not None:
                 self.db.commit()
-        # Finalize the previous week if it just locked and still needs a snapshot.
-        prev = previous_period_start(writable)
-        prev_report = self._report_for(user.id, prev)
-        if prev_report is not None and not is_report_editable(prev, prev_report.status):
-            if self._finalize_locked_report(user, prev_report):
-                self.db.commit()
+        # Finalize the previous week only when loading the writable week (lock rollover).
+        if period.period_start == writable:
+            prev = previous_period_start(writable)
+            prev_report = self._report_for(user.id, prev)
+            if prev_report is not None and not is_report_editable(prev, prev_report.status):
+                if self._finalize_locked_report(user, prev_report):
+                    self.db.commit()
+        # Sync completions only for the focused week — avoid triple sync fan-out.
         if is_auto_sync_open(period.period_start):
             self.sync_week_completions(user, period.period_start)
-        if current != period.period_start and is_auto_sync_open(current):
-            self.sync_week_completions(user, current)
-        if writable != period.period_start and is_auto_sync_open(writable):
-            self.sync_week_completions(user, writable)
+
+        # UI shows one week card — only hydrate the focused week (not full history).
         reports = (
             self.db.query(WeeklyReport)
             .options(
@@ -790,43 +798,24 @@ class WeeklyUpdateService:
                 ),
                 joinedload(WeeklyReport.user),
             )
-            .filter(WeeklyReport.user_id == user_id)
-            .order_by(WeeklyReport.period_start.desc())
+            .filter(
+                WeeklyReport.user_id == user_id,
+                WeeklyReport.period_start == period.period_start,
+            )
             .all()
         )
-        live = self.categorize_open_tasks(user, writable)
+        live = self.categorize_open_tasks(user, period.period_start)
         current_week_tasks = live.get("current_week_tasks") or []
         next_week_tasks = live.get("next_week_tasks") or []
         outstanding = live.get("items") or []
         due_this_week = live.get("due_this_week") or []
-        daily_notes = (
-            self.db.query(DailyUpdate)
-            .options(joinedload(DailyUpdate.user), joinedload(DailyUpdate.tasks))
-            .filter(DailyUpdate.user_id == user_id)
-            .order_by(DailyUpdate.update_date.desc())
-            .limit(40)
-            .all()
-        )
         report_views = [self._report_view(r) for r in reports]
-        # Merge live Current/Next onto every still-editable report. On Monday morning
-        # last week stays editable until 2PM while the new week is also writable —
-        # each needs buckets relative to its own period_start.
         for view in report_views:
             if not view.get("editable"):
                 continue
-            start = date.fromisoformat(view["period_start"])
-            if start == writable:
-                self._merge_live_task_sections(
-                    report_views, current_week_tasks, next_week_tasks, start
-                )
-            else:
-                buckets = self.categorize_open_tasks(user, start)
-                self._merge_live_task_sections(
-                    report_views,
-                    buckets.get("current_week_tasks") or [],
-                    buckets.get("next_week_tasks") or [],
-                    start,
-                )
+            self._merge_live_task_sections(
+                report_views, current_week_tasks, next_week_tasks, period.period_start
+            )
         return {
             "user": {
                 **(_author(user) or {}),
@@ -846,15 +835,8 @@ class WeeklyUpdateService:
             "due_this_week": due_this_week,
             "current_week_tasks": current_week_tasks,
             "next_week_tasks": next_week_tasks,
-            "legacy_daily_notes": [
-                {
-                    "id": note.id,
-                    "update_date": note.update_date.isoformat(),
-                    "content": note.content or "",
-                    "tasks": [{"id": t.id, "title": t.title} for t in (note.tasks or [])],
-                }
-                for note in daily_notes
-            ],
+            # Legacy notes unused by the weekly updates UI — skip the heavy query.
+            "legacy_daily_notes": [],
         }
 
     def upsert(self, user: User, payload: dict) -> dict:

@@ -150,6 +150,7 @@ class UserService:
             status=data.get("status", "active"),
             job_title=data.get("job_title"),
             phone=data.get("phone"),
+            annual_leave_days=data.get("annual_leave_days", 12),
             manager_id=data.get("manager_id"),
         )
         if dept_ids := data.get("department_ids"):

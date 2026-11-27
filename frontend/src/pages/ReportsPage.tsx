@@ -12,7 +12,11 @@ import { canAccessManagerFeatures } from '../lib/roles';
 import { mondayOf } from '../lib/weeklyPlanParse';
 import { OverviewCharts } from '../components/reports/OverviewCharts';
 import { EvaluationsPanel } from '../components/reports/EvaluationsPanel';
-import type { ReportAssigneeStats } from '../types';
+import {
+  WorkloadTasksDrawer,
+  type WorkloadDrawerTarget,
+} from '../components/reports/WorkloadTasksDrawer';
+import type { ReportAssigneeStats, WorkloadBucket } from '../types';
 
 function WorkloadBar({ person }: { person: ReportAssigneeStats }) {
   const total = person.pending || 1;
@@ -39,7 +43,39 @@ function WorkloadBar({ person }: { person: ReportAssigneeStats }) {
   );
 }
 
-function PersonWorkloadTable({ people }: { people: ReportAssigneeStats[] }) {
+function CountButton({
+  value,
+  className,
+  onClick,
+  label,
+}: {
+  value: number;
+  className?: string;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        'tabular-nums font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/40 rounded px-1',
+        className,
+      )}
+      aria-label={`View ${value} ${label}`}
+    >
+      {value}
+    </button>
+  );
+}
+
+function PersonWorkloadTable({
+  people,
+  onOpenBucket,
+}: {
+  people: ReportAssigneeStats[];
+  onOpenBucket: (person: ReportAssigneeStats, bucket: WorkloadBucket) => void;
+}) {
   if (!people.length) {
     return <p className="text-sm text-text-muted py-8 text-center">No assigned tasks yet.</p>;
   }
@@ -54,8 +90,10 @@ function PersonWorkloadTable({ people }: { people: ReportAssigneeStats[] }) {
             <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">In progress</th>
             <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Overdue</th>
             <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Blocked</th>
+            <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">In review</th>
             <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Due this week</th>
             <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Done</th>
+            <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Cancelled</th>
             <th className="px-4 py-3 text-2xs font-medium text-text-muted uppercase tracking-wider min-w-[120px]">Load</th>
           </tr>
         </thead>
@@ -74,19 +112,69 @@ function PersonWorkloadTable({ people }: { people: ReportAssigneeStats[] }) {
                 </div>
               </td>
               <td className="px-3 py-3 text-center">
-                <span className={clsx('font-semibold tabular-nums', person.pending > 0 ? 'metric-sky-strong' : 'text-text-muted')}>
-                  {person.pending}
-                </span>
+                <CountButton
+                  value={person.pending}
+                  className={person.pending > 0 ? 'metric-sky-strong font-semibold' : 'text-text-muted'}
+                  onClick={() => onOpenBucket(person, 'pending')}
+                  label="pending tasks"
+                />
               </td>
-              <td className="px-3 py-3 text-center tabular-nums metric-amber-strong">{person.in_progress}</td>
               <td className="px-3 py-3 text-center">
-                <span className={clsx('tabular-nums font-medium', person.overdue > 0 ? 'metric-red' : 'text-text-muted')}>
-                  {person.overdue}
-                </span>
+                <CountButton
+                  value={person.in_progress}
+                  className="metric-amber-strong"
+                  onClick={() => onOpenBucket(person, 'in_progress')}
+                  label="in progress tasks"
+                />
               </td>
-              <td className="px-3 py-3 text-center tabular-nums metric-orange-strong">{person.blocked}</td>
-              <td className="px-3 py-3 text-center tabular-nums metric-purple-strong">{person.due_this_week}</td>
-              <td className="px-3 py-3 text-center tabular-nums metric-emerald-strong">{person.completed}</td>
+              <td className="px-3 py-3 text-center">
+                <CountButton
+                  value={person.overdue}
+                  className={person.overdue > 0 ? 'metric-red' : 'text-text-muted'}
+                  onClick={() => onOpenBucket(person, 'overdue')}
+                  label="overdue tasks"
+                />
+              </td>
+              <td className="px-3 py-3 text-center">
+                <CountButton
+                  value={person.blocked}
+                  className="metric-orange-strong"
+                  onClick={() => onOpenBucket(person, 'blocked')}
+                  label="blocked tasks"
+                />
+              </td>
+              <td className="px-3 py-3 text-center">
+                <CountButton
+                  value={person.in_review ?? 0}
+                  className="metric-purple-strong"
+                  onClick={() => onOpenBucket(person, 'in_review')}
+                  label="in review tasks"
+                />
+              </td>
+              <td className="px-3 py-3 text-center">
+                <CountButton
+                  value={person.due_this_week}
+                  className="metric-purple-strong"
+                  onClick={() => onOpenBucket(person, 'due_this_week')}
+                  label="tasks due this week"
+                />
+              </td>
+              <td className="px-3 py-3 text-center">
+                <CountButton
+                  value={person.completed}
+                  className="metric-emerald-strong"
+                  onClick={() => onOpenBucket(person, 'completed')}
+                  label="completed tasks"
+                />
+              </td>
+              <td className="px-3 py-3 text-center">
+                <CountButton
+                  value={person.cancelled ?? 0}
+                  className="text-text-muted"
+                  onClick={() => onOpenBucket(person, 'cancelled')}
+                  label="cancelled tasks"
+                />
+              </td>
               <td className="px-4 py-3">
                 <WorkloadBar person={person} />
               </td>
@@ -128,6 +216,7 @@ export default function ReportsPage() {
   const [customStart, setCustomStart] = useState(iso(startOfMonth(new Date())));
   const [customEnd, setCustomEnd] = useState(iso(endOfMonth(new Date())));
   const [openEvaluationId, setOpenEvaluationId] = useState<number | null>(null);
+  const [workloadTarget, setWorkloadTarget] = useState<WorkloadDrawerTarget | null>(null);
   const clearOpenedEvaluation = useCallback(() => setOpenEvaluationId(null), []);
 
   const reportFilters = useMemo(
@@ -181,6 +270,14 @@ export default function ReportsPage() {
       toast.error('Export failed');
     }
   };
+
+  const openWorkloadBucket = useCallback((person: ReportAssigneeStats, bucket: WorkloadBucket) => {
+    setWorkloadTarget({
+      userId: person.user_id,
+      personName: person.name,
+      bucket,
+    });
+  }, []);
 
   if (!isManager) {
     return (
@@ -305,10 +402,13 @@ export default function ReportsPage() {
             <div className="px-6 py-5 border-b border-dark-border">
               <h2 className="text-sm font-medium text-text-primary">Workload by person</h2>
               <p className="text-xs text-text-muted mt-1">
-                Pending tasks per team member — sorted by who has the most open work
+                Pending tasks per team member — sorted by who has the most open work. Click a number to see the tasks.
               </p>
             </div>
-            <PersonWorkloadTable people={data?.by_assignee ?? []} />
+            <PersonWorkloadTable
+              people={data?.by_assignee ?? []}
+              onOpenBucket={openWorkloadBucket}
+            />
           </section>
         </>
       ) : (
@@ -318,6 +418,12 @@ export default function ReportsPage() {
           onConsumedInitial={clearOpenedEvaluation}
         />
       )}
+
+      <WorkloadTasksDrawer
+        target={workloadTarget}
+        departmentId={departmentId}
+        onClose={() => setWorkloadTarget(null)}
+      />
     </div>
   );
 }

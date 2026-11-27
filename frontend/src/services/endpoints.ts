@@ -250,6 +250,12 @@ export const reportsApi = {
     api.post('/reports/export/csv', filters, { responseType: 'blob' }),
   analytics: (params: { start_date: string; end_date: string; department_id?: number }) =>
     api.get<APIResponse<import('../types').ReportAnalytics>>('/reports/analytics', { params }),
+  workloadTasks: (params: {
+    user_id: number;
+    bucket: import('../types').WorkloadBucket | string;
+    department_id?: number;
+  }) =>
+    api.get<APIResponse<import('../types').ReportWorkloadTasks>>('/reports/workload-tasks', { params }),
   evaluations: (params: { period_start: string; department_id?: number; user_id?: number }) =>
     api.get<APIResponse<import('../types').EvaluationList>>('/reports/evaluations', { params }),
   evaluation: (id: number) =>

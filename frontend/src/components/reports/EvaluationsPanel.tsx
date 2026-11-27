@@ -206,18 +206,46 @@ function statusLabel(status: string) {
   return status.replace('_', ' ');
 }
 
-function shortLeaveDay(value: string) {
-  try {
-    return format(parseISO(value.slice(0, 10)), 'd MMM');
-  } catch {
-    return value;
+/** Collapse consecutive calendar leave dates into ranges (e.g. 18 Nov–28 Nov). */
+function collapseLeaveSpans(dates: string[]): string[] {
+  if (!dates.length) return [];
+  const sorted = [...dates]
+    .map((value) => parseISO(value.slice(0, 10)))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+  if (!sorted.length) return [];
+
+  const spans: Array<{ start: Date; end: Date }> = [];
+  let start = sorted[0];
+  let prev = sorted[0];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const day = sorted[i];
+    const gapDays = Math.round((day.getTime() - prev.getTime()) / 86_400_000);
+    // Bridge weekends / single offs so continuous leave stays one range.
+    if (gapDays >= 1 && gapDays <= 3) {
+      prev = day;
+      continue;
+    }
+    spans.push({ start, end: prev });
+    start = day;
+    prev = day;
   }
+  spans.push({ start, end: prev });
+
+  return spans.map(({ start: a, end: b }) => {
+    if (a.getTime() === b.getTime()) return format(a, 'd MMM');
+    return `${format(a, 'd MMM')}–${format(b, 'd MMM')}`;
+  });
 }
 
-function leaveTableLine(days?: EvaluationLeaveDay[] | null) {
+function leaveTableLine(
+  days?: EvaluationLeaveDay[] | null,
+  preformatted?: string | null,
+) {
+  if (preformatted?.trim()) return preformatted.trim();
   if (!days?.length) return null;
-  const leave = days.filter((d) => d.status === 'LEAVE').map((d) => shortLeaveDay(d.date));
-  const half = days.filter((d) => d.status === 'HALF_DAY').map((d) => shortLeaveDay(d.date));
+  const leave = collapseLeaveSpans(days.filter((d) => d.status === 'LEAVE').map((d) => d.date));
+  const half = collapseLeaveSpans(days.filter((d) => d.status === 'HALF_DAY').map((d) => d.date));
   const parts: string[] = [];
   if (leave.length) parts.push(`Leave: ${leave.join(', ')}`);
   if (half.length) parts.push(`Half day: ${half.join(', ')}`);
@@ -374,7 +402,7 @@ export function EvaluationsPanel({
                 {items.map((row) => {
                   const periods = row.evaluations ?? [];
                   const isOpen = Boolean(expanded[row.user_id]);
-                  const leaveLine = leaveTableLine(row.leave_days);
+                  const leaveLine = leaveTableLine(row.leave_days, row.leave_summary?.leave_line);
                   const deptLine = row.departments.length ? row.departments.join(', ') : null;
                   return (
                     <Fragment key={row.user_id}>
@@ -514,7 +542,7 @@ function EvaluationForm({
   });
 
   const fullyOnLeave = Boolean(leaveContext?.fully_on_leave);
-  const leaveLine = leaveTableLine(leaveContext?.leave_days);
+  const leaveLine = leaveTableLine(leaveContext?.leave_days, leaveContext?.leave_line);
 
   useEffect(() => {
     if (!userId || locked) return;

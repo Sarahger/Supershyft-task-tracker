@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { addDays, format, parseISO } from 'date-fns';
 import { departmentsApi, weeklyUpdatesApi } from '../../services/endpoints';
 import { useAuth } from '../../contexts/AuthContext';
@@ -46,10 +46,11 @@ export function WeeklyUpdatesPanel() {
     return weeksInMonth(year, monthIndex);
   }, [selectedMonth]);
 
-  const params = {
-    week_start: weekStart,
-    ...(departmentId !== '' ? { department_id: Number(departmentId) } : {}),
-  };
+  // People strip only depends on department — week/month filters reload cards only.
+  const employeeParams = useMemo(
+    () => (departmentId !== '' ? { department_id: Number(departmentId) } : {}),
+    [departmentId],
+  );
 
   const { data: departments } = useQuery({
     queryKey: ['departments'],
@@ -58,8 +59,10 @@ export function WeeklyUpdatesPanel() {
   });
 
   const { data: employeesData, isLoading: employeesLoading } = useQuery({
-    queryKey: ['weekly-updates', 'employees', params],
-    queryFn: () => weeklyUpdatesApi.employees(params).then((r) => r.data.data),
+    queryKey: ['weekly-updates', 'employees', employeeParams],
+    queryFn: () => weeklyUpdatesApi.employees(employeeParams).then((r) => r.data.data),
+    staleTime: 2 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   const employees = employeesData?.items ?? [];
@@ -71,10 +74,12 @@ export function WeeklyUpdatesPanel() {
     setSelectedUserId(preferred.id);
   }, [employees, selectedUserId, user?.id]);
 
-  const { data: history, isLoading: historyLoading, isError: historyError } = useQuery({
+  const { data: historyData, isLoading: historyLoading, isFetching: historyFetching, isError: historyError } = useQuery({
     queryKey: ['weekly-updates', 'user', selectedUserId, weekStart],
     queryFn: () => weeklyUpdatesApi.userHistory(selectedUserId!, weekStart).then((r) => r.data.data),
     enabled: selectedUserId != null,
+    staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
   });
 
   // Keep the week select valid when the month changes or weekStart is outside the month.
@@ -87,6 +92,18 @@ export function WeeklyUpdatesPanel() {
       ?? weekOptions[0]?.monday;
     if (preferred) setWeekStart(preferred);
   }, [weekOptions, weekStart]);
+
+  // ignore placeholder from a different week/user while the matching card loads
+  const historyMatchesSelection = Boolean(
+    historyData
+    && historyData.user?.id === selectedUserId
+    && (historyData.focus_week === weekStart
+      || historyData.current_period_start === weekStart
+      || historyData.reports?.some((r) => r.period_start === weekStart)),
+  );
+  const history = historyMatchesSelection ? historyData : undefined;
+  const showHistorySkeleton =
+    selectedUserId != null && ((historyLoading && !historyData) || (historyFetching && !historyMatchesSelection));
 
   const selected = employees.find((e) => e.id === selectedUserId);
   const isOwn = selectedUserId === user?.id;
@@ -103,8 +120,8 @@ export function WeeklyUpdatesPanel() {
   const writeWeekEnd = format(parseISO(writeWeekEndIso), 'MMMM d, yyyy');
   const weekLabel = `${format(parseISO(weekStart), 'MMMM d')} – ${writeWeekEnd}`;
   const liveCurrentWeek = history?.current_week_tasks ?? history?.outstanding ?? [];
-  const showUnwrittenCard = isOwn && canWrite && !writing && !selectedReport;
-  const showSelectedCard = Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
+  const showUnwrittenCard = !showHistorySkeleton && isOwn && canWrite && !writing && !selectedReport;
+  const showSelectedCard = !showHistorySkeleton && Boolean(selectedReport) && !(writing && selectedReport?.period_start === weekStart);
 
   const jumpToWeek = (mondayIso: string) => {
     if (!mondayIso) return;
@@ -195,7 +212,7 @@ export function WeeklyUpdatesPanel() {
 
           <div className="rounded-2xl border border-dark-border bg-dark-card p-3 sm:p-4">
             <p className="text-2xs uppercase tracking-wider text-text-muted mb-2">People</p>
-            {employeesLoading ? (
+            {employeesLoading && employees.length === 0 ? (
               <Skeleton className="h-10 w-full" />
             ) : (
               <EmployeeProfileStrip
@@ -266,11 +283,11 @@ export function WeeklyUpdatesPanel() {
             </div>
           )}
 
-          {historyLoading && <Skeleton className="h-48 w-full" />}
+          {showHistorySkeleton && <Skeleton className="h-48 w-full" />}
           {historyError && (
             <EmptyState title="Could not load weekly updates" description="Try again in a moment." />
           )}
-          {!historyLoading && history && !showSelectedCard && !showUnwrittenCard && !writing && (
+          {!showHistorySkeleton && history && !showSelectedCard && !showUnwrittenCard && !writing && (
             <div className="rounded-2xl border border-dark-border bg-dark-card p-5">
               <p className="text-sm text-text-muted">
                 {isOwn

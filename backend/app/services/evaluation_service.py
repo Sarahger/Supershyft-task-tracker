@@ -88,14 +88,82 @@ def _leave_day_payload(day: date, status: str) -> dict:
     }
 
 
-def _format_leave_note(leave_days: list[dict]) -> str | None:
-    if not leave_days:
-        return None
+def _short_leave_day(day: date) -> str:
+    return f"{day.day} {day.strftime('%b')}"
+
+
+def _bridged_by_non_working(prev: date, nxt: date) -> bool:
+    """True when prev→nxt is one leave stretch (only Sundays / 2nd·4th Saturdays / holidays between)."""
+    if nxt <= prev:
+        return False
+    cursor = prev + timedelta(days=1)
+    while cursor < nxt:
+        if is_working_day(cursor):
+            return False
+        cursor += timedelta(days=1)
+    return True
+
+
+def _collapse_leave_spans(days: list[date]) -> list[str]:
+    """Single dates stay single; continuous working-day leave (bridging offs) becomes a range."""
+    if not days:
+        return []
+    ordered = sorted(days)
+    spans: list[tuple[date, date]] = []
+    start = prev = ordered[0]
+    for day in ordered[1:]:
+        if day == prev or _bridged_by_non_working(prev, day):
+            prev = day
+            continue
+        spans.append((start, prev))
+        start = prev = day
+    spans.append((start, prev))
+    labels: list[str] = []
+    for a, b in spans:
+        if a == b:
+            labels.append(_short_leave_day(a))
+        else:
+            labels.append(f"{_short_leave_day(a)}–{_short_leave_day(b)}")
+    return labels
+
+
+def _format_leave_line(leave_days: list[dict]) -> str | None:
+    leave = [
+        date.fromisoformat(row["date"][:10])
+        for row in leave_days
+        if row.get("status") == AttendanceStatus.LEAVE.value
+    ]
+    half = [
+        date.fromisoformat(row["date"][:10])
+        for row in leave_days
+        if row.get("status") == AttendanceStatus.HALF_DAY.value
+    ]
     parts: list[str] = []
-    for row in leave_days:
-        day = date.fromisoformat(row["date"][:10])
-        kind = "half day" if row.get("status") == AttendanceStatus.HALF_DAY.value else "leave"
-        parts.append(f"{day.day} {day.strftime('%b')} ({kind})")
+    if leave:
+        parts.append(f"Leave: {', '.join(_collapse_leave_spans(leave))}")
+    if half:
+        parts.append(f"Half day: {', '.join(_collapse_leave_spans(half))}")
+    return " · ".join(parts) if parts else None
+
+
+def _format_leave_note(leave_days: list[dict]) -> str | None:
+    leave = [
+        date.fromisoformat(row["date"][:10])
+        for row in leave_days
+        if row.get("status") == AttendanceStatus.LEAVE.value
+    ]
+    half = [
+        date.fromisoformat(row["date"][:10])
+        for row in leave_days
+        if row.get("status") == AttendanceStatus.HALF_DAY.value
+    ]
+    parts: list[str] = []
+    for label in _collapse_leave_spans(leave):
+        parts.append(f"{label} (leave)")
+    for label in _collapse_leave_spans(half):
+        parts.append(f"{label} (half day)")
+    if not parts:
+        return None
     return f"Leave / half days in this period: {', '.join(parts)}."
 
 
@@ -104,19 +172,22 @@ def _leave_summary_from_map(
     start: date,
     end: date,
 ) -> dict:
+    # Only attendance leave markers on working days count (skip Sundays, 2nd/4th Saturdays, holidays).
     leave_days = [
         _leave_day_payload(day, status)
         for day, status in sorted(by_day.items())
-        if start <= day <= end and status in LEAVE_STATUSES
+        if start <= day <= end and status in LEAVE_STATUSES and is_working_day(day)
     ]
     working = _working_days(start, end)
     fully_on_leave = bool(working) and all(
         by_day.get(day) == AttendanceStatus.LEAVE.value for day in working
     )
+    leave_line = _format_leave_line(leave_days)
     return {
         "start": start.isoformat(),
         "end": end.isoformat(),
         "leave_days": leave_days,
+        "leave_line": leave_line,
         "working_day_count": len(working),
         "fully_on_leave": fully_on_leave,
         "suggested_comment": None if fully_on_leave else _format_leave_note(leave_days),

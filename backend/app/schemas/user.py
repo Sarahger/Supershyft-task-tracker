@@ -30,6 +30,7 @@ class UserBase(BaseModel):
     status: str = "active"
     job_title: str | None = None
     phone: str | None = None
+    annual_leave_days: int = Field(12, ge=0, le=365)
     manager_id: int | None = None
 
 
@@ -45,6 +46,7 @@ class UserUpdate(BaseModel):
     status: str | None = None
     job_title: str | None = None
     phone: str | None = None
+    annual_leave_days: int | None = Field(None, ge=0, le=365)
     manager_id: int | None = None
     department_ids: list[int] | None = None
 

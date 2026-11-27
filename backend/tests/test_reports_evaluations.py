@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -359,6 +359,7 @@ def test_leave_blocks_full_week_and_notes_partial_days(client, users, db_session
     assert body["suggested_comment"].startswith("Leave / half days in this period:")
     assert "3 Nov (leave)" in body["suggested_comment"]
     assert "4 Nov (half day)" in body["suggested_comment"]
+    assert body["leave_line"] == "Leave: 3 Nov · Half day: 4 Nov"
 
     created = client.post(
         "/api/reports/evaluations",
@@ -377,6 +378,43 @@ def test_leave_blocks_full_week_and_notes_partial_days(client, users, db_session
     statuses = {row["date"]: row["status"] for row in item["leave_days"]}
     assert statuses["2026-11-03"] == "LEAVE"
     assert statuses["2026-11-04"] == "HALF_DAY"
+
+
+def test_leave_context_ranges_and_skips_non_working_days(client, users, db_session):
+    """Continuous attendance leave collapses to a range; Sundays / 2nd·4th Sat / holidays do not count."""
+    manager = users["manager"]
+    employee = users["employee"]
+    headers = auth_header(manager)
+
+    # 18–28 Nov 2026: includes a Sunday (22) and 4th Saturday (28).
+    cursor = date(2026, 11, 18)
+    while cursor <= date(2026, 11, 28):
+        db_session.add(Attendance(user_id=employee.id, attendance_date=cursor, status="LEAVE"))
+        cursor += timedelta(days=1)
+    # Isolated non-working marker should never appear in leave_days.
+    db_session.add(Attendance(user_id=employee.id, attendance_date=date(2026, 11, 15), status="LEAVE"))  # Sunday
+    db_session.commit()
+
+    res = client.get(
+        "/api/reports/evaluations/leave-context",
+        params={
+            "user_id": employee.id,
+            "period_start": "2026-11-01",
+            "period_end": "2026-11-30",
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    body = res.json()["data"]
+    leave_dates = [row["date"] for row in body["leave_days"]]
+    assert "2026-11-15" not in leave_dates
+    assert "2026-11-22" not in leave_dates  # Sunday inside the stretch
+    assert "2026-11-28" not in leave_dates  # 4th Saturday
+    assert "2026-11-18" in leave_dates
+    assert "2026-11-27" in leave_dates
+    assert body["leave_line"] == "Leave: 18 Nov–27 Nov"
+    assert "18 Nov–27 Nov (leave)" in body["suggested_comment"]
+    assert "15 Nov" not in (body["suggested_comment"] or "")
 
 
 def test_status_counts_and_completion_trend(client, users, db_session):
@@ -415,6 +453,67 @@ def test_status_counts_and_completion_trend(client, users, db_session):
     assert counts["in_progress"] == 1
     assert "on_time" not in body
     assert "overdue_ageing" not in body
+    assert "leave_balances" in body
+    assert any(row["user_id"] == employee.id for row in body["leave_balances"])
     trend = body["completion_trend"]
     assert sum(point["due"] for point in trend) == 2
     assert sum(point["completed"] for point in trend) == 1
+
+
+def test_workload_tasks_and_leave_balances(client, users, db_session):
+    manager = users["manager"]
+    employee = users["employee"]
+    employee.annual_leave_days = 15
+    review = Task(
+        title="Needs review",
+        status="in_review",
+        priority="medium",
+        created_by_id=employee.id,
+        due_date=due_at_noon(date(2026, 11, 20)),
+    )
+    cancelled = Task(
+        title="Dropped",
+        status="cancelled",
+        priority="low",
+        created_by_id=employee.id,
+        due_date=due_at_noon(date(2026, 11, 18)),
+    )
+    review.assignees.append(TaskAssignee(user_id=employee.id))
+    cancelled.assignees.append(TaskAssignee(user_id=employee.id))
+    db_session.add_all([
+        review,
+        cancelled,
+        Attendance(user_id=employee.id, attendance_date=date(2026, 1, 12), status="LEAVE"),  # Monday
+        Attendance(user_id=employee.id, attendance_date=date(2026, 2, 3), status="HALF_DAY"),  # Tuesday
+    ])
+    db_session.commit()
+
+    tasks_res = client.post(
+        "/api/reports/tasks",
+        json={},
+        headers=auth_header(manager),
+    )
+    assert tasks_res.status_code == 200, tasks_res.text
+    person = next(row for row in tasks_res.json()["data"]["by_assignee"] if row["user_id"] == employee.id)
+    assert person["in_review"] == 1
+    assert person["cancelled"] == 1
+
+    drawer = client.get(
+        "/api/reports/workload-tasks",
+        params={"user_id": employee.id, "bucket": "in_review"},
+        headers=auth_header(manager),
+    )
+    assert drawer.status_code == 200, drawer.text
+    titles = [t["title"] for t in drawer.json()["data"]["tasks"]]
+    assert titles == ["Needs review"]
+
+    analytics = client.get(
+        "/api/reports/analytics",
+        params={"start_date": "2026-01-01", "end_date": "2026-12-31"},
+        headers=auth_header(manager),
+    )
+    assert analytics.status_code == 200, analytics.text
+    leave = next(row for row in analytics.json()["data"]["leave_balances"] if row["user_id"] == employee.id)
+    assert leave["assigned"] == 15
+    assert leave["taken"] == 1.5
+    assert leave["pending"] == 13.5

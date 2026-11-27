@@ -57,6 +57,7 @@ export interface User {
   job_title?: string;
   phone?: string;
   profile_picture?: string;
+  annual_leave_days?: number;
   manager_id?: number;
   departments: { id: number; name: string }[];
   last_login?: string;
@@ -211,6 +212,16 @@ export interface TaskAttachment {
   uploaded_by?: UserBrief;
 }
 
+export type WorkloadBucket =
+  | 'pending'
+  | 'in_progress'
+  | 'overdue'
+  | 'blocked'
+  | 'due_this_week'
+  | 'completed'
+  | 'in_review'
+  | 'cancelled';
+
 export interface ReportAssigneeStats {
   user_id: number;
   name: string;
@@ -219,9 +230,36 @@ export interface ReportAssigneeStats {
   in_progress: number;
   overdue: number;
   blocked: number;
+  in_review: number;
   completed: number;
+  cancelled: number;
   due_this_week: number;
   total_assigned: number;
+}
+
+export interface ReportLeaveBalance {
+  user_id: number;
+  name: string;
+  departments: string[];
+  assigned: number;
+  taken: number;
+  pending: number;
+  year: number;
+  through: string;
+}
+
+export interface ReportWorkloadTask {
+  id: number;
+  title: string;
+  status: string;
+  due_date?: string | null;
+}
+
+export interface ReportWorkloadTasks {
+  user_id: number;
+  name: string;
+  bucket: WorkloadBucket | string;
+  tasks: ReportWorkloadTask[];
 }
 
 export interface ReportAnalytics {
@@ -229,6 +267,7 @@ export interface ReportAnalytics {
   end_date: string;
   completion_trend: Array<{ start: string; end: string; due: number; completed: number; rate: number | null }>;
   by_status: Array<{ status: string; count: number }>;
+  leave_balances: ReportLeaveBalance[];
   top_performers: Array<{
     user_id: number;
     evaluation_id: number;
@@ -313,6 +352,8 @@ export interface EvaluationLeaveContext {
   start: string;
   end: string;
   leave_days: EvaluationLeaveDay[];
+  /** Pre-formatted leave ranges (continuous spans collapsed). */
+  leave_line?: string | null;
   working_day_count: number;
   fully_on_leave: boolean;
   suggested_comment?: string | null;

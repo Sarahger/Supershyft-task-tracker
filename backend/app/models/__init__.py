@@ -57,6 +57,7 @@ class User(Base):
     job_title = Column(String(150), nullable=True)
     phone = Column(String(50), nullable=True)
     profile_picture = Column(String(500), nullable=True)
+    annual_leave_days = Column(Integer, nullable=False, default=12)
     manager_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     email_notifications_enabled = Column(Boolean, default=True, nullable=False)
     notify_task_assigned = Column(Boolean, default=True, nullable=False)

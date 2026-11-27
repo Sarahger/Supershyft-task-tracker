@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,7 @@ from app.db.database import get_db
 from app.models import User
 from app.schemas.common import APIResponse
 from app.services.evaluation_service import EvaluationService
-from app.services.report_analytics_service import build_analytics
+from app.services.report_analytics_service import WORKLOAD_BUCKETS, build_analytics, workload_tasks
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -37,6 +37,20 @@ def report_analytics(
     current_user: User = Depends(require_manager),
 ):
     data = build_analytics(db, start_date, end_date, department_id)
+    return APIResponse(data=data)
+
+
+@router.get("/workload-tasks")
+def report_workload_tasks(
+    user_id: int = Query(...),
+    bucket: str = Query(...),
+    department_id: int | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager),
+):
+    if bucket not in WORKLOAD_BUCKETS:
+        raise HTTPException(status_code=400, detail=f"Invalid bucket. Expected one of: {', '.join(WORKLOAD_BUCKETS)}")
+    data = workload_tasks(db, user_id, bucket, department_id)
     return APIResponse(data=data)
 
 
