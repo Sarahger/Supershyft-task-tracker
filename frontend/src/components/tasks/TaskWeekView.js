@@ -4,6 +4,7 @@ import { addWeeks, subWeeks, startOfWeek, endOfWeek, eachDayOfInterval, format, 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { STATUS_LABELS } from '../../types';
+import { isNextWeekDate } from './TaskCard';
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const priorityAccent = {
     critical: 'border-l-2 calendar-accent-critical',
@@ -26,6 +27,8 @@ export function TaskWeekView({ tasks, undatedTasks = [], currentWeek, onWeekChan
     const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
     const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    // Undated tasks are treated as next week's work until a due date is set.
+    const nextWeekUndated = isNextWeekDate(weekStart) ? undatedTasks : [];
     const tasksByDay = useMemo(() => {
         const map = new Map();
         for (const day of days) {
@@ -46,7 +49,7 @@ export function TaskWeekView({ tasks, undatedTasks = [], currentWeek, onWeekChan
                     const dayTasks = tasksByDay.get(key) ?? [];
                     const today = isToday(day);
                     return (_jsxs("div", { className: clsx('rounded-lg border min-h-[10rem] flex flex-col', today ? 'border-accent-primary/30 bg-accent-primary/5' : 'border-dark-border bg-dark-card'), children: [_jsxs("div", { className: clsx('px-3 py-2 border-b border-dark-border', today && 'bg-accent-primary/8'), children: [_jsx("p", { className: "text-2xs uppercase tracking-wider text-text-muted", children: WEEKDAYS[i] }), _jsx("p", { className: clsx('text-sm font-medium tabular-nums', today ? 'text-accent-primary' : 'text-text-primary'), children: format(day, 'MMM d') })] }), _jsx("div", { className: "flex-1 p-2 space-y-1.5 overflow-y-auto max-h-64", children: dayTasks.length ? (dayTasks.map((task) => (_jsx(WeekTaskCard, { task: task, onClick: () => onTaskClick(task.id) }, task.id)))) : (_jsx("p", { className: "text-2xs text-text-muted px-1 py-2", children: "No tasks" })) })] }, key));
-                }) }), undatedTasks.length > 0 && (_jsxs("div", { className: "rounded-lg border border-dark-border bg-dark-card p-4", children: [_jsxs("h3", { className: "text-xs font-medium uppercase tracking-wider text-text-muted mb-3", children: ["No due date (", undatedTasks.length, ")"] }), _jsx("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2", children: undatedTasks.map((task) => (_jsx(WeekTaskCard, { task: task, onClick: () => onTaskClick(task.id) }, task.id))) })] }))] }));
+                }) }), nextWeekUndated.length > 0 && (_jsxs("div", { className: "rounded-lg border border-dark-border bg-dark-card p-4", children: [_jsxs("h3", { className: "text-xs font-medium uppercase tracking-wider text-text-muted mb-3", children: ["Next week \u00B7 no due date yet (", nextWeekUndated.length, ")"] }), _jsx("div", { className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2", children: nextWeekUndated.map((task) => (_jsx(WeekTaskCard, { task: task, onClick: () => onTaskClick(task.id) }, task.id))) })] }))] }));
 }
 export function TaskWeekViewSkeleton() {
     return (_jsx("div", { className: "grid grid-cols-7 gap-3", children: Array.from({ length: 7 }).map((_, i) => (_jsx("div", { className: "h-48 rounded-lg bg-surface-subtle animate-pulse border border-dark-border" }, i))) }));

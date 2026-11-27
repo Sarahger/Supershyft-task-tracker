@@ -507,7 +507,17 @@ class WeeklyUpdateService:
 
         def _place(task: Task, view: dict) -> None:
             due = as_local_date(task.due_date)
+            # No due date yet → treat as the upcoming calendar week until set.
+            # Relative to *today*: park under Next Week when categorizing the
+            # current week, or under Current Week when categorizing that upcoming week.
             if due is None:
+                upcoming = next_monday(current_week_start(now))
+                if upcoming == next_start:
+                    next_week.append(_annotate(view, carried=False))
+                elif upcoming == cur_start:
+                    current_week.append(_annotate(view, carried=False))
+                else:
+                    next_week.append(_annotate(view, carried=False))
                 return
             before_current = due < cur_start
             in_current = cur_start <= due <= cur_end
@@ -1349,10 +1359,15 @@ class WeeklyUpdateService:
         week_ended = working_week_has_ended(report.period_start) if editable else False
         current_week: list[dict] = []
         next_week: list[dict] = []
+        upcoming = next_monday(current_week_start())
         for view in commitment_views:
             due = as_local_date(view.get("due_date"))
             if due is None:
-                next_week.append(view)
+                # Undated commitments stay on the upcoming calendar week.
+                if upcoming == cur_start:
+                    current_week.append(view)
+                else:
+                    next_week.append(view)
                 continue
             before_current = due < cur_start
             in_current = cur_start <= due <= cur_end

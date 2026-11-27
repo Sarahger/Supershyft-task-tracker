@@ -666,6 +666,35 @@ def test_due_next_week_from_created_tracker_task(client, users, db_session):
     assert any(row["task_id"] == task.id for row in (body.get("due_this_week") or []))
 
 
+def test_undated_tracker_task_buckets_as_next_week(client, users, db_session):
+    """Tasks created without a due date stay in next week until a due date is set."""
+    emp = users["employee"]
+    task = Task(
+        title="Forgot due date",
+        status="to_do",
+        priority="medium",
+        estimated_hours=2,
+        created_by_id=emp.id,
+        due_date=None,
+    )
+    task.assignees.append(TaskAssignee(user_id=emp.id))
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+
+    res = client.get("/api/weekly-updates/carry-forward", headers=auth_header(emp))
+    assert res.status_code == 200
+    data = res.json()["data"]
+    next_ids = {row["task_id"] for row in (data.get("next_week_tasks") or [])}
+    current_ids = {row["task_id"] for row in (data.get("current_week_tasks") or [])}
+    assert task.id in next_ids
+    assert task.id not in current_ids
+    assert any(
+        row["task_id"] == task.id and row.get("due_date") in (None, "")
+        for row in (data.get("next_week_tasks") or [])
+    )
+
+
 def test_deadline_revision_keeps_history(client, users, db_session):
     emp = users["employee"]
     original = datetime.now(timezone.utc) - timedelta(days=3)

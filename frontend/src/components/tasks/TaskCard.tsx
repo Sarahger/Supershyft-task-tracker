@@ -1,8 +1,28 @@
-import { format, isPast, isToday, isThisWeek } from 'date-fns';
+import {
+  addWeeks,
+  endOfWeek,
+  format,
+  isPast,
+  isThisWeek,
+  isToday,
+  isWithinInterval,
+  startOfWeek,
+} from 'date-fns';
 import { MessageSquare, Paperclip, AlertTriangle, Eye, FlaskConical } from 'lucide-react';
 import type { Task } from '../../types';
 import { StatusBadge, PriorityBadge, TagBadge } from '../ui/Badge';
 import { AvatarGroup } from '../ui/Avatar';
+
+const WEEK_OPTS = { weekStartsOn: 1 as const };
+
+/** Calendar week after the current one (Mon–Sun). */
+export function isNextWeekDate(d: Date, now = new Date()): boolean {
+  const next = addWeeks(now, 1);
+  return isWithinInterval(d, {
+    start: startOfWeek(next, WEEK_OPTS),
+    end: endOfWeek(next, WEEK_OPTS),
+  });
+}
 
 interface TaskCardProps {
   task: Task;
@@ -103,6 +123,7 @@ export function groupTasksByDue(tasks: Task[]) {
   const todayOverdue: Task[] = [];
   const todayDue: Task[] = [];
   const thisWeek: Task[] = [];
+  const nextWeek: Task[] = [];
   const later: Task[] = [];
   const completed: Task[] = [];
   const cancelled: Task[] = [];
@@ -126,10 +147,12 @@ export function groupTasksByDue(tasks: Task[]) {
       const d = new Date(task.due_date);
       if (isOverdueTask(task)) overdue.push(task);
       else if (isToday(d)) todayDue.push(task);
-      else if (isThisWeek(d)) thisWeek.push(task);
+      else if (isThisWeek(d, WEEK_OPTS)) thisWeek.push(task);
+      else if (isNextWeekDate(d)) nextWeek.push(task);
       else later.push(task);
     } else {
-      later.push(task);
+      // Forgotten due date → stay under Next week until the user sets one.
+      nextWeek.push(task);
     }
   }
 
@@ -137,6 +160,7 @@ export function groupTasksByDue(tasks: Task[]) {
     overdue,
     today: [...todayOverdue, ...todayDue],
     thisWeek,
+    nextWeek,
     later,
     completed,
     cancelled,
@@ -145,12 +169,13 @@ export function groupTasksByDue(tasks: Task[]) {
   };
 }
 
-/** Sections: today (incl. overdue in progress) → this week → overdue → … */
+/** Sections: today (incl. overdue in progress) → this week → next week → overdue → … */
 export function groupTasksByDueSections(tasks: Task[]): { label: string; tasks: Task[] }[] {
   const g = groupTasksByDue(tasks);
   return [
     { label: "Today's tasks", tasks: g.today },
     { label: 'This week', tasks: g.thisWeek },
+    { label: 'Next week', tasks: g.nextWeek },
     { label: 'Overdue', tasks: g.overdue },
     { label: 'Blocked', tasks: g.blocked },
     { label: 'Waiting for review', tasks: g.review },

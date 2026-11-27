@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import type { Task } from '../../types';
 import { STATUS_LABELS } from '../../types';
+import { isNextWeekDate } from './TaskCard';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -76,6 +77,8 @@ export function TaskWeekView({
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  // Undated tasks are treated as next week's work until a due date is set.
+  const nextWeekUndated = isNextWeekDate(weekStart) ? undatedTasks : [];
 
   const tasksByDay = useMemo(() => {
     const map = new Map<string, Task[]>();
@@ -163,13 +166,13 @@ export function TaskWeekView({
         })}
       </div>
 
-      {undatedTasks.length > 0 && (
+      {nextWeekUndated.length > 0 && (
         <div className="rounded-lg border border-dark-border bg-dark-card p-4">
           <h3 className="text-xs font-medium uppercase tracking-wider text-text-muted mb-3">
-            No due date ({undatedTasks.length})
+            Next week · no due date yet ({nextWeekUndated.length})
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {undatedTasks.map((task) => (
+            {nextWeekUndated.map((task) => (
               <WeekTaskCard
                 key={task.id}
                 task={task}
