@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   addDays,
@@ -13,6 +13,7 @@ import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { toast } from '../ui/Toast';
 import type {
+  EvaluationLeaveDay,
   EvaluationListItem,
   EvaluationRecord,
   EvaluationScore,
@@ -116,7 +117,9 @@ function previewScore(rating: number | null, weight: number) {
 
 function errorMessage(err: unknown, fallback: string) {
   const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-  return typeof detail === 'string' ? detail : fallback;
+  if (typeof detail === 'string') return detail;
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 function fullMonthRange(month: string): { start: string; end: string } {
@@ -201,6 +204,24 @@ function scoresFromRecord(record: EvaluationRecord, parameters: KraParameter[]):
 
 function statusLabel(status: string) {
   return status.replace('_', ' ');
+}
+
+function shortLeaveDay(value: string) {
+  try {
+    return format(parseISO(value.slice(0, 10)), 'd MMM');
+  } catch {
+    return value;
+  }
+}
+
+function leaveTableLine(days?: EvaluationLeaveDay[] | null) {
+  if (!days?.length) return null;
+  const leave = days.filter((d) => d.status === 'LEAVE').map((d) => shortLeaveDay(d.date));
+  const half = days.filter((d) => d.status === 'HALF_DAY').map((d) => shortLeaveDay(d.date));
+  const parts: string[] = [];
+  if (leave.length) parts.push(`Leave: ${leave.join(', ')}`);
+  if (half.length) parts.push(`Half day: ${half.join(', ')}`);
+  return parts.join(' · ') || null;
 }
 
 export function EvaluationsPanel({
@@ -337,7 +358,6 @@ export function EvaluationsPanel({
               <thead>
                 <tr className="border-b border-dark-border text-left">
                   <th className="px-4 py-3 text-2xs font-medium text-text-muted uppercase">Employee</th>
-                  <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Department</th>
                   <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Periods</th>
                   <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Monthly avg</th>
                   <th className="px-3 py-3 text-2xs font-medium text-text-muted uppercase">Status</th>
@@ -348,17 +368,26 @@ export function EvaluationsPanel({
               <tbody>
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-text-muted">No employees match these filters.</td>
+                    <td colSpan={6} className="px-4 py-8 text-center text-text-muted">No employees match these filters.</td>
                   </tr>
                 )}
                 {items.map((row) => {
                   const periods = row.evaluations ?? [];
                   const isOpen = Boolean(expanded[row.user_id]);
+                  const leaveLine = leaveTableLine(row.leave_days);
+                  const deptLine = row.departments.length ? row.departments.join(', ') : null;
                   return (
                     <Fragment key={row.user_id}>
                       <tr className="border-b border-dark-border">
-                        <td className="px-4 py-3 text-text-primary">{row.name}</td>
-                        <td className="px-3 py-3 text-text-secondary">{row.departments.length ? row.departments.join(', ') : '—'}</td>
+                        <td className="px-4 py-3">
+                          <p className="text-text-primary">{row.name}</p>
+                          {(deptLine || leaveLine) && (
+                            <div className="mt-0.5 space-y-0.5 text-xs text-text-muted">
+                              {deptLine && <p>{deptLine}</p>}
+                              {leaveLine && <p>{leaveLine}</p>}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-3 py-3 text-text-secondary">
                           {row.evaluation_count ? (
                             <button
@@ -391,7 +420,7 @@ export function EvaluationsPanel({
                       </tr>
                       {isOpen && periods.map((period) => (
                         <tr key={`${row.user_id}-${period.evaluation_id}`} className="border-b border-dark-border bg-dark-elevated/40">
-                          <td className="px-4 py-2 text-text-muted text-xs" colSpan={2}>
+                          <td className="px-4 py-2 text-text-muted text-xs">
                             Period score
                           </td>
                           <td className="px-3 py-2 text-text-secondary text-xs">
@@ -450,10 +479,10 @@ function EvaluationForm({
         start: existing.period_start.slice(0, 10),
         end: (existing.period_end || existing.period_start).slice(0, 10),
       }
-    : fullMonthRange(month);
-  const initialMode: PeriodMode = existing && !isFullMonthRange(initialRange.start, initialRange.end)
-    ? 'week'
-    : 'month';
+    : defaultWeekRange(month);
+  const initialMode: PeriodMode = existing
+    ? (isFullMonthRange(initialRange.start, initialRange.end) ? 'month' : 'week')
+    : 'week';
 
   const [userId, setUserId] = useState(existing ? String(existing.user_id) : initialUserId ? String(initialUserId) : '');
   const [periodMode, setPeriodMode] = useState<PeriodMode>(initialMode);
@@ -466,10 +495,37 @@ function EvaluationForm({
   const [scores, setScores] = useState<DraftScore[]>(existing ? scoresFromRecord(existing, parameters) : blankScores(parameters));
   const [confirming, setConfirming] = useState(false);
   const [showRatingChart, setShowRatingChart] = useState(false);
+  const appliedLeaveNote = useRef<string | null>(existing?.overall_comment?.startsWith('Leave / half days in this period:')
+    ? existing.overall_comment
+    : null);
 
   const total = scores.reduce((sum, row) => sum + (previewScore(row.rating, row.weight) ?? 0), 0);
   const complete = scores.every((row) => row.rating != null);
   const locked = Boolean(existing);
+
+  const { data: leaveContext } = useQuery({
+    queryKey: ['evaluation-leave-context', userId, periodStart, periodEnd],
+    queryFn: () => reportsApi.evaluationLeaveContext({
+      user_id: Number(userId),
+      period_start: periodStart,
+      period_end: periodEnd,
+    }).then((r) => r.data.data),
+    enabled: Boolean(userId && periodStart && periodEnd),
+  });
+
+  const fullyOnLeave = Boolean(leaveContext?.fully_on_leave);
+  const leaveLine = leaveTableLine(leaveContext?.leave_days);
+
+  useEffect(() => {
+    if (!userId || locked) return;
+    const suggested = leaveContext?.suggested_comment ?? '';
+    setComment((current) => {
+      const untouched = !current.trim() || current === appliedLeaveNote.current;
+      if (!untouched) return current;
+      appliedLeaveNote.current = suggested || null;
+      return suggested;
+    });
+  }, [userId, locked, leaveContext?.suggested_comment, leaveContext?.fully_on_leave, periodStart, periodEnd]);
 
   const switchMode = (next: PeriodMode) => {
     setPeriodMode(next);
@@ -500,6 +556,9 @@ function EvaluationForm({
     mutationFn: async (submit: boolean) => {
       if (!userId) throw new Error('Select an employee');
       if (!periodStart || !periodEnd) throw new Error('Select an evaluation period');
+      if (fullyOnLeave) {
+        throw new Error('Cannot evaluate — employee was on leave for every working day in this period');
+      }
       const body = payload();
       if (!existing) {
         const created = await reportsApi.createEvaluation(body);
@@ -534,88 +593,90 @@ function EvaluationForm({
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Period type</span>
-          <div className="flex flex-wrap gap-2">
-            {([
-              ['month', 'Month'],
-              ['week', 'Week'],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                disabled={locked}
-                onClick={() => switchMode(value)}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  periodMode === value
-                    ? 'border-accent-primary bg-accent-primary/15 text-accent-primary'
-                    : 'border-dark-border text-text-secondary hover:bg-dark-hover'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+          <div className="shrink-0">
+            <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Time frame</span>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ['week', 'Week'],
+                ['month', 'Month'],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => switchMode(value)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    periodMode === value
+                      ? 'border-accent-primary bg-accent-primary/15 text-accent-primary'
+                      : 'border-dark-border text-text-secondary hover:bg-dark-hover'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {periodMode === 'month' ? (
+            <label className="block min-w-0 sm:max-w-xs flex-1">
+              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Month</span>
+              <input
+                type="month"
+                className="input w-full text-sm"
+                value={calendarMonth}
+                disabled={locked}
+                onChange={(e) => {
+                  const next = e.target.value || currentMonth();
+                  setCalendarMonth(next);
+                  const range = fullMonthRange(next);
+                  setPeriodStart(range.start);
+                  setPeriodEnd(range.end);
+                }}
+              />
+            </label>
+          ) : (
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Start date</span>
+                <input
+                  type="date"
+                  className="input w-full text-sm"
+                  value={periodStart}
+                  disabled={locked}
+                  onChange={(e) => {
+                    const nextStart = e.target.value;
+                    const monthKey = nextStart.slice(0, 7);
+                    setCalendarMonth(monthKey);
+                    const clamped = clampWeekRange(nextStart, periodEnd.slice(0, 7) === monthKey ? periodEnd : format(addDays(parseISO(nextStart), 6), 'yyyy-MM-dd'));
+                    setPeriodStart(clamped.start);
+                    setPeriodEnd(clamped.end);
+                  }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">End date</span>
+                <input
+                  type="date"
+                  className="input w-full text-sm"
+                  value={periodEnd}
+                  min={periodStart}
+                  max={format(endOfMonth(parseISO(periodStart)), 'yyyy-MM-dd')}
+                  disabled={locked}
+                  onChange={(e) => {
+                    const clamped = clampWeekRange(periodStart, e.target.value);
+                    setPeriodStart(clamped.start);
+                    setPeriodEnd(clamped.end);
+                    setCalendarMonth(clamped.start.slice(0, 7));
+                  }}
+                />
+              </label>
+            </div>
+          )}
         </div>
 
-        {periodMode === 'month' ? (
-          <label className="block sm:col-span-2">
-            <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Month</span>
-            <input
-              type="month"
-              className="input w-full text-sm sm:max-w-xs"
-              value={calendarMonth}
-              disabled={locked}
-              onChange={(e) => {
-                const next = e.target.value || currentMonth();
-                setCalendarMonth(next);
-                const range = fullMonthRange(next);
-                setPeriodStart(range.start);
-                setPeriodEnd(range.end);
-              }}
-            />
-          </label>
-        ) : (
-          <>
-            <label className="block">
-              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Start date</span>
-              <input
-                type="date"
-                className="input w-full text-sm"
-                value={periodStart}
-                disabled={locked}
-                onChange={(e) => {
-                  const nextStart = e.target.value;
-                  const monthKey = nextStart.slice(0, 7);
-                  setCalendarMonth(monthKey);
-                  const clamped = clampWeekRange(nextStart, periodEnd.slice(0, 7) === monthKey ? periodEnd : format(addDays(parseISO(nextStart), 6), 'yyyy-MM-dd'));
-                  setPeriodStart(clamped.start);
-                  setPeriodEnd(clamped.end);
-                }}
-              />
-            </label>
-            <label className="block">
-              <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">End date</span>
-              <input
-                type="date"
-                className="input w-full text-sm"
-                value={periodEnd}
-                min={periodStart}
-                max={format(endOfMonth(parseISO(periodStart)), 'yyyy-MM-dd')}
-                disabled={locked}
-                onChange={(e) => {
-                  const clamped = clampWeekRange(periodStart, e.target.value);
-                  setPeriodStart(clamped.start);
-                  setPeriodEnd(clamped.end);
-                  setCalendarMonth(clamped.start.slice(0, 7));
-                }}
-              />
-            </label>
-          </>
-        )}
-
-        <label className="block sm:col-span-2">
+        <label className="block">
           <span className="block text-2xs uppercase tracking-wider text-text-muted mb-1.5">Employee</span>
           <select className="input w-full text-sm" value={userId} onChange={(e) => setUserId(e.target.value)} disabled={locked}>
             <option value="">Select an employee</option>
@@ -632,6 +693,17 @@ function EvaluationForm({
           : `Evaluating ${rangeLabel(periodStart, periodEnd)}. Pick 1–3 weeks in the same month (at least 7 days).`}
         {' '}Periods cannot overlap for the same person.
       </p>
+
+      {fullyOnLeave && (
+        <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          This employee was on leave for every working day in the selected time frame, so an evaluation cannot be created for it.
+        </p>
+      )}
+      {!fullyOnLeave && leaveLine && (
+        <p className="text-xs text-text-muted">
+          Attendance in this time frame — {leaveLine}. This is added to overall comments by default.
+        </p>
+      )}
 
       {showRatingChart && (
         <div className="rounded-xl border border-dark-border overflow-x-auto">
@@ -701,10 +773,16 @@ function EvaluationForm({
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button type="button" variant="secondary" loading={save.isPending && !confirming} onClick={() => save.mutate(false)}>
+        <Button
+          type="button"
+          variant="secondary"
+          loading={save.isPending && !confirming}
+          disabled={!userId || fullyOnLeave}
+          onClick={() => save.mutate(false)}
+        >
           Save as Draft
         </Button>
-        <Button type="button" onClick={() => setConfirming(true)} disabled={!complete || !userId}>
+        <Button type="button" onClick={() => setConfirming(true)} disabled={!complete || !userId || fullyOnLeave}>
           Submit Evaluation
         </Button>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { addDays, endOfMonth, endOfQuarter, format, startOfMonth, startOfQuarter } from 'date-fns';
+import { addDays, addMonths, endOfMonth, endOfQuarter, format, parseISO, startOfMonth, startOfQuarter } from 'date-fns';
 import clsx from 'clsx';
 import { reportsApi, departmentsApi } from '../services/endpoints';
 import { Button } from '../components/ui/Button';
@@ -105,12 +105,26 @@ function iso(day: Date) {
   return format(day, 'yyyy-MM-dd');
 }
 
+/** Inclusive span of at most one quarter (~3 calendar months). */
+function clampToQuarterSpan(startStr: string, endStr: string): { start: string; end: string } {
+  const start = parseISO(startStr);
+  let end = parseISO(endStr || startStr);
+  if (Number.isNaN(start.getTime())) {
+    const fallback = new Date();
+    return { start: iso(fallback), end: iso(fallback) };
+  }
+  if (Number.isNaN(end.getTime()) || end < start) end = start;
+  const maxEnd = addDays(addMonths(start, 3), -1);
+  if (end > maxEnd) end = maxEnd;
+  return { start: iso(start), end: iso(end) };
+}
+
 export default function ReportsPage() {
   const { user } = useAuth();
   const isManager = canAccessManagerFeatures(user);
   const [tab, setTab] = useState<ReportTab>('overview');
   const [departmentFilter, setDepartmentFilter] = useState('');
-  const [period, setPeriod] = useState<PeriodPreset>('month');
+  const [period, setPeriod] = useState<PeriodPreset>('week');
   const [customStart, setCustomStart] = useState(iso(startOfMonth(new Date())));
   const [customEnd, setCustomEnd] = useState(iso(endOfMonth(new Date())));
   const [openEvaluationId, setOpenEvaluationId] = useState<number | null>(null);
@@ -132,10 +146,15 @@ export default function ReportsPage() {
       return { start: iso(startOfQuarter(now)), end: iso(endOfQuarter(now)) };
     }
     if (period === 'custom') {
-      return { start: customStart, end: customEnd || customStart };
+      return clampToQuarterSpan(customStart, customEnd || customStart);
     }
     return { start: iso(startOfMonth(now)), end: iso(endOfMonth(now)) };
   }, [period, customStart, customEnd]);
+
+  const customMaxEnd = useMemo(
+    () => iso(addDays(addMonths(parseISO(customStart || iso(new Date())), 3), -1)),
+    [customStart],
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ['reports', reportFilters],
@@ -209,7 +228,7 @@ export default function ReportsPage() {
                 value={period}
                 onChange={(e) => setPeriod(e.target.value as PeriodPreset)}
                 className="input py-1.5 text-sm w-auto"
-                aria-label="Reporting period"
+                aria-label="Reporting time frame"
               >
                 <option value="week">This week</option>
                 <option value="month">This month</option>
@@ -219,8 +238,31 @@ export default function ReportsPage() {
             )}
             {tab === 'overview' && period === 'custom' && (
               <>
-                <input type="date" className="input py-1.5 text-sm w-auto" value={customStart} onChange={(e) => setCustomStart(e.target.value)} aria-label="Start date" />
-                <input type="date" className="input py-1.5 text-sm w-auto" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} aria-label="End date" />
+                <input
+                  type="date"
+                  className="input py-1.5 text-sm w-auto"
+                  value={customStart}
+                  max={customEnd}
+                  onChange={(e) => {
+                    const next = clampToQuarterSpan(e.target.value, customEnd);
+                    setCustomStart(next.start);
+                    setCustomEnd(next.end);
+                  }}
+                  aria-label="Start date"
+                />
+                <input
+                  type="date"
+                  className="input py-1.5 text-sm w-auto"
+                  value={customEnd}
+                  min={customStart}
+                  max={customMaxEnd}
+                  onChange={(e) => {
+                    const next = clampToQuarterSpan(customStart, e.target.value);
+                    setCustomStart(next.start);
+                    setCustomEnd(next.end);
+                  }}
+                  aria-label="End date"
+                />
               </>
             )}
             <Button variant="secondary" onClick={handleExport}>Export CSV</Button>

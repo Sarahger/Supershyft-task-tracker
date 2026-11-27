@@ -322,6 +322,22 @@ export interface EvaluationPeriodSummary {
   submitted_at?: string | null;
 }
 
+export interface EvaluationLeaveDay {
+  date: string;
+  status: 'LEAVE' | 'HALF_DAY' | string;
+  label: string;
+}
+
+export interface EvaluationLeaveContext {
+  user_id?: number;
+  start: string;
+  end: string;
+  leave_days: EvaluationLeaveDay[];
+  working_day_count: number;
+  fully_on_leave: boolean;
+  suggested_comment?: string | null;
+}
+
 export interface EvaluationListItem {
   user_id: number;
   name: string;
@@ -337,6 +353,8 @@ export interface EvaluationListItem {
   last_evaluated_at?: string | null;
   evaluator?: { id: number; name: string } | null;
   evaluations?: EvaluationPeriodSummary[];
+  leave_days?: EvaluationLeaveDay[];
+  leave_summary?: EvaluationLeaveContext;
 }
 
 export interface EvaluationList {

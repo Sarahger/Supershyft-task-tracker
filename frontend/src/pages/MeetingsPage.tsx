@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import {
-  Video, Phone, Clock, Users, LogOut, ExternalLink, Shield, PhoneOff, Search,
+  Video, Phone, Clock, LogOut, ExternalLink, Shield, PhoneOff, Search,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { meetingsApi, usersApi } from '../services/endpoints';
@@ -363,72 +363,19 @@ export default function MeetingsPage() {
         {isLoading ? (
           <div className="h-32 rounded-xl bg-dark-muted animate-pulse" />
         ) : (
-          <>
-              <section className="rounded-xl border border-dark-border bg-dark-card p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Clock className="h-4 w-4 text-text-muted" />
-                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Your activity</h3>
-                </div>
-                {!data?.my_logs.length ? (
-                  <p className="text-sm text-text-muted">No meeting activity recorded for this day.</p>
-                ) : (
-                  data.my_logs.map((log) => (
-                    <LogRow key={log.id} log={log} onLeave={(id) => leaveMutation.mutate(id)} />
-                  ))
-                )}
-              </section>
-
-              <section className="rounded-xl border border-dark-border bg-dark-card p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Users className="h-4 w-4 text-text-muted" />
-                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider">General syncs today</h3>
-                </div>
-                {!data?.general_calls.length ? (
-                  <p className="text-sm text-text-muted">No general calls for this day.</p>
-                ) : (
-                  data.general_calls.map((log) => (
-                    <div key={log.id} className="flex flex-wrap items-center gap-2 py-2 border-b border-dark-border last:border-0 text-sm">
-                      <div className="flex-1">
-                        <p className="text-text-primary">{userName(log.user)}</p>
-                        <p className="text-text-muted text-xs">{format(new Date(log.click_time), 'h:mm a')}</p>
-                      </div>
-                      {log.meet_url && (
-                        <Button variant="secondary" size="sm" className="gap-1" onClick={() => openMeetUrl(log.meet_url!)}>
-                          <ExternalLink className="h-3.5 w-3.5" /> Join
-                        </Button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </section>
-
-              <section className="rounded-xl border border-dark-border bg-dark-card p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Video className="h-4 w-4 text-text-muted" />
-                  <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Task discussion calls</h3>
-                </div>
-                {!data?.task_calls.length ? (
-                  <p className="text-sm text-text-muted">No task calls for this day.</p>
-                ) : (
-                  data.task_calls.map((log) => (
-                    <div key={log.id} className="flex flex-wrap items-center gap-2 py-2 border-b border-dark-border last:border-0 text-sm">
-                      <div className="flex-1 min-w-[180px]">
-                        <p className="text-text-primary">{log.task_title || `Task #${log.task_id}`}</p>
-                        <p className="text-text-muted text-xs">
-                          {userName(log.user)} · {format(new Date(log.click_time), 'h:mm a')}
-                          {log.status ? ` · ${log.status}` : ''}
-                        </p>
-                      </div>
-                      {log.meet_url && (
-                        <Button variant="secondary" size="sm" className="gap-1" onClick={() => openMeetUrl(log.meet_url!)}>
-                          <ExternalLink className="h-3.5 w-3.5" /> Join
-                        </Button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </section>
-            </>
+          <section className="rounded-xl border border-dark-border bg-dark-card p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock className="h-4 w-4 text-text-muted" />
+              <h3 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Your activity</h3>
+            </div>
+            {!data?.my_logs.length ? (
+              <p className="text-sm text-text-muted">No meeting activity recorded for this day.</p>
+            ) : (
+              data.my_logs.map((log) => (
+                <LogRow key={log.id} log={log} onLeave={(id) => leaveMutation.mutate(id)} />
+              ))
+            )}
+          </section>
         )}
       </div>
     </div>

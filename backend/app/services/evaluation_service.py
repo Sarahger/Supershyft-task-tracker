@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 from calendar import monthrange
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.company_holidays import is_working_day
+from app.core.constants import AttendanceStatus
 from app.core.kra_scorecard import (
     KRA_PARAMETERS,
     PARAMETER_BY_KEY,
@@ -17,9 +19,16 @@ from app.core.kra_scorecard import (
     overall_score,
     weighted_score,
 )
-from app.models import EmployeeEvaluation, EmployeeEvaluationRevision, EmployeeEvaluationScore, User
+from app.models import (
+    Attendance,
+    EmployeeEvaluation,
+    EmployeeEvaluationRevision,
+    EmployeeEvaluationScore,
+    User,
+)
 
 MIN_PERIOD_DAYS = 7
+LEAVE_STATUSES = {AttendanceStatus.LEAVE.value, AttendanceStatus.HALF_DAY.value}
 
 
 def calendar_month_start(value: date) -> date:
@@ -58,6 +67,60 @@ def _effective_end(row: EmployeeEvaluation) -> date:
 
 def _ranges_overlap(start_a: date, end_a: date, start_b: date, end_b: date) -> bool:
     return start_a <= end_b and start_b <= end_a
+
+
+def _iter_days(start: date, end: date):
+    cursor = start
+    while cursor <= end:
+        yield cursor
+        cursor += timedelta(days=1)
+
+
+def _working_days(start: date, end: date) -> list[date]:
+    return [day for day in _iter_days(start, end) if is_working_day(day)]
+
+
+def _leave_day_payload(day: date, status: str) -> dict:
+    return {
+        "date": day.isoformat(),
+        "status": status,
+        "label": "Half day" if status == AttendanceStatus.HALF_DAY.value else "Leave",
+    }
+
+
+def _format_leave_note(leave_days: list[dict]) -> str | None:
+    if not leave_days:
+        return None
+    parts: list[str] = []
+    for row in leave_days:
+        day = date.fromisoformat(row["date"][:10])
+        kind = "half day" if row.get("status") == AttendanceStatus.HALF_DAY.value else "leave"
+        parts.append(f"{day.day} {day.strftime('%b')} ({kind})")
+    return f"Leave / half days in this period: {', '.join(parts)}."
+
+
+def _leave_summary_from_map(
+    by_day: dict[date, str],
+    start: date,
+    end: date,
+) -> dict:
+    leave_days = [
+        _leave_day_payload(day, status)
+        for day, status in sorted(by_day.items())
+        if start <= day <= end and status in LEAVE_STATUSES
+    ]
+    working = _working_days(start, end)
+    fully_on_leave = bool(working) and all(
+        by_day.get(day) == AttendanceStatus.LEAVE.value for day in working
+    )
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "leave_days": leave_days,
+        "working_day_count": len(working),
+        "fully_on_leave": fully_on_leave,
+        "suggested_comment": None if fully_on_leave else _format_leave_note(leave_days),
+    }
 
 
 def _snapshot(evaluation: EmployeeEvaluation) -> dict:
@@ -286,6 +349,8 @@ class EvaluationService:
                     if previous is None or row.submitted_at > previous:
                         last_submitted[row.user_id] = row.submitted_at
 
+        leave_by_user = self._leave_maps(user_ids, month, month_end)
+
         items = []
         for user in users:
             month_rows = by_user.get(user.id, [])
@@ -300,6 +365,7 @@ class EvaluationService:
             else:
                 avg = None
                 status = "not_started"
+            leave_summary = _leave_summary_from_map(leave_by_user.get(user.id, {}), month, month_end)
             items.append(
                 {
                     "user_id": user.id,
@@ -314,6 +380,8 @@ class EvaluationService:
                     "status": status,
                     "last_evaluated_at": last_submitted.get(user.id),
                     "evaluations": [_period_list_item(r) for r in month_rows],
+                    "leave_days": leave_summary["leave_days"],
+                    "leave_summary": leave_summary,
                     # Backward-compatible single-id field: prefer latest submitted, else latest any.
                     "evaluation_id": (
                         (submitted[-1].id if submitted else None)
@@ -329,6 +397,15 @@ class EvaluationService:
             "period_end": month_end.isoformat(),
             **self.scorecard(),
             "items": items,
+        }
+
+    def leave_context(self, user_id: int, period_start: date, period_end: date | None = None) -> dict:
+        employee = self._employee(user_id)
+        start, end = self._validate_period_range(period_start, period_end)
+        maps = self._leave_maps([employee.id], start, end)
+        return {
+            "user_id": employee.id,
+            **_leave_summary_from_map(maps.get(employee.id, {}), start, end),
         }
 
     def get(self, evaluation_id: int) -> dict:
@@ -365,6 +442,7 @@ class EvaluationService:
             payload.get("period_end"),
         )
         self._assert_no_overlap(employee.id, period_start, period_end)
+        self._assert_not_fully_on_leave(employee.id, period_start, period_end)
         scores = _normalize_scores(payload.get("scores"), require_all=False)
         evaluation = EmployeeEvaluation(
             user_id=employee.id,
@@ -425,6 +503,12 @@ class EvaluationService:
         elif evaluation.period_end is None:
             evaluation.period_end = calendar_month_end(evaluation.period_start)
 
+        self._assert_not_fully_on_leave(
+            evaluation.user_id,
+            evaluation.period_start,
+            _effective_end(evaluation),
+        )
+
         employee = evaluation.employee
         evaluation.overall_comment = comment
         evaluation.department_snapshot = ", ".join(_department_names(employee)) or None
@@ -436,6 +520,44 @@ class EvaluationService:
                 evaluation.submitted_at = datetime.now(timezone.utc)
         elif evaluation.status == "submitted":
             evaluation.status = "draft"
+
+    def _leave_maps(
+        self,
+        user_ids: list[int],
+        start: date,
+        end: date,
+    ) -> dict[int, dict[date, str]]:
+        if not user_ids:
+            return {}
+        rows = (
+            self.db.query(Attendance)
+            .filter(
+                Attendance.user_id.in_(user_ids),
+                Attendance.attendance_date >= start,
+                Attendance.attendance_date <= end,
+                Attendance.status.in_(tuple(LEAVE_STATUSES)),
+            )
+            .all()
+        )
+        by_user: dict[int, dict[date, str]] = {uid: {} for uid in user_ids}
+        for row in rows:
+            by_user.setdefault(row.user_id, {})[row.attendance_date] = row.status
+        return by_user
+
+    def _assert_not_fully_on_leave(self, user_id: int, period_start: date, period_end: date) -> None:
+        summary = _leave_summary_from_map(
+            self._leave_maps([user_id], period_start, period_end).get(user_id, {}),
+            period_start,
+            period_end,
+        )
+        if summary["fully_on_leave"]:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot evaluate this period — the employee was on leave "
+                    "for every working day in the selected range"
+                ),
+            )
 
     def _assert_no_overlap(
         self,

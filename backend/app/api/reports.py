@@ -69,6 +69,18 @@ def evaluation_history(
     return APIResponse(data=EvaluationService(db).history(user_id))
 
 
+@router.get("/evaluations/leave-context")
+def evaluation_leave_context(
+    user_id: int = Query(...),
+    period_start: date = Query(...),
+    period_end: date | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_manager),
+):
+    data = EvaluationService(db).leave_context(user_id, period_start, period_end)
+    return APIResponse(data=data)
+
+
 @router.post("/evaluations")
 def create_evaluation(
     payload: EvaluationWrite,

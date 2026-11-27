@@ -268,6 +268,8 @@ export const reportsApi = {
       '/reports/evaluations/history',
       { params: { user_id: userId } },
     ),
+  evaluationLeaveContext: (params: { user_id: number; period_start: string; period_end?: string }) =>
+    api.get<APIResponse<import('../types').EvaluationLeaveContext>>('/reports/evaluations/leave-context', { params }),
   createEvaluation: (data: Record<string, unknown>) =>
     api.post<APIResponse<import('../types').EvaluationRecord>>('/reports/evaluations', data),
   saveEvaluation: (id: number, data: Record<string, unknown>) =>

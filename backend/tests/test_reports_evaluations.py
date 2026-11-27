@@ -11,7 +11,7 @@ from app.core.security import create_access_token, get_password_hash
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
-from app.models import Department, EmployeeEvaluationRevision, Task, TaskAssignee, User
+from app.models import Attendance, Department, EmployeeEvaluationRevision, Task, TaskAssignee, User
 from app.utils.week_periods import due_at_noon
 
 
@@ -307,6 +307,76 @@ def test_month_start_only_defaults_to_full_month(client, users):
     assert created.status_code == 200, created.text
     assert created.json()["data"]["period_start"] == "2026-11-01"
     assert created.json()["data"]["period_end"] == "2026-11-30"
+
+
+def test_leave_blocks_full_week_and_notes_partial_days(client, users, db_session):
+    manager = users["manager"]
+    employee = users["employee"]
+    headers = auth_header(manager)
+
+    # Working days in 2026-11-01..07 are Mon–Thu (Diwali week).
+    for day in (date(2026, 11, 2), date(2026, 11, 3), date(2026, 11, 4), date(2026, 11, 5)):
+        db_session.add(Attendance(user_id=employee.id, attendance_date=day, status="LEAVE"))
+    db_session.commit()
+
+    blocked = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-01", period_end="2026-11-07"),
+        headers=headers,
+    )
+    assert blocked.status_code == 400
+    assert "on leave" in blocked.json()["detail"].lower()
+
+    leave_ctx = client.get(
+        "/api/reports/evaluations/leave-context",
+        params={
+            "user_id": employee.id,
+            "period_start": "2026-11-01",
+            "period_end": "2026-11-07",
+        },
+        headers=headers,
+    )
+    assert leave_ctx.status_code == 200
+    assert leave_ctx.json()["data"]["fully_on_leave"] is True
+
+    db_session.query(Attendance).delete()
+    db_session.add(Attendance(user_id=employee.id, attendance_date=date(2026, 11, 3), status="LEAVE"))
+    db_session.add(Attendance(user_id=employee.id, attendance_date=date(2026, 11, 4), status="HALF_DAY"))
+    db_session.commit()
+
+    partial = client.get(
+        "/api/reports/evaluations/leave-context",
+        params={
+            "user_id": employee.id,
+            "period_start": "2026-11-01",
+            "period_end": "2026-11-07",
+        },
+        headers=headers,
+    )
+    assert partial.status_code == 200
+    body = partial.json()["data"]
+    assert body["fully_on_leave"] is False
+    assert body["suggested_comment"].startswith("Leave / half days in this period:")
+    assert "3 Nov (leave)" in body["suggested_comment"]
+    assert "4 Nov (half day)" in body["suggested_comment"]
+
+    created = client.post(
+        "/api/reports/evaluations",
+        json=score_payload(user_id=employee.id, period_start="2026-11-01", period_end="2026-11-07"),
+        headers=headers,
+    )
+    assert created.status_code == 200, created.text
+
+    listing = client.get(
+        "/api/reports/evaluations",
+        params={"period_start": "2026-11-01"},
+        headers=headers,
+    )
+    assert listing.status_code == 200
+    item = next(row for row in listing.json()["data"]["items"] if row["user_id"] == employee.id)
+    statuses = {row["date"]: row["status"] for row in item["leave_days"]}
+    assert statuses["2026-11-03"] == "LEAVE"
+    assert statuses["2026-11-04"] == "HALF_DAY"
 
 
 def test_status_counts_and_completion_trend(client, users, db_session):
