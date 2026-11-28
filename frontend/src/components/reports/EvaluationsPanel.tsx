@@ -238,18 +238,30 @@ function collapseLeaveSpans(dates: string[]): string[] {
   });
 }
 
+function formatTakenDays(value?: number | null) {
+  if (value == null || Number.isNaN(value)) return null;
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
 function leaveTableLine(
   days?: EvaluationLeaveDay[] | null,
   preformatted?: string | null,
+  takenDays?: number | null,
 ) {
-  if (preformatted?.trim()) return preformatted.trim();
-  if (!days?.length) return null;
-  const leave = collapseLeaveSpans(days.filter((d) => d.status === 'LEAVE').map((d) => d.date));
-  const half = collapseLeaveSpans(days.filter((d) => d.status === 'HALF_DAY').map((d) => d.date));
-  const parts: string[] = [];
-  if (leave.length) parts.push(`Leave: ${leave.join(', ')}`);
-  if (half.length) parts.push(`Half day: ${half.join(', ')}`);
-  return parts.join(' · ') || null;
+  const ranges = preformatted?.trim()
+    ? preformatted.trim()
+    : (() => {
+        if (!days?.length) return null;
+        const leave = collapseLeaveSpans(days.filter((d) => d.status === 'LEAVE').map((d) => d.date));
+        const half = collapseLeaveSpans(days.filter((d) => d.status === 'HALF_DAY').map((d) => d.date));
+        const parts: string[] = [];
+        if (leave.length) parts.push(`Leave: ${leave.join(', ')}`);
+        if (half.length) parts.push(`Half day: ${half.join(', ')}`);
+        return parts.join(' · ') || null;
+      })();
+  if (!ranges) return null;
+  const taken = formatTakenDays(takenDays);
+  return taken ? `${ranges} · Taken ${taken}` : ranges;
 }
 
 export function EvaluationsPanel({
@@ -402,7 +414,11 @@ export function EvaluationsPanel({
                 {items.map((row) => {
                   const periods = row.evaluations ?? [];
                   const isOpen = Boolean(expanded[row.user_id]);
-                  const leaveLine = leaveTableLine(row.leave_days, row.leave_summary?.leave_line);
+                  const leaveLine = leaveTableLine(
+                    row.leave_days,
+                    row.leave_summary?.leave_line,
+                    row.leave_summary?.taken_days,
+                  );
                   const deptLine = row.departments.length ? row.departments.join(', ') : null;
                   return (
                     <Fragment key={row.user_id}>
@@ -542,7 +558,11 @@ function EvaluationForm({
   });
 
   const fullyOnLeave = Boolean(leaveContext?.fully_on_leave);
-  const leaveLine = leaveTableLine(leaveContext?.leave_days, leaveContext?.leave_line);
+  const leaveLine = leaveTableLine(
+    leaveContext?.leave_days,
+    leaveContext?.leave_line,
+    leaveContext?.taken_days,
+  );
 
   useEffect(() => {
     if (!userId || locked) return;

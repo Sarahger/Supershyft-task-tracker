@@ -354,6 +354,8 @@ export interface EvaluationLeaveContext {
   leave_days: EvaluationLeaveDay[];
   /** Pre-formatted leave ranges (continuous spans collapsed). */
   leave_line?: string | null;
+  /** Working-day leave consumed in period (LEAVE=1, HALF_DAY=0.5). */
+  taken_days?: number;
   working_day_count: number;
   fully_on_leave: boolean;
   suggested_comment?: string | null;

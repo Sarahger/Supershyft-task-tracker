@@ -360,6 +360,7 @@ def test_leave_blocks_full_week_and_notes_partial_days(client, users, db_session
     assert "3 Nov (leave)" in body["suggested_comment"]
     assert "4 Nov (half day)" in body["suggested_comment"]
     assert body["leave_line"] == "Leave: 3 Nov · Half day: 4 Nov"
+    assert body["taken_days"] == 1.5
 
     created = client.post(
         "/api/reports/evaluations",
@@ -409,11 +410,13 @@ def test_leave_context_ranges_and_skips_non_working_days(client, users, db_sessi
     leave_dates = [row["date"] for row in body["leave_days"]]
     assert "2026-11-15" not in leave_dates
     assert "2026-11-22" not in leave_dates  # Sunday inside the stretch
-    assert "2026-11-28" not in leave_dates  # 4th Saturday
+    assert "2026-11-28" not in leave_dates  # 4th Saturday (does not count toward taken)
     assert "2026-11-18" in leave_dates
     assert "2026-11-27" in leave_dates
-    assert body["leave_line"] == "Leave: 18 Nov–27 Nov"
-    assert "18 Nov–27 Nov (leave)" in body["suggested_comment"]
+    # Display keeps marked endpoints (28 Nov), even though only working days count.
+    assert body["leave_line"] == "Leave: 18 Nov–28 Nov"
+    assert body["taken_days"] == 9.0  # 18–21 + 23–27 (skip Sun 22 & 4th Sat 28)
+    assert "18 Nov–28 Nov (leave)" in body["suggested_comment"]
     assert "15 Nov" not in (body["suggested_comment"] or "")
 
 
