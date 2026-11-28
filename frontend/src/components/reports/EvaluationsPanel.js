@@ -187,17 +187,30 @@ function shortLeaveDay(value) {
         return value;
     }
 }
-function leaveTableLine(days) {
-    if (!days?.length)
+function formatTakenDays(value) {
+    if (value == null || Number.isNaN(value))
         return null;
-    const leave = days.filter((d) => d.status === 'LEAVE').map((d) => shortLeaveDay(d.date));
-    const half = days.filter((d) => d.status === 'HALF_DAY').map((d) => shortLeaveDay(d.date));
-    const parts = [];
-    if (leave.length)
-        parts.push(`Leave: ${leave.join(', ')}`);
-    if (half.length)
-        parts.push(`Half day: ${half.join(', ')}`);
-    return parts.join(' · ') || null;
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+function leaveTableLine(days, preformatted, takenDays) {
+    const ranges = (preformatted && String(preformatted).trim())
+        ? String(preformatted).trim()
+        : (() => {
+            if (!days?.length)
+                return null;
+            const leave = days.filter((d) => d.status === 'LEAVE').map((d) => shortLeaveDay(d.date));
+            const half = days.filter((d) => d.status === 'HALF_DAY').map((d) => shortLeaveDay(d.date));
+            const parts = [];
+            if (leave.length)
+                parts.push(`Leave: ${leave.join(', ')}`);
+            if (half.length)
+                parts.push(`Half day: ${half.join(', ')}`);
+            return parts.join(' · ') || null;
+        })();
+    if (!ranges)
+        return null;
+    const taken = formatTakenDays(takenDays);
+    return taken ? `${ranges} · Taken ${taken}` : ranges;
 }
 export function EvaluationsPanel({ departmentId, initialEvaluationId, onConsumedInitial, }) {
     const qc = useQueryClient();
@@ -245,7 +258,7 @@ export function EvaluationsPanel({ departmentId, initialEvaluationId, onConsumed
                     } })) }), _jsx(Modal, { isOpen: viewId != null && !editing, onClose: () => setViewId(null), title: "Evaluation", size: "2xl", children: viewId != null && !editing && (_jsx(EvaluationDetail, { evaluationId: viewId, onEdit: (record) => setEditing(record) })) }), _jsx("section", { className: "card overflow-hidden", children: isLoading ? (_jsx("p", { className: "text-sm text-text-muted p-6", children: "Loading evaluations\u2026" })) : (_jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "w-full text-sm", children: [_jsx("thead", { children: _jsxs("tr", { className: "border-b border-dark-border text-left", children: [_jsx("th", { className: "px-4 py-3 text-2xs font-medium text-text-muted uppercase", children: "Employee" }), _jsx("th", { className: "px-3 py-3 text-2xs font-medium text-text-muted uppercase", children: "Periods" }), _jsx("th", { className: "px-3 py-3 text-2xs font-medium text-text-muted uppercase", children: "Monthly avg" }), _jsx("th", { className: "px-3 py-3 text-2xs font-medium text-text-muted uppercase", children: "Status" }), _jsx("th", { className: "px-3 py-3 text-2xs font-medium text-text-muted uppercase", children: "Last evaluated" }), _jsx("th", { className: "px-4 py-3 text-2xs font-medium text-text-muted uppercase", children: "Action" })] }) }), _jsxs("tbody", { children: [items.length === 0 && (_jsx("tr", { children: _jsx("td", { colSpan: 6, className: "px-4 py-8 text-center text-text-muted", children: "No employees match these filters." }) })), items.map((row) => {
                                         const periods = row.evaluations ?? [];
                                         const isOpen = Boolean(expanded[row.user_id]);
-                                        const leaveLine = leaveTableLine(row.leave_days);
+                                        const leaveLine = leaveTableLine(row.leave_days, row.leave_summary?.leave_line, row.leave_summary?.taken_days);
                                         const deptLine = row.departments.length ? row.departments.join(', ') : null;
                                         return (_jsxs(Fragment, { children: [_jsxs("tr", { className: "border-b border-dark-border", children: [_jsxs("td", { className: "px-4 py-3", children: [_jsx("p", { className: "text-text-primary", children: row.name }), (deptLine || leaveLine) && (_jsxs("div", { className: "mt-0.5 space-y-0.5 text-xs", children: [deptLine && _jsx("p", { className: "text-text-muted", children: deptLine }), leaveLine && _jsx("p", { className: "text-amber-400", children: leaveLine })] }))] }), _jsx("td", { className: "px-3 py-3 text-text-secondary", children: row.evaluation_count ? (_jsxs("button", { type: "button", className: "text-accent-primary hover:underline", onClick: () => toggleExpanded(row.user_id), children: [row.submitted_count ?? 0, "/", row.evaluation_count, " \u00B7 ", isOpen ? 'Hide' : 'Show'] })) : ('None') }), _jsx("td", { className: `px-3 py-3 tabular-nums font-medium ${scoreTone(row.monthly_average ?? row.overall_score)?.text ?? 'text-text-muted'}`, children: (row.monthly_average ?? row.overall_score) == null
                                                                 ? '—'
@@ -288,7 +301,7 @@ function EvaluationForm({ mode, month, employees, initialUserId, parameters, sca
         enabled: Boolean(userId && periodStart && periodEnd),
     });
     const fullyOnLeave = Boolean(leaveContext?.fully_on_leave);
-    const leaveLine = leaveTableLine(leaveContext?.leave_days);
+    const leaveLine = leaveTableLine(leaveContext?.leave_days, leaveContext?.leave_line, leaveContext?.taken_days);
     useEffect(() => {
         if (!userId || locked)
             return;

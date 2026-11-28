@@ -203,8 +203,10 @@ def _leave_balances(db: Session, department_id: int | None = None) -> list[dict]
     )
     taken_by_user: dict[int, float] = {uid: 0.0 for uid in user_ids}
     for row in rows:
-        # Designated offs (Sundays, 2nd/4th Saturdays, public holidays) never consume leave balance.
-        if not is_working_day(row.attendance_date):
+        day = row.attendance_date
+        # Attendance is the source of truth, but leave marked on designated offs
+        # (Sundays, 2nd/4th Saturdays, public holidays) never consumes balance.
+        if not is_working_day(day):
             continue
         taken_by_user[row.user_id] = taken_by_user.get(row.user_id, 0.0) + _leave_days_taken(row.status)
 

@@ -410,14 +410,54 @@ def test_leave_context_ranges_and_skips_non_working_days(client, users, db_sessi
     leave_dates = [row["date"] for row in body["leave_days"]]
     assert "2026-11-15" not in leave_dates
     assert "2026-11-22" not in leave_dates  # Sunday inside the stretch
-    assert "2026-11-28" not in leave_dates  # 4th Saturday (does not count toward taken)
+    assert "2026-11-28" not in leave_dates  # 4th Saturday — ignored even if marked leave
     assert "2026-11-18" in leave_dates
     assert "2026-11-27" in leave_dates
-    # Display keeps marked endpoints (28 Nov), even though only working days count.
-    assert body["leave_line"] == "Leave: 18 Nov–28 Nov"
+    # Ranges use working leave days only (offs never appear as endpoints).
+    assert body["leave_line"] == "Leave: 18 Nov–27 Nov"
     assert body["taken_days"] == 9.0  # 18–21 + 23–27 (skip Sun 22 & 4th Sat 28)
-    assert "18 Nov–28 Nov (leave)" in body["suggested_comment"]
+    assert "18 Nov–27 Nov (leave)" in body["suggested_comment"]
     assert "15 Nov" not in (body["suggested_comment"] or "")
+    assert "28 Nov" not in (body["suggested_comment"] or "")
+
+
+def test_leave_marked_only_on_non_working_days_is_ignored(client, users, db_session):
+    """Leave on Sunday / 2nd·4th Saturday must not show or count (e.g. Sherwin case)."""
+    manager = users["manager"]
+    employee = users["employee"]
+    headers = auth_header(manager)
+
+    db_session.add(Attendance(user_id=employee.id, attendance_date=date(2026, 11, 14), status="LEAVE"))  # 2nd Sat
+    db_session.add(Attendance(user_id=employee.id, attendance_date=date(2026, 11, 15), status="LEAVE"))  # Sunday
+    db_session.add(Attendance(user_id=employee.id, attendance_date=date(2026, 11, 28), status="HALF_DAY"))  # 4th Sat
+    db_session.commit()
+
+    res = client.get(
+        "/api/reports/evaluations/leave-context",
+        params={
+            "user_id": employee.id,
+            "period_start": "2026-11-01",
+            "period_end": "2026-11-30",
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    body = res.json()["data"]
+    assert body["leave_days"] == []
+    assert body["leave_line"] is None
+    assert body["taken_days"] == 0
+    assert body["suggested_comment"] is None
+
+    listing = client.get(
+        "/api/reports/evaluations",
+        params={"period_start": "2026-11-01"},
+        headers=headers,
+    )
+    assert listing.status_code == 200
+    item = next(row for row in listing.json()["data"]["items"] if row["user_id"] == employee.id)
+    assert item["leave_days"] == []
+    assert item["leave_summary"]["taken_days"] == 0
+    assert item["leave_summary"]["leave_line"] is None
 
 
 def test_status_counts_and_completion_trend(client, users, db_session):
@@ -488,6 +528,9 @@ def test_workload_tasks_and_leave_balances(client, users, db_session):
         cancelled,
         Attendance(user_id=employee.id, attendance_date=date(2026, 1, 12), status="LEAVE"),  # Monday
         Attendance(user_id=employee.id, attendance_date=date(2026, 2, 3), status="HALF_DAY"),  # Tuesday
+        # Non-working marks must never consume annual leave balance.
+        Attendance(user_id=employee.id, attendance_date=date(2026, 11, 14), status="LEAVE"),  # 2nd Sat
+        Attendance(user_id=employee.id, attendance_date=date(2026, 11, 15), status="LEAVE"),  # Sunday
     ])
     db_session.commit()
 
