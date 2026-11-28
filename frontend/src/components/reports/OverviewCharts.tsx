@@ -130,11 +130,11 @@ function AnnualLeavesCard({ rows }: { rows: ReportLeaveBalance[] }) {
             {rows.map((row) => (
               <div
                 key={row.user_id}
-                className="rounded-lg border border-dark-border bg-surface-subtle px-3 py-3 flex flex-col items-center gap-2.5 text-center"
+                className="rounded-lg border border-dark-border bg-surface-subtle px-3 py-2.5 flex items-center gap-2.5"
                 title={row.name}
               >
                 <Avatar name={row.name} size="md" />
-                <div className="flex items-baseline justify-center gap-2.5 w-full">
+                <div className="flex items-baseline gap-2.5 min-w-0">
                   <span className="tabular-nums text-2xs text-text-muted">
                     {formatLeaveDays(row.assigned)}
                   </span>
