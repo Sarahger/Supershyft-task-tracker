@@ -122,7 +122,7 @@ function AnnualLeavesCard({ rows }: { rows: ReportLeaveBalance[] }) {
       ) : (
         <div className="space-y-3 h-full">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs shrink-0">
-            <span className="metric-sky-strong font-medium">Assigned</span>
+            <span className="text-text-muted font-medium">Assigned</span>
             <span className="metric-amber-strong font-medium">Taken</span>
             <span className="metric-emerald-strong font-medium">Remaining</span>
           </div>
@@ -130,14 +130,12 @@ function AnnualLeavesCard({ rows }: { rows: ReportLeaveBalance[] }) {
             {rows.map((row) => (
               <div
                 key={row.user_id}
-                className="rounded-lg border border-dark-border bg-surface-subtle px-3 py-3 flex flex-col items-center gap-2 text-center"
+                className="rounded-lg border border-dark-border bg-surface-subtle px-3 py-3 flex flex-col items-center gap-2.5 text-center"
+                title={row.name}
               >
                 <Avatar name={row.name} size="md" />
-                <p className="text-sm font-medium text-text-primary truncate w-full" title={row.name}>
-                  {row.name}
-                </p>
-                <div className="flex items-baseline justify-center gap-3 w-full">
-                  <span className="tabular-nums text-base font-semibold metric-sky-strong">
+                <div className="flex items-baseline justify-center gap-2.5 w-full">
+                  <span className="tabular-nums text-2xs text-text-muted">
                     {formatLeaveDays(row.assigned)}
                   </span>
                   <span className="tabular-nums text-base font-semibold metric-amber-strong">
@@ -247,18 +245,25 @@ function PerformersChart({
     >
       {rows.length === 0 ? <EmptyChart text="No finalized evaluations for this period." /> : (
         <ResponsiveContainer width="100%" height="100%" minHeight={240}>
-          <BarChart data={rows} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>
-            <XAxis type="number" domain={[0, 100]} tick={{ fill: chartTheme.axisTick, fontSize: 10 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
-            <YAxis
-              type="category"
+          <BarChart data={rows} margin={{ left: 0, right: 8, top: 8, bottom: 4 }}>
+            <XAxis
               dataKey="shortName"
-              width={72}
               tick={{ fill: chartTheme.axisTick, fontSize: 11 }}
+              axisLine={{ stroke: chartTheme.axisLine }}
+              tickLine={false}
+              interval={0}
+            />
+            <YAxis
+              type="number"
+              domain={[0, 100]}
+              tick={{ fill: chartTheme.axisTick, fontSize: 10 }}
               axisLine={false}
               tickLine={false}
+              width={28}
             />
             <Tooltip
               contentStyle={chartTheme.tooltip}
+              cursor={{ fill: chartTheme.cursor }}
               formatter={(value, _name, item) => {
                 const row = item.payload as typeof rows[number];
                 const count = row.evaluation_count ?? 1;
@@ -271,8 +276,8 @@ function PerformersChart({
             <Bar
               dataKey="score"
               fill="#a78bfa"
-              radius={[0, 4, 4, 0]}
-              barSize={16}
+              radius={[4, 4, 0, 0]}
+              maxBarSize={40}
               cursor="pointer"
               onClick={(bar) => {
                 const row = (bar as { payload?: typeof rows[number] }).payload;
