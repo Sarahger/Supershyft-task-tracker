@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { format, parseISO } from 'date-fns';
 import {
   Bar, BarChart, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -17,16 +18,22 @@ function ChartCard({
   title,
   description,
   children,
+  className,
+  bodyClassName,
 }: {
   title: string;
   description?: string;
   children: React.ReactNode;
+  className?: string;
+  bodyClassName?: string;
 }) {
   return (
-    <section className="card p-6 min-h-[280px]">
-      <h3 className="text-sm font-medium text-text-primary">{title}</h3>
-      {description && <p className="text-xs text-text-muted mt-1 mb-4">{description}</p>}
-      {children}
+    <section className={clsx('card p-6 min-h-[280px] h-full flex flex-col', className)}>
+      <h3 className="text-sm font-medium text-text-primary shrink-0">{title}</h3>
+      {description && (
+        <p className="text-xs text-text-muted mt-1 mb-4 shrink-0">{description}</p>
+      )}
+      <div className={clsx('flex-1 min-h-0', bodyClassName)}>{children}</div>
     </section>
   );
 }
@@ -67,10 +74,10 @@ export function OverviewCharts({
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-72 bg-dark-muted rounded-lg animate-pulse" />
-        ))}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:min-h-[360px]">
+        <div className="lg:col-span-3 h-72 bg-dark-muted rounded-lg animate-pulse" />
+        <div className="lg:col-span-9 h-72 bg-dark-muted rounded-lg animate-pulse" />
+        <div className="lg:col-span-12 h-72 bg-dark-muted rounded-lg animate-pulse" />
       </div>
     );
   }
@@ -80,10 +87,14 @@ export function OverviewCharts({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <PerformersChart data={data} chartTheme={chartTheme} onOpen={onOpenEvaluation} />
-      <AnnualLeavesCard rows={data.leave_balances ?? []} />
-      <div className="lg:col-span-2">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <div className="lg:col-span-3 lg:min-h-[360px]">
+        <PerformersChart data={data} chartTheme={chartTheme} onOpen={onOpenEvaluation} />
+      </div>
+      <div className="lg:col-span-9 lg:min-h-[360px]">
+        <AnnualLeavesCard rows={data.leave_balances ?? []} />
+      </div>
+      <div className="lg:col-span-12">
         <PendingWorkChart people={people} chartTheme={chartTheme} />
       </div>
     </div>
@@ -104,47 +115,41 @@ function AnnualLeavesCard({ rows }: { rows: ReportLeaveBalance[] }) {
           ? `${year} allotment · taken through week ending ${through}`
           : `${year} allotment · taken through the current week`
       }
+      bodyClassName="overflow-y-auto"
     >
       {rows.length === 0 ? (
         <EmptyChart text="No people to show." />
       ) : (
-        <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-dark-border text-left">
-                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider">Person</th>
-                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Assigned</th>
-                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Taken</th>
-                <th className="px-2 py-2 text-2xs font-medium text-text-muted uppercase tracking-wider text-center">Pending</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.user_id} className="border-b border-dark-border last:border-0">
-                  <td className="px-2 py-2.5">
-                    <div className="flex items-center gap-2 min-w-[120px]">
-                      <Avatar name={row.name} size="sm" />
-                      <div className="min-w-0">
-                        <p className="font-medium text-text-primary truncate">{row.name}</p>
-                        <p className="text-2xs text-text-muted truncate">
-                          {row.departments?.length ? row.departments.join(', ') : 'No department'}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2.5 text-center tabular-nums text-text-primary">
+        <div className="space-y-3 h-full">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs shrink-0">
+            <span className="metric-sky-strong font-medium">Assigned</span>
+            <span className="metric-amber-strong font-medium">Taken</span>
+            <span className="metric-emerald-strong font-medium">Remaining</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 content-start">
+            {rows.map((row) => (
+              <div
+                key={row.user_id}
+                className="rounded-lg border border-dark-border bg-surface-subtle px-3 py-3 flex flex-col items-center gap-2 text-center"
+              >
+                <Avatar name={row.name} size="md" />
+                <p className="text-sm font-medium text-text-primary truncate w-full" title={row.name}>
+                  {row.name}
+                </p>
+                <div className="flex items-baseline justify-center gap-3 w-full">
+                  <span className="tabular-nums text-base font-semibold metric-sky-strong">
                     {formatLeaveDays(row.assigned)}
-                  </td>
-                  <td className="px-2 py-2.5 text-center tabular-nums metric-amber-strong">
+                  </span>
+                  <span className="tabular-nums text-base font-semibold metric-amber-strong">
                     {formatLeaveDays(row.taken)}
-                  </td>
-                  <td className="px-2 py-2.5 text-center tabular-nums metric-emerald-strong">
+                  </span>
+                  <span className="tabular-nums text-base font-semibold metric-emerald-strong">
                     {formatLeaveDays(row.pending)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </ChartCard>
@@ -225,20 +230,33 @@ function PerformersChart({
   chartTheme: ReturnType<typeof getChartTheme>;
   onOpen: (evaluationId: number) => void;
 }) {
+  const firstCounts = new Map<string, number>();
+  data.top_performers.forEach((row) => {
+    const first = row.name.trim().split(/\s+/)[0] || row.name;
+    firstCounts.set(first, (firstCounts.get(first) ?? 0) + 1);
+  });
   const rows = data.top_performers.map((row) => ({
     ...row,
+    shortName: chartFirstName(row.name, firstCounts),
     label: `${row.name} · ${periodLabel(row.period_start)} avg`,
   }));
   return (
     <ChartCard
       title="Top-Performing Employees"
-      description="Monthly average of finalized period scores. Drafts are not included."
+      description="Monthly avg of finalized scores."
     >
       {rows.length === 0 ? <EmptyChart text="No finalized evaluations for this period." /> : (
-        <ResponsiveContainer width="100%" height={Math.max(240, rows.length * 36)}>
-          <BarChart data={rows} layout="vertical" margin={{ left: 8, right: 24 }}>
-            <XAxis type="number" domain={[0, 100]} tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
-            <YAxis type="category" dataKey="name" width={120} tick={{ fill: chartTheme.axisTick, fontSize: 11 }} axisLine={false} tickLine={false} />
+        <ResponsiveContainer width="100%" height="100%" minHeight={240}>
+          <BarChart data={rows} layout="vertical" margin={{ left: 0, right: 12, top: 4, bottom: 4 }}>
+            <XAxis type="number" domain={[0, 100]} tick={{ fill: chartTheme.axisTick, fontSize: 10 }} axisLine={{ stroke: chartTheme.axisLine }} tickLine={false} />
+            <YAxis
+              type="category"
+              dataKey="shortName"
+              width={72}
+              tick={{ fill: chartTheme.axisTick, fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+            />
             <Tooltip
               contentStyle={chartTheme.tooltip}
               formatter={(value, _name, item) => {
@@ -246,7 +264,7 @@ function PerformersChart({
                 const count = row.evaluation_count ?? 1;
                 return [
                   `${value}/100 · ${periodLabel(row.period_start)} avg (${count} period${count === 1 ? '' : 's'})`,
-                  'Monthly avg',
+                  row.name,
                 ];
               }}
             />
